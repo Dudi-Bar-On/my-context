@@ -114,20 +114,37 @@ The conclusion survives either reading — 1.19:1 is as indistinguishable as 1.0
 beside the hue is still doing the work — but the number itself has never been re-derived, and should
 not be cited as a measurement of the shipped palette.
 
-**The same swap is still live in `styles.css`, in a comment that says it is not**, and it is worth
-naming because it is the strongest evidence that this class of error does not stay fixed once.
-`styles.css:1319–1320` records, under the heading *"CONTRAST RE-MEASURED FOR TEXT, not carried
-across"* and closing *"which is a measurement and not an assumption"*, the figures
+**The same swap was live in `styles.css` until 2026-09-17, in a comment that said it was not**, and
+it is kept on the record here because it is the strongest evidence that this class of error does not
+stay fixed once. Under the heading *"CONTRAST RE-MEASURED FOR TEXT, not carried across"* and closing
+*"which is a measurement and not an assumption"*, the used-of-maximum block recorded
 `--ok 8.42/7.90:1, --gold 10.58/9.92:1, --warn 6.31/5.92:1, --crit 7.00/6.57:1` on `--panel` and
 `--panel-2`. Every one of those eight numbers is the **retired** colour's ratio, reproduced to the
-second decimal on both grounds, wearing the shipped token's name. Recomputed from the shipped hexes
-while this chapter was checked, the true pairs are `--ok` 7.84/7.35, `--gold` 9.31/8.74, `--warn`
-6.37/5.98 and `--crit` **4.75/4.45**. That comment then concludes *"All clear AA; the worst is
---warn at 5.92:1"* — and on the shipped palette the worst is `--crit` at **4.45:1, which does not
-clear AA at all**, a fact `styles.css:129–133` states correctly eleven hundred lines above it. This
-is in `styles.css` and not in this directory, so it is reported here rather than repaired; it is
-filed nowhere else when this pass looked. It is filed now, as
-`KNOWN-the-stylesheet-asserts-aa-compliance-under-a-heading-saying`, on the same day.
+second decimal on both grounds, wearing the shipped token's name. The block then concluded *"All
+clear AA; the worst is --warn at 5.92:1"* — where on the shipped palette the worst is `--crit` at
+**4.45:1, which does not clear AA at all**, a fact the PALETTE TRIAL block states correctly twelve
+hundred lines above it. Recomputed from the shipped hexes, the true pairs on `--panel` and
+`--panel-2` are `--ok` 7.84/7.35, `--gold` 9.31/8.74, `--warn` 6.37/5.98 and `--crit` **4.75/4.45**;
+`--ink` #f0eef6, the one token in that list that was never repointed, was already right at
+15.54/14.57. Filed as `KNOWN-the-stylesheet-asserts-aa-compliance-under-a-heading-saying`.
+
+**It is now repaired, and the heading went with the digits.** Owner ruling, 2026-09-17, choosing
+between correcting the claim and moving the hue: *"correct the claim, keep the hue"* — a hue change
+is his under `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`, and `--crit` has the
+least headroom of the five (§3). The replacement does **not** restate the old heading over better
+arithmetic, which would have repeated the defect with the right numbers. It names the figures as the
+retired palette's, gives the five inks against both grounds with each ground spelled out in hex,
+states plainly that `--crit` #ef4444 on `--panel-2` #1d1d24 is 4.45:1 and misses AA for normal text
+by 0.05 — and gives the reason that is acceptable, which is the argument that block already made and
+which the finding leaves intact: **the level is carried three ways.** The ink is one carrier; the
+icon (⚠️ 🔶 💀, with its `aria-label`) and the word in the chip beside it are the other two, which is
+`06-a11y.html`'s rule and why the level survives `forced-colors`, a mono printer and a dichromat's
+reading, where a background often vanishes and ink can be overridden. It also records which ground
+the surface is actually on today — `.strip` paints `--panel`, and the pills are `background:none`
+with a `transparent` border, so the live figure there is `--crit` at 4.75:1 and 4.45 is the number
+owed by whoever next moves a banded field onto the darker panel. The shipped column of the table
+above and the corrected block now agree to the second decimal, which is what this section existed to
+force.
 
 ## 5. Diagrams: generated, never hand-drawn, and never shipped as a dependency
 
@@ -235,9 +252,29 @@ of dating it rather than asserting it.)
   `docs/superpowers/plans/2026-08-14-mycontext-documentation.md`, which carries 1. Five gated-by
   nothing fences, in the document this directory is shaped after. `docs/tutorials/` carries none, so
   it is not a gap. Counted with `grep -c '```mermaid'` over every `.md` in the tree on 2026-09-17.
-- **`styles.css:1319–1320` asserts AA compliance for a colour that fails it** (§4), under a heading
-  claiming the figures were re-measured rather than carried across. That is one file outside this
-  directory's scope and it is reported here because nothing else appears to have recorded it.
+- **CLOSED 2026-09-17: `styles.css` no longer asserts AA compliance for a colour that fails it**
+  (§4). The eight carried-across figures in the used-of-maximum block are corrected, and the false
+  *"CONTRAST RE-MEASURED FOR TEXT, not carried across"* heading went with them rather than being
+  left standing over better arithmetic. The block now states that `--crit` #ef4444 on `--panel-2`
+  #1d1d24 is 4.45:1 and misses AA for normal text by 0.05, and gives the three-carrier argument —
+  ink, icon, word — beside it. The hue did not move, by the owner's *"correct the claim, keep the
+  hue"* ruling. Previous version of this bullet reported the defect as open; it is
+  `KNOWN-the-stylesheet-asserts-aa-compliance-under-a-heading-saying`, and this is the correction
+  rather than the request.
+- **Nothing sweeps `styles.css` for contrast claims, and the rest of them are unaudited.** The one
+  above was found only because this chapter described it. The file carries **102** hard-coded
+  `N.NN:1` figures across 62 lines, counted on 2026-09-17 with this repair already in, and the
+  palette has been replaced at least once; the owner
+  declined a wider sweep on 2026-09-17, so every figure outside the used-of-maximum block is still a
+  number a reader must either trust or recompute. **Several state a ratio with no ground named at
+  all**, which is not a weaker claim but an uncheckable one — the `.chip` block's `ok 7.03:1, warn
+  5.43:1, crit 5.96:1, unmeasured 7.51:1` is the clearest case, and its `crit 5.96:1` reproduces
+  against none of `--paper` (5.09), `--panel` (4.75) or `--panel-2` (4.45), so there is no way to
+  tell from the text what it was measured on. Spot-checked the other way as well: every figure that
+  *does* name its ground and was re-derived here reproduced exactly — the marks card's six on
+  `rgb(10, 41, 50)`, the viewer's syntax inks and `--edge` on `--paper`, `--dim` on `--panel`. The
+  arithmetic is pure and a gate would not go stale; one beside `check:vendor` is recommended in the
+  `KNOWN` item and is not built.
 - **The Navigation and Copy panels have shipped** (`ef52818f`, 2026-09-17). The previous version of
   this bullet said they were unbuilt and would need a pass through this budget when they arrived.
   They arrived, and the honest reading is narrower than either "still owed" or "fine": that commit
@@ -254,12 +291,15 @@ of dating it rather than asserting it.)
 
 **Every `styles.css` line number in this chapter is read at commit `e515eff4`, and that is stated
 rather than assumed because the file is moving under it.** It was 5,498 lines at the HEAD the
-previous pass was written against, is **5,868** at `e515eff4`, and **5,969** in the working tree as
-this was written — another lane's uncommitted work, inserting from line 944 downward, which already
-shifts `:1003`, `:1319–1320` and `:2026` by about seventy lines for anyone reading the working tree
-rather than HEAD. `:101–147` is above the insertion point and is unaffected. Recording the
-working-tree numbers would have recorded another lane's unlanded work as though it had shipped;
-recording HEAD and naming the commit is the version that can be checked later.
+previous pass was written against, **5,868** at `e515eff4`, **6,029** at HEAD `f61ef864`, and
+**6,083** in the working tree as this paragraph was last updated — the §4 contrast repair alone adds
+54 lines below `:1380`. Insertions from line 944 downward already shift `:1003` and `:2026` by about
+seventy lines for anyone reading a revision later than `e515eff4`; `:101–147` sits above every
+insertion point and is unaffected. **The used-of-maximum block is no longer cited by line at all** —
+§4 and §6 name it by its heading instead, which is the one reference that cannot go stale, and is
+the treatment the rest of these would be better off getting. Recording working-tree numbers would
+record unlanded work as though it had shipped; recording a commit and naming it is the version that
+can be checked later.
 
 | File | What it owns |
 |---|---|

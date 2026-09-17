@@ -1386,13 +1386,67 @@ bdi{unicode-bidi:isolate}
    nothing, which is exactly what a label should mean
    (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`).
 
-   CONTRAST RE-MEASURED FOR TEXT, not carried across. The terminal lane found
-   two of its indices were fine as backgrounds and unreadable as text — one
-   measured 2.16:1 inverted, and nothing errored. Measured here against both
-   grounds this strip uses, as TEXT: --ok 8.42/7.90:1, --gold 10.58/9.92:1,
-   --warn 6.31/5.92:1, --crit 7.00/6.57:1, --ink 15.54/14.57:1 on --panel and
-   --panel-2. All clear AA; the worst is --warn at 5.92:1. No repointing was
-   needed on this surface, which is a measurement and not an assumption.
+   ── THE EIGHT CONTRAST FIGURES HERE WERE THE RETIRED PALETTE'S, UNTIL
+      2026-09-17 ─────────────────────────────────────────────────────────
+   This paragraph used to open *"CONTRAST RE-MEASURED FOR TEXT, not carried
+   across"* and then give figures that had been carried across: the RETIRED
+   colours' ratios (`#7cc0a0`/`#e8c368`/`#c78f3d`/`#e08b8b`, which the PALETTE
+   TRIAL block in TOKENS records as replaced) wearing the shipped tokens'
+   names. The heading was the one signal a reader had that the numbers could be
+   trusted, and the heading was the false part —
+   `KNOWN-the-stylesheet-asserts-aa-compliance-under-a-heading-saying`. **So
+   the heading goes with the digits.** Swapping eight numbers under a claim of
+   re-measurement would have repeated the defect with better arithmetic.
+
+   The hazard that heading was reaching for is real and is why anything is
+   measured on this surface at all: the terminal lane's same ink-for-ground
+   inversion found two indices that were fine as backgrounds and unreadable as
+   text — one at 2.16:1 — and nothing errored.
+
+   ── WHAT THESE FIVE INKS MEASURE, EACH AGAINST ITS GROUND ──────────────
+   Recomputed 2026-09-17 from the hexes in this file and nowhere else — the
+   four level tokens and `--ink` from the TOKENS block, `--panel`/`--panel-2`
+   from the LEGACY SCALE block — by WCAG 2.x relative luminance. EVERY FIGURE
+   NAMES ITS GROUND, because a ratio with no ground is not a weaker claim, it
+   is one nobody can check.
+
+       ink as TEXT          on --panel #17171c    on --panel-2 #1d1d24
+       --ok    #22c55e            7.84  AA              7.35  AA
+       --gold  #eab308            9.31  AA              8.74  AA
+       --warn  #f97316            6.37  AA              5.98  AA
+       --crit  #ef4444            4.75  AA              4.45  FAILS AA
+       --ink   #f0eef6           15.54  AA             14.57  AA
+
+   AA for normal text is 4.50:1. `--ink` is the only row that did not move,
+   because `--ink` was never repointed — its old pair was already right, which
+   is the plainest evidence that the other four were carried rather than
+   measured.
+
+   ── THE 4.45, PLAINLY, AND WHY THE HUE DID NOT MOVE ────────────────────
+   **`--crit` #ef4444 as text on `--panel-2` #1d1d24 is 4.45:1. It misses AA
+   for normal text by 0.05.** Stated rather than rounded away.
+
+   Owner ruling 2026-09-17, choosing between correcting the claim and moving
+   the colour: *"correct the claim, keep the hue"* — a hue change is his under
+   `DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`, and
+   `--crit` has the least headroom of the five.
+
+   **IT IS ACCEPTABLE BECAUSE THE LEVEL IS CARRIED THREE WAYS**, which is the
+   argument this block already makes twice above and which the finding leaves
+   intact. The ink is one carrier; the ICON (⚠️ 🔶 💀, with its `aria-label`)
+   and the WORD in the chip beside it are the other two — `06-a11y.html`'s
+   rule, and the reason this is safe under `forced-colors`, in print, and for a
+   dichromat, where a background often vanishes and ink can be overridden. A
+   reader short 0.05 on the red still has the glyph and the word; they do not
+   lose the level.
+
+   **AND THE GROUND THIS SURFACE IS ON TODAY IS `--panel`,** where `--crit`
+   reads 4.75:1 and clears. `.strip` paints `--panel`, and the pill rule below
+   is `background:none` with a `transparent` border, so a `.ufield` value sits
+   on the strip's own ground. `--panel-2` is carried in the table anyway
+   because these classes are not fenced to that ground: 4.45 is the number the
+   next person moving a banded field onto the darker panel has to meet BEFORE
+   the move, not discover after it.
 
    UPPERCASE IN CSS, NEVER IN THE STRING. `strip.grp.session` is `'session'`;
    the shouting is presentation, the same way the group headings already do it.
