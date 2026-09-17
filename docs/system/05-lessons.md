@@ -89,10 +89,20 @@ Three further subcommands exist beyond the flags shown above: `lesson-stage <id>
   recorded as `intended`, and the reasoning is written into `stage_rule_candidates`'s own doc
   comment three lines above the tool — staged candidates *"are inert until a HUMAN runs `mycontext
   lesson-accept`, which is the only call site of `createItem` anywhere in this module and hardcodes
-  `origin: 'human'` with no override"*. So the conclusion stands and is in fact better sourced than
-  the premise was: **creating a rule from a lesson requires a human at a terminal.** What does not
-  stand is the wider claim that all three post-lesson steps are CLI-only. It overstated this
-  chapter's own case, which is the direction an error is least likely to be caught in.
+  `origin: 'human'` with no override"*. `CLI_WITHOUT_TOOL['lesson-accept']` carries
+  `disposition: 'intended'` and that reasoning verbatim (`plugin/parity.ts:516–523`), and
+  `acceptStagedRule` is called from exactly one file in the tree, `cli/commands/lesson.ts`. So the
+  conclusion stands and is better sourced than the premise was: **creating a rule from a lesson
+  requires a person.** What does not stand is the wider claim that all three post-lesson steps are
+  CLI-only. It overstated this chapter's own case, which is the direction an error is least likely
+  to be caught in.
+- **"A person" is not the same as "a terminal", and this chapter said the narrower thing.** The
+  Composer screen carries a `lesson-accept` entry with `runnable: true`
+  (`lib/palette-defs.js:510–518`), so a person signed into the web UI can compose *and run* it
+  through `POST /api/execute`, behind the confirm dialog and a nonce bound to the argv the server
+  built. That is a second human door, not an agent door, so the trust property is unchanged — but
+  "requires a human at a terminal" is false as written, and it is the kind of sentence that reads
+  as a security claim.
 
 ## 5. What is known wrong or unfinished here
 
@@ -103,10 +113,13 @@ Three further subcommands exist beyond the flags shown above: `lesson-stage <id>
   `mycontext show TASK-lesson-accept-creates-a-rule-with-no-summary-so-the-accept` before citing its
   state, since this chapter's whole discipline is that a state is a reading, not a fact that stays
   put.
-- No UI write control for `lesson-accept` was confirmed during research for this chapter — a
-  historical code comment in `staging.ts` says the Composer's command catalogue
-  (`palette-defs.js`, see `docs/system/03-the-palette-and-the-drawn-language.md`) could not give it a
-  picker; whether that is still true was not independently re-verified here.
+- **The "no picker for `lesson-accept`" note is history, and this chapter previously left that
+  unresolved.** `staging.ts:11–12` records that `palette-defs.js` *"had refused the `key` picker on
+  `lesson-accept`"* — past tense, and the catalogue's own comment says why it no longer does: the
+  read half was split into `src/lesson/staging.ts` and `GET /api/staging` serves it, so `id` and
+  `key` are now two `input: 'suggest'` pickers riding one fetch, `key` narrowed by
+  `dependsOn: 'id'` (`palette-defs.js:463–478`, `:512–517`). Checked directly this pass rather than
+  left open: the picker exists, and the entry is `runnable`, which is §4's second door.
 
 ## 6. Code map
 

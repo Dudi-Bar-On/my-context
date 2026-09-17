@@ -30,21 +30,39 @@ additional axis costs the disclosure sharpness described below.
 
 Focus sits downstream of a mechanism it never replaces: which items are even candidates for a
 session's context window in the first place, before any filter narrows them further. `README.md`
-§4 names five such routes, and the diagram below is reproduced from that section — **the same source
-the copy in `docs/capabilities/02-injection.md` §4 is drawn from**, which is the claim worth making
-here because it survives an edit to any one copy. (An earlier draft of this chapter said the two
-were *byte-identical*, which was true when it was written and false one commit later: README's §4
-diagram was repaired on 2026-09-17 to draw continuity, relabel the just-in-time branches, and say
-"once per session" rather than "once per context window". A claim about bytes rots; a claim about
-provenance does not.) All five routes are drawn, **continuity included** — an earlier draft of this
-chapter said the fifth was missing from the picture and explained why the prose had to carry it
-anyway. The picture carries it now, so the prose no longer has to; what the prose still owes the
-reader is that continuity is also one of the three things focus may never hide, named again below.
+§4 names five such routes — pinned, just in time, restored, continuity, index — and the diagram
+below is reproduced from that section, **the same source the copy in
+`docs/capabilities/02-injection.md` §4 is drawn from.**
+
+**This drawing has now rotted three times, and the useful thing is the pattern rather than the
+latest repair.** First it was claimed *byte-identical* to README's, which was true for one commit.
+Then the claim was weakened to provenance and the fence spliced — and README moved again within the
+day, so the provenance claim stayed true while the picture underneath it quietly stopped matching:
+the copy in this chapter drew `always: true?` unqualified where README now asks it *of normative
+items only*, said just-in-time was injected *"once per session"* where README now says *"offered
+again only if the item itself changed"*, promised *every* `continuity: true` item *"in full"* where
+README now bounds it to items not already delivered and to `budgets.continuity`, drew one
+no-injection branch where README draws two, and omitted the `scopePolicy: inert` case and the
+rationale-tier branch entirely. Three of those five differences are quantifiers, which is the class
+this directory keeps being wrong about.
+
+The fence below was re-extracted from README with the product's own `mermaidBlocks` and spliced
+programmatically on **2026-09-17**, and asserted equal to README's and to
+`docs/capabilities/02-injection.md`'s afterwards — all three byte-identical at that moment.
+**Nothing gates that.** `npm run check:diagrams` parses every fence in these documents and compares
+none of them to each other, so the only durable instruction is the one that does not rot: **if this
+drawing and README §4 ever disagree, README's is the one that is right, and this one is stale.**
+
+One thing the picture draws that is *not* a route: the `rationale-tier items` branch. README's own
+prose still says five tiers, and that branch is what reaches none of them — no full text, no index
+line, a bare count per category. All five real routes are drawn, **continuity included**; what the
+prose still owes the reader is that continuity is also one of the three things focus may never
+hide, named again below.
 
 **Focus narrows the whole eligible set, before any tier is computed — not one branch of this
-diagram.** `select.ts:1516–1519` filters `eligibleAll` through `focusHides` once, *"so every tier
-and the index inherit it from one place"*, and every route below draws from what survives that
-filter. Pinned and continuity items are not protected by lying outside focus's reach; they are
+diagram.** `select.ts:1511–1518` filters `eligibleAll` through `focusHides` once — the comment
+above the filter is *"Focus narrows the eligible set, so every tier and the index inherit it from
+one place"* — and every route below draws from what survives that filter. Pinned and continuity items are not protected by lying outside focus's reach; they are
 protected by three explicit exemptions written *inside* `focusHides` (`select.ts:683–694`), which is
 why `exemptHard`, `exemptAlways` and `exemptContinuity` exist at all. §5 below is the proof: the
 three days in August 2026 when a focus hid six pinned items could not have happened if focus could
@@ -52,14 +70,16 @@ not reach the pinned route.
 
 ```mermaid
 flowchart LR
-  S(["A session starts"]) --> Q{"always: true?"}
+  S(["A session starts"]) --> Q{"always: true?<br/>(asked of normative items only)"}
   Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
   Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
-  S --> CONT["<b>continuity</b><br/>every continuity: true item, in full"]
+  S --> RAT["<b>rationale-tier items</b><br/>no full text, and no line —<br/>a bare count per category"]
+  S --> CONT["<b>continuity</b><br/>each continuity: true item not already<br/>delivered to this window or pinned,<br/>while budgets.continuity lasts"]
   F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
-  G -->|"yes, and it matches —<br/>offered first"| JIT["<b>just in time</b><br/>injected in full, once per session"]
-  G -->|"no — unrestricted,<br/>offered only after every<br/>scoped item already fit"| JIT
-  G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
+  G -->|"yes, and it matches —<br/>band 1, offered first"| JIT["<b>just in time</b><br/>injected in full; offered again only<br/>if the item itself changed"]
+  G -->|"no, and the category's scopePolicy<br/>is not inert — band 2, offered<br/>whatever band 1 left, first-fit"| JIT
+  G -->|"no, and scopePolicy: inert —<br/>it matches no path at all"| NO["nothing — the item stays<br/>out of the way"]
+  G -->|"yes, no match"| NO
   C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
   C --> PIN
   C --> IDX
@@ -143,10 +163,12 @@ every retained line still reproduces byte for byte**: 6 dangling relations, that
 53 `severity:hard` items with `CONST-evidence-must-cite-a-captured-record-id` at the head of the
 list, and that closing sentence. This is the one block in `docs/system/` that marked its own cuts
 from the start, and it is the one block that survived a verifier unchanged — the `...` lines here
-stand for the 1,129-item hidden list, a 7-item pinned block, and the tails of two enumerations. The
-exact counts move as the corpus does; a `--category rule` focus narrowing to nearly nothing but
-`rule` items is expected to exempt most of the corpus, which is exactly what the disclosure above
-shows happening.)*
+stand for the hidden list, a 7-item pinned block, and the tails of two enumerations. **The hidden
+list is the figure that moves:** the previous pass recorded 1,129 items; the same command on
+2026-09-17 prints `114 item(s) in focus, 1135 hidden by focus`. The pinned block is still 7, the
+dangling count still 6 and the `severity:hard` count still 53. A `--category rule` focus narrowing
+to nearly nothing but `rule` items is expected to exempt most of the corpus, which is exactly what
+the disclosure above shows happening.)*
 
 ## 4. Who may trigger it, and through which door
 
@@ -169,11 +191,19 @@ corpus at all. **The corpus hid the instructions that would have said it was not
 the `exemptAlways` mechanism in `select.ts` is its enforcement — confirmed live in the current code
 rather than merely claimed fixed.
 
-One claim could not be confirmed during research for this chapter and is flagged rather than
-asserted: a `doctor` check for a stale focus (referenced by name, "focus_active," in `focus.ts`'s own
-comments) does not appear under that name anywhere in `src/doctor/checks.ts`. Either the check exists
-under a different name, or the comment describing it is itself stale — this is left open rather than
-guessed at.
+**A second claim was flagged open by the previous pass and is now settled: the comment is stale.**
+`focus.ts:41` says *"`mycontext focus --show` and `doctor`'s `focus_active` check both report"* an
+active focus. `focus_active` appears exactly once in the whole of `src/` — in that comment. Widened
+from the name to the subject, `src/doctor/` has seven modules and the only occurrences of the word
+"focus" in any of them are in `checks.ts:1417`, `:1447` and `:1464`, all about a tag being
+invisible to `mycontext focus <prefix>:<field>` and none of them a check on focus state. So there
+is no doctor check for an active focus under that name **or any other**, and the earlier "either
+the check exists under a different name, or the comment is stale" can be closed on the second
+branch. The residual is in `focus.ts`, not here: a reader of that comment will look for a check
+that does not exist.
+
+**And `mycontext focus --show` does report it**, which is the half of the comment that is true —
+verified by running it (§3).
 
 ## 6. Code map
 
@@ -181,8 +211,8 @@ guessed at.
 |---|---|---|
 | `src/core/focus.ts` | 658 | `readFocus`/`writeFocus`/`setFocus`/`unsetFocus`, `isLoadBearing`, `danglingEdges`, `focusReportLines` — the most heavily commented of the three chapters in this trio, with roughly 45 lines on the workspace-scoping decision alone |
 | `src/cli/commands/focus.ts` | 294 | The CLI command |
-| `src/mcp/tools/focus.ts` | — | The `focus_context` MCP tool |
-| `src/core/select.ts` | — | `matchesFocus`, `focusHides`, `focusMatchesScope` — the actual filter, inside the shared injection path |
+| `src/mcp/tools/focus.ts` | 119 | The `focus_context` MCP tool |
+| `src/core/select.ts` | 1,851 | `matchesFocus` (`:637`), `focusHides` (`:683`), `focusMatchesScope` — the actual filter, applied to `eligibleAll` at `:1515–1518` |
 | `.my_context/state/focus.json` | — | The current focus, if any; gitignored, workspace-scoped |
 
 ## See also

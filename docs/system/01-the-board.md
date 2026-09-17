@@ -15,18 +15,29 @@ like this, what it replaced, and the argument a newcomer needs before the comman
 
 ## 1. What it is, and what it is easy to confuse it with
 
-**The board is not a file. It is three small, pure computations over the corpus's own
-frontmatter**, run fresh every time they are asked for. There is no stored "board" anywhere — no
-`board.json`, no cached progress percentage. If you have used a project-management tool before,
+**The board is not a file. It is three small computations, run fresh every time they are asked
+for.** There is no stored "board" anywhere — no `board.json`, no cached progress percentage. The
+three do not read the same kind of input, and the difference is worth stating rather than
+flattening: `needs.ts` is pure and reads **frontmatter** (`needs`, `state`, `plan`, `seq`);
+`parseDMap` reads an item's **body**, because the `[D-MAP]` block is delimited data inside prose
+rather than a field (`parseDMap(body: string)`, `needs.ts:664`); and `scripts/check-board.ts`'s
+second tier reads **git**, shelling out with `execFileSync` (`:225`, `:265`), so it is neither pure
+nor a read of the corpus at all. Only the first of the three is the pure function §3 describes.
+If you have used a project-management tool before,
 the thing you are picturing when you hear "board" — a persisted state that a person or a bot
 updates — is precisely the thing this replaced, and the whole design is a reaction against it.
 
 Three things a newcomer conflates with the board, worth separating up front:
 
 - **The board is not the corpus.** The corpus (`.my_context/items/`) is normative knowledge —
-  rules, decisions, requirements. The board is one *lens* over one *category* of it: `task` items,
-  read through their `needs`, `state` and `plan`/`seq` fields. Every other category (rules,
-  decisions, lessons…) is invisible to the board entirely.
+  rules, decisions, requirements. The board is a narrow lens over it: `workItems` admits only
+  categories that declare `plan`, `seq` *and* `state` and are enabled (`isWorkCategory`,
+  `needs.ts:151–159`), and on the shipped category set `task` is the only one that does
+  (`categories.ts:464`). Rules, decisions, lessons, requirements and the rest are invisible to
+  `needs.ts` entirely. **One category reaches the same reports by a second door**, and it is worth
+  naming here so §4 does not read as a contradiction: `open_question` is not a work item and never
+  enters `readyReport`, but `questions.ts` resolves its `blocks` field and both `ready` and `path`
+  print the result. So "only tasks" is true of the *computation* and not of the *output*.
 - **`needs` is not `blocks`.** Both fields exist and they point opposite directions on purpose —
   see §3.
 - **A D-number is not a task.** A D-number names a *subject* — a cluster of tasks a reader can hold
@@ -95,12 +106,15 @@ fact, and the copy always wins the argument until somebody checks.** Nobody chec
 corpus said one thing, the board said another, and there was no way to know which was current
 without opening both.
 
-The measurement that made the case undeniable was taken the day the retirement started: of 425
-non-superseded task items in the corpus, **zero** carried anything a machine could read as a
-dependency. A regex sweep for a dependency stated in prose — the kind of sentence a person writes
-without thinking about it, "blocked on the search work landing first" — matched 4 of roughly 28
-real mentions, and one of those four resolved to a plan that did not exist, harvested out of the
-middle of an unrelated sentence. A notation with a 25% hit rate and a false positive in the same
+The measurement that made the case undeniable was taken **ten days before the board was retired**,
+on **2026-08-28** (`needs.ts:5`) — the field was already being argued for while the board was still
+being kept by hand, which is the ordinary way of it: of 425 non-superseded task items in the
+corpus, **zero** carried anything a machine could read as a dependency, five sat at
+`state: blocked` and not one of those five named what it was blocked on. A regex sweep for a
+dependency stated in prose — the kind of sentence a person writes without thinking about it,
+"blocked on the search work landing first" — matched 4 of roughly 28 real mentions, and one of
+those four resolved to `the/45`, a plan that does not exist, harvested out of the middle of a
+sentence. A notation with a 25% hit rate and a false positive in the same
 pass is not a notation. That is the argument for turning "what this waits on" into a real
 frontmatter field rather than a sentence a reader has to parse by eye — and it is why `needs` was
 built the way it was, not the way prose dependency-tracking usually is.
@@ -136,7 +150,7 @@ are worth pulling out because each was argued from a specific measured failure, 
 
 ```mermaid
 flowchart TB
-  T["task item<br/>needs: plan/seq, plan/seq…"] --> N["needs.ts<br/>pure: resolve every ref to<br/>satisfied · pending · unresolved"]
+  T["task item<br/>needs: plan/seq, plan/seq…"] --> N["needs.ts — pure, frontmatter only<br/>each entry lands in exactly one of FOUR:<br/>malformed · satisfied · pending · unresolved"]
   N --> R["mycontext ready<br/>what can I start right now"]
   N --> P["mycontext path --d N<br/>where is ONE subject up to"]
   N --> D["scripts/check-board.ts<br/>is the map itself honest"]
@@ -163,16 +177,25 @@ item can carry `blocks`, naming the work waiting on its answer. It was built spe
 before it existed, a decision the owner needed to make sat in the corpus with nothing putting it in
 front of him — it reached him only when an assistant happened to remember to raise it, which does
 not survive a compaction (the exact failure `docs/capabilities/07-restore-and-handover.md`
-describes). A question that blocks something is surfaced by name in `ready`'s output; a question
-that blocks nothing yet is counted, not listed — a deliberate anti-noise design, because a list that
-showed every open question every time would train a reader to stop reading it.
+describes).
+
+**The filter is not "has a `blocks` field", and the difference is the whole anti-noise design.**
+A question is *listed* by name only while its `blocks` resolves to work that is **still open**;
+everything else active is counted and named by reason, and `mycontext ready --questions` lists it
+(`questions.ts:76–92`). That covers two populations, not one — a question naming nothing, and a
+question whose work has since landed. `blocks: live/22` stays written after `live/22` lands, so
+"has a non-empty `blocks`" would never fall quiet and the list could only grow; resolving the
+reference falls quiet on the next run with nobody editing anything. On this corpus today
+(`mycontext ready`, 2026-09-17) that reads: **1 question listed, 8 counted — 4 naming work that is
+already done, 4 naming nothing they block.**
 
 **The separation is real in the code, and the dependency runs the direction §3 predicts** — which is
 worth stating because the obvious drawing of it is backwards. `needs.ts` never reads `blocks` at
 all: the field appears three times in that file's header prose and **zero** times in its code. The
 arrow runs the other way, with `questions.ts` importing `buildTaskIndex`, `parseNeeds` and
-`refStatus` *from* `needs.ts` (`questions.ts:137–139`). `ready.ts` (`:2–9`) and `path.ts` (`:6`)
-each import the two modules independently, and `path.ts` is where `questionReport` feeds the `YOURS`
+`refStatus` *from* `needs.ts` (`questions.ts:137–139`). `ready.ts` (`:2–9`) and `path.ts` (`:2–6`)
+each import the two modules independently — `needs.ts` first, `questions.ts` second, in both files —
+and `path.ts` is where `questionReport` feeds the `YOURS`
 column of §5. `scripts/check-board.ts` does not import `questions.ts` at all, so no question data
 ever reaches the gate.
 
@@ -181,14 +204,16 @@ ever reaches the gate.
 A single task is too small a unit to plan around, and a whole corpus is too large. The D-numbers
 sit between: `REF-the-d-numbers-what-each-one-means-and-which-are-only` is a pinned reference item
 carrying a `[D-MAP]` block, and the item's own governing sentence is worth quoting because it is
-the whole design in one line: **"a D number names a subject, not a fixed list of items - the D37
-precedent, ruled 2026-09-08: a subject may WIDEN, and widening is neither renumbering nor reuse."**
+the whole design in one line, in the item's own capitals: **"AND A D NUMBER NAMES A SUBJECT, not a
+fixed list of items - the D37 precedent, ruled 2026-09-08: a subject may WIDEN, and widening is
+neither renumbering nor reuse."**
 A D number is assigned once, in this one item, and never reassigned or reused — announcing one anywhere else does not make it real.
 
-Parsing that block used to be a regex over prose, and it was measured wrong twice on the same day
-this pass started: one subject read as closed because its own text merely *quoted* another
-subject's closure sentence, and a second read `0/3` because the regex matched an unrelated day's
-items by name alone, with no relation to the subject it was scoring. `needs.ts`'s `parseDMap` now
+Parsing that block used to be a regex over prose, and it was measured wrong twice on one day —
+**2026-09-16**, the day before this chapter was written (`check-board.ts:13–16`): `D78` was
+reported **closed** because its own text merely *quoted* `D57`'s closure sentence, and `D57` was
+reported `0/3` because the regex matched that day's `anchors/` items by name alone, with no
+relation to the subject it was scoring. `needs.ts`'s `parseDMap` now
 reads the block as **delimited data**, never as prose scanned for meaning — the fix was not a
 smarter regex, it was refusing to parse prose as if it were structured at all.
 
@@ -229,9 +254,16 @@ no reason to detect a loop on its own.
 
 - **A commit still cannot declare which item it finishes.** Tier 2 above is a report because this
   is missing, not because reporting was preferred on its own merits.
-- **A dependency stated only in prose is invisible to all three commands.** This is a statement
-  about the corpus's honesty, not a promise about the underlying work — `mycontext doctor` is what
-  flags a `state: blocked` task that names nothing machine-readable.
+- **A task's dependency stated only in prose is invisible to all three commands**, and `ready`
+  says so in its own closing paragraph on every run. This is a statement about the corpus's
+  honesty, not a promise about the underlying work — `mycontext doctor` is what flags a
+  `state: blocked` task that names nothing machine-readable (`checks.ts`, `blocked_without_needs`
+  at `:1589`). **The one exception is on the question side and runs the other way**: a *question*'s
+  `blocks` is read in prose too. `PROSE_REF` (`questions.ts:164`) lifts `plan:walk seq:89` out of a
+  sentence, added on evidence rather than tidiness — measured 2026-09-11, five active questions
+  carried a `blocks` and only one was written as `live/22`. So "prose is invisible" is exactly true
+  of `needs` and exactly false of `blocks`, which is the second time in this chapter the two fields
+  are not mirror images of each other.
 - **`path`'s `YOURS` column only knows what the corpus was told.** A real decision waiting on the
   owner that was never filed as an `open_question` and whose subject was never marked
   `held-by-owner` is invisible to it, for exactly the reason an un-filed `needs` reference is

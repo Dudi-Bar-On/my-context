@@ -60,10 +60,17 @@ than duplicating it. `mycontext ingest-status [--summary]` reports session and a
 is a chain, not a single check, and the order is the order the source reads it in — a shape refusal
 before a content refusal, because a message about a missing quote is useless on an entry that is not
 even an object yet. Each `reject()` on the way is durable, not a thrown error that takes the batch
-down with it: `INV-a-validator-that-gates-writes-must-be-a-complete` is
-what makes this a *complete* precondition rather than a first pass — nothing `createItem` would
-refuse gets past this chain, checked by generating and round-tripping tens of thousands of candidates
-against it.
+down with it: `INV-a-validator-that-gates-writes-must-be-a-complete` is what makes this a *complete*
+precondition rather than a first pass — nothing `createItem` would refuse gets past this chain.
+**What actually checks that is smaller than an earlier draft of this chapter claimed**, and the
+size is worth stating rather than rounding up: `test/ingest/schema.test.ts` carries 69 cases, of
+which the charter one is a genuine cross-product — `TITLE_VARIANTS` (4) × `BODY_VARIANTS` (4) ×
+`SEVERITY_VARIANTS` (2) = **32 candidates**, with `scope`, `tags`, `extra` and `observations`
+rotating by index so no field sits at a clean default while another moves — each of which must
+survive `createItem` → write → parse → re-render byte-identical, with its checksum unchanged
+(`:631–672`). Thirty-two, built as a cross-product, is a stronger argument than a hand-written list
+of the same length, because the earlier hand-written list is precisely how `body` and `severity`
+went untested. It is not, as this chapter previously said, tens of thousands.
 
 ```mermaid
 flowchart TD
@@ -126,7 +133,26 @@ draft is.
 
 ## 5. What is known wrong or unfinished here
 
-No open item under `.my_context/items/known_issue/` mentions ingest by name as of this writing.
+No item under `.my_context/items/known_issue/` mentions ingest by name — re-checked 2026-09-17 with
+a case-insensitive grep over the whole directory, which returned nothing.
+
+**`src/ingest/schema.ts:340` cites an item id that resolves to nothing**, and it is the origin of a
+defect this chapter carried until the previous pass. The comment reads
+`INV-a-validator-that-gates-writes-must-be-a-complete-precondition-for-the-write`; the real id is
+`INV-a-validator-that-gates-writes-must-be-a-complete`, four words shorter. An earlier draft of
+this chapter copied the long form out of the code, where it looked complete and silently resolved
+to nothing. `npm run check:cited-items` *does* see it — it prints
+`UNKNOWN src/ingest/schema.ts:340 … no item answers to it` — but that check is **reported, never
+gated**, exits 0 either way, and prints this line only under `--unresolved`, among 2,621 id-shaped
+strings that are mostly test fixtures inventing ids. So the gate is not wrong; the finding is
+simply not in front of anyone. Four more instances of the same over-long id sit in
+`test/cli/format-table.test.ts`, where they are fixture text rather than a citation.
+
+**And no gate checks the ids cited in these chapters at all.** `check-cited-items.ts`'s
+`SOURCE_ROOTS` is `['src', 'test', 'scripts', 'e2e']` (`:191`) — `docs/` is not walked. Every id in
+`docs/system/` was verified by hand in this pass and in the one before it, which is a reading with a
+date on it and not a standing guarantee.
+
 `scripts/backfill-requests.ts` (816 lines) is a separate, larger script whose relationship to the
 live ingest session flow was not traced for this chapter — flagged here rather than described
 speculatively, and worth a follow-up read before this chapter is extended.
@@ -142,7 +168,7 @@ speculatively, and worth a follow-up read before this chapter is extended.
 | `src/ingest/apply.ts` | 394 | Validation and the draft-write invariant |
 | `src/ingest/lock.ts` | 74 | The workspace-wide apply lock |
 | `src/cli/commands/ingest.ts` | 407 | The three CLI subcommands |
-| `src/mcp/tools/ingest.ts` | — | The MCP door, reusing the same core |
+| `src/mcp/tools/ingest.ts` | 177 | The MCP door, reusing the same core — and the second caller of `acquireApplyLock` |
 | `scripts/backfill-requests.ts` | 816 | A larger, separate script — relationship to the live flow not traced here |
 
 ## See also

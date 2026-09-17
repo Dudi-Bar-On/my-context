@@ -47,10 +47,14 @@ which is easy to leave off a list of writers and is the eighteenth (`:1699` reco
 item read). "Eighteen" is a count of *files*, not of call expressions: by invocation the number is
 **30**, concentrated in `pre-tool-use` (4), `post-tool-use` (3) and `ui/execute` (3).
 
-**There is no CLI verb to hand-append an entry** — the log is a byproduct of the system's own
-operations, not a journal a person authors directly, which is worth
-stating because it means "the audit log lied" is not a sentence that can be true of a human-authored
-mistake in the same way it can be of a corpus item.
+**No verb lets a person write arbitrary content into the log**, which is worth stating because it
+means "the audit log lied" is not a sentence that can be true of a human-authored mistake in the
+way it can be of a corpus item. Be exact about it, though: a person at a terminal *can* cause an
+entry. `mycontext procedure` appends `kind: 'progress'` records with `origin: 'human'` when a step
+is activated, ticked or undone (`cli/commands/procedure.ts:275`, `:378`), and those two are among
+the thirty call sites counted above. What a person cannot do is author the *content* — the op, the
+kind and the item are the command's, not the caller's — so the log stays a record of acts rather
+than a journal of assertions.
 
 ### The two projections, and why they don't have to "agree" the way two independent writers would
 
@@ -101,10 +105,12 @@ my_context decay — items not injected in the last 20 session(s). The ledger ho
 cold 0, warm 165, of which 124 unrestricted. Rows with `mycontext decay` (default) or `--full`.
 ```
 
-*(Real output against this repository, 2026-09-17, **complete and unabridged** — re-captured by
-running the command, not by editing an earlier paste. The five indented lines are the disclosure
-§1 quotes, and they are printed on every run: an earlier draft of this chapter removed them while
-quoting one of them a page earlier. Re-run before citing — the ledger grows every session.)*
+*(Real output against this repository, **complete and unabridged** — re-captured by running the
+command on 2026-09-17 and spliced, not edited from an earlier paste, and re-run again while this
+chapter was checked: it reproduced byte for byte, which is the only way to know a re-capture is
+faithful. The **four** indented lines are the disclosure §1 quotes and are printed on every run; an
+earlier draft of this chapter removed them while quoting one of them a page earlier, and the draft
+that restored them called them five. Re-run before citing — the ledger grows every session.)*
 
 ## 4. Contribution — what it computes, and real output
 
@@ -115,10 +121,10 @@ has actually been delivered, split by the `origin` it was captured under.
 ```
 $ mycontext contribution --summary
 my_context contribution — how often each item was actually delivered into a session, read backwards
-out of the audit log. The log holds 3688 injection record(s) of 61890 total, naming 193 distinct
-id(s); the corpus holds 1317 item(s), of which 165 could be chosen by `select` today.
+out of the audit log. The log holds 3739 injection record(s) of 64165 total, naming 193 distinct
+id(s); the corpus holds 1324 item(s), of which 165 could be chosen by `select` today.
 
-A record is one DELIVERY, not one session: 1890 subagent-start, 1699 jit, 69 session-start, 28
+A record is one DELIVERY, not one session: 1916 subagent-start, 1724 jit, 69 session-start, 28
 compact-restore, 2 manual. So a high count is mostly a count of subagent dispatches and hook fires,
 and reading any figure below as a number of sessions would overstate it by more than an order of
 magnitude.
@@ -127,24 +133,29 @@ by origin — the cohort table:
   ┌────────┬───────┬────────────┬─────────────────┬────────────────┬──────────────────┬───────────────────────────┐
   │ origin │ items │ injectable │ never delivered │ always spilled │ median delivered │ delivered, now ineligible │
   ├────────┼───────┼────────────┼─────────────────┼────────────────┼──────────────────┼───────────────────────────┤
-  │ agent  │ 38    │ 6          │ 0               │ 0              │ 1283             │ 0                         │
-  │ human  │ 1271  │ 159        │ 0               │ 0              │ 1044             │ 28                        │
+  │ agent  │ 38    │ 6          │ 0               │ 0              │ 1303             │ 0                         │
+  │ human  │ 1278  │ 159        │ 0               │ 0              │ 1057             │ 28                        │
   │ ingest │ 0     │ 0          │ 0               │ 0              │ 0                │ 0                         │
   │ review │ 8     │ 0          │ 0               │ 0              │ 0                │ 0                         │
   └────────┴───────┴────────────┴─────────────────┴────────────────┴──────────────────┴───────────────────────────┘
 ...
-1317 item(s), 165 of them injectable, of which 0 have never been delivered. Rows with `mycontext
+1324 item(s), 165 of them injectable, of which 0 have never been delivered. Rows with `mycontext
 contribution` (default) or `--full`.
 ```
 
 *(Real output against this repository, 2026-09-17, **abridged — and the cuts are the two bare `...`
-lines**, which stand for four disclosure paragraphs and one "injectable and never delivered"
-paragraph. Every retained line is byte-identical to what the command printed; nothing here is
-retyped, summarised or rounded. An earlier draft of this chapter welded the opening paragraph to
-the closing summary line — some forty lines apart — into one sentence the command has never
-printed, and replaced two exact integers with `~58000` and `~193`. The command prints exact
-integers in both slots and has never printed a tilde. The totals move on every run, including runs
-of this command: re-run rather than cite them as current.)* No dedicated tutorial exists for
+lines**. The first stands for **three** indented disclosure paragraphs (the "BASELINE" note, the
+injection-is-not-reading note, and the 1,159 not-injectable note); the second stands for the one
+"injectable and never delivered" paragraph. An earlier draft of this chapter called the first cut
+four paragraphs; it is three, counted in the stdout this block was spliced from. Every retained
+line is byte-identical to what the command printed — the block was re-run and re-spliced
+programmatically while this chapter was checked, rather than edited in place, which is also how the
+figures below differ from the ones the previous pass recorded a few hours earlier: 3,688 injection
+records became 3,739 and the corpus went from 1,317 items to 1,324 **between two runs of the same
+command on the same day.** An earlier draft than that welded the opening paragraph to the closing
+summary line — some forty lines apart — into one sentence the command has never printed, and
+replaced two exact integers with `~58000` and `~193`; the command prints exact integers in both
+slots and has never printed a tilde. Re-run rather than cite any of it as current.)* No dedicated tutorial exists for
 contribution, unlike decay and the audit log — it is currently explained only inside
 `docs/capabilities/11-self-improvement-loop.md`, in passing, which is one reason this chapter
 exists.
@@ -156,21 +167,35 @@ material, and it is assembled from five independently-documented data sources ra
 `/api/watch/volume` (pulse buckets over time), `/api/watch/stream` (a live push feed), `/api/ask/audit`
 (backlog and on-demand queries against the audit-db projection — not itself one of the `/api/watch/*`
 routes, despite the similar name), `/api/ask/summary?report=ops` (the registered-hooks panel), and
-`/api/config`/`/api/meta` (static context, not audit data at all). It is read-only, like every other
-surface in this UI.
+`/api/config`/`/api/meta` (static context, not audit data at all). **This screen is read-only** —
+nothing in `watch.js` issues a POST — but "like every other surface in this UI" would be wrong and
+an earlier draft of this chapter said it: `src/ui/anchor-write.ts` and `src/ui/retrieval-write.ts`
+are two command-free write surfaces that reach the disk, and
+`docs/system/02-the-document-and-lane-viewer.md` §3 is a whole section about one of them. What is
+true of the audit log specifically is narrower and is §6.
 
 ## 6. How it is maintained — who may write, through which door
 
-Nobody writes to the audit log directly. The only doors that produce an entry are the eighteen
-internal call sites in §2 — a hook firing, an injection happening, a focus change, a mutation. The
+Nobody writes to the audit log directly. The only doors that produce an entry are the thirty
+internal call sites across eighteen modules counted in §2 — a hook firing, an injection happening,
+a focus change, a mutation, a procedure step ticked. (§2 draws that distinction deliberately;
+saying "the eighteen call sites" here, as an earlier draft did, contradicts it two sections on.) The
 doors a *person* has are all read doors: the CLI (`mycontext audit`, `mycontext decay`,
 `mycontext contribution`), the MCP tools `audit_log` (`tools.ts:1551`) and `decay_report` (`:1642`),
 and the Watch/decay screens in the web UI. **Contribution has no MCP door at all** — the word
 "contribution" does not appear anywhere under `src/mcp/`, and none of the 28 registered tools is
 its. Of the three readings this chapter treats as siblings, two are reachable by an agent and one
 is reachable only from a terminal, which sharpens §7's point rather than softening it: contribution
-is not merely the least-documented of the three, it is the only one with no agent-facing door. There is no write binding anywhere in the twelve the UI is
-ruled to have — this whole subject is observational by construction.
+is not merely the least-documented of the three, it is the only one with no agent-facing door.
+
+And there is no *write* door onto this log from outside at all: no MCP tool writes an audit record,
+no CLI verb takes its content from the caller, and the UI's two write surfaces
+(`anchor-write.ts`, `retrieval-write.ts`) write anchors and retrieval rows — `ui/execute.ts` and
+`ui/security.ts` record audit entries as a *consequence* of what they did, never as the thing
+asked for. This subject is observational by construction. (An earlier draft of this chapter ended
+this paragraph with a count — "the twelve the UI is ruled to have" — that this pass could not tie
+to any ruling, route set or screen count in the tree; it is removed rather than reproduced,
+because a number nobody can resolve is worse than no number.)
 
 ## 7. What is known wrong or incomplete here
 

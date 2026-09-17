@@ -1,8 +1,12 @@
 # `docs/system/` — how this actually works
 
 `docs/capabilities/` answers **what can it do**. It is a reference: one chapter per surface, real
-command output, a table of flags. It was verified against the working tree on 2026-09-12/13, one
-chapter (16, the board) added later, and a repair pass has since re-verified its claims.
+command output, a table of flags. It was written 2026-09-12 and verified against the working tree
+on 2026-09-13 at fourteen chapters; **three** were added later — 14 (search over the archive), 15
+(the document and lane viewer) and 16 (the board), all three in commit `1ec219c2` on 2026-09-16 —
+and it has been repaired and re-verified twice since. An earlier version of this sentence said one
+chapter was added later; it was three, and the two that this sentence dropped are the two whose
+subjects overlap this directory's chapters 01 and 02 most directly.
 
 This directory answers a different question: **how does this actually work**. Not the flag list —
 the mechanism underneath it, the decision that shaped it, and the failure that decision was a
@@ -21,13 +25,24 @@ chapters keep the argument.
 ## What is here, and why these five
 
 `reports/2026-09-16-the-subjects-of-this-system.md` inventoried 32 subjects and marked, for each,
-what documentation exists today. Five had **nothing of the right shape** — not a stale chapter, not
-a chapter that needs updating, but no chapter at all, sometimes not even a tutorial:
+what documentation exists today. **Seven of the 32 had no chapter at all** — not a stale chapter,
+not one needing an update, and for three of them not even a tutorial. They are covered here in
+**five** chapters, because lessons, ingest and focus share one row below and get one chapter each.
+The inventory's own marks, quoted: row 6 (the board) *"NOTHING of the right shape"*, row 9 (the
+viewer) *"NOTHING"*, row 30 (the palette) *"Effectively NOTHING in prose"*, row 17 (decay,
+contribution and the audit log) *"Scattered, with no owner"*, and rows 18, 19 and 20 (lessons,
+ingest, focus) *"Tutorial only … No chapter"*.
+
+**An eighth subject carries the identical mark and got no chapter**, and saying so is cheaper than
+leaving a reader to notice: row 31, the status-line bridge, is also *"Tutorial only … No chapter"*,
+and the inventory groups it with lessons, ingest and focus by name — *"rows 18, 19, 20 and 31 …
+are four small subjects with a tutorial each and no chapter."* Three of those four were written and
+the fourth was not. That is a gap in this directory, not in the inventory.
 
 | Chapter | Subject | What existed before this pass |
 |---|---|---|
 | [`01-the-board.md`](./01-the-board.md) | How work is chosen: `needs`, `ready`, `path`, the D-numbers | A reference chapter (`docs/capabilities/16-the-board.md`) shipped in the same repair pass this directory belongs to — command syntax and real output live there. This chapter is the part a reference chapter cannot carry: the governance story, and why a newcomer has to understand it before touching anything else here. |
-| [`02-the-document-and-lane-viewer.md`](./02-the-document-and-lane-viewer.md) | Rendering a 133 MB transcript: folding, hit highlighting, the find panel, marks in the margin | Three same-week reports. No chapter. |
+| [`02-the-document-and-lane-viewer.md`](./02-the-document-and-lane-viewer.md) | Rendering a very large transcript — this project's own is **151,884,220 bytes** on 2026-09-17, against 133 MB when the mechanism map measured it and 63.9 MB when the read model was designed: folding, hit highlighting, the find panel, marks in the margin | Three same-week reports. No chapter. |
 | [`03-the-palette-and-the-drawn-language.md`](./03-the-palette-and-the-drawn-language.md) | The five-hue meaning budget, chips, icons, generated Mermaid diagrams | A design mockup and browser gates that enforce it. Nothing in prose. |
 | [`04-the-audit-log-decay-and-contribution.md`](./04-the-audit-log-decay-and-contribution.md) | What the project records about its own running, and two readings derived from it | Scattered mentions across two chapters and two tutorials. No chapter, no single owner. |
 | `05-lessons.md`, `06-ingest.md`, `07-focus.md` | Three small doors: a mistake becomes a candidate rule; a document becomes draft items; a session narrows what it sees | One tutorial each. No chapter. |
@@ -52,10 +67,14 @@ in the tree as of the date on this document.
 ## Every count in every chapter here is a dated reading
 
 The single most-repeated finding in the research behind this directory is that a number copied from
-a document is a number that has already started to be wrong. `docs/capabilities/16-the-board.md`
-itself carries a correction made the same day it was written — a header the mechanism map called
-"200 lines" turned out to be 48 when counted directly. Every command shown in these chapters was
-run against the working tree on **2026-09-17**; a reader is meant to re-run it, not trust it.
+a document is a number that has already started to be wrong. `docs/capabilities/16-the-board.md:9–11`
+itself carries a correction made the same day it was written — a header two documents called
+"200 lines" turned out to be **48** (`needs.ts:1–48`) when counted directly, and
+`reports/2026-09-16-the-mechanism-map.md:102` left the correction visible rather than editing the
+figure away. Every command shown in these chapters was run against the working tree on
+**2026-09-17**; a reader is meant to re-run it, not trust it. Two figures moved between two runs of
+the same command on that single day — see `04` §4 — which is the sharpest form of this warning
+this directory can offer.
 
 ## See also
 
