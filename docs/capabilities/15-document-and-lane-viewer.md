@@ -362,12 +362,21 @@ carrying its own refusal and the 108,785 ms beside it — **a reference that lis
 scan refuses would be worse than no reference at all**, so the refusal is a row of the table rather
 than only a sentence in the prose above it.
 
-> **SCREENSHOT PLACEHOLDER — `rulings/101` owns this.** *The Search panel with the `regex` radio
-> selected and the reference fold open*, English, against the real session. It should show, in one
-> frame: the find box with its Clear button, the count line and `1 of 15` position line under it,
-> the four mode radios with `Regular expression` selected, Match case and Whole word only below
-> them, and the reference table scrolled far enough to show the final section heading and the
-> `(X+)+` row. This is the single image that carries §15.2 and §15.3 together.
+[![The search panel in regular-expression mode, its reference table open through the last section and the (X+)+ row](15-document-and-lane-viewer/01-search-panel-regex-and-reference.png)](15-document-and-lane-viewer/01-search-panel-regex-and-reference.png)
+
+**The panel, `Regular expression` selected, the reference open — one frame, and it is the frame
+that carries §15.2 and §15.3 together.** Shot against this repository's own session, 146.6 MB, with
+`\b\d{3}\.\d px\b` in the find box: the count line says **13 turn(s) here hold what you typed** and
+the position line under it **You are on 1 of the 13 turns that hold it**, which is the sentence the
+owner asked for by name. Below them the four mode radios, Match case and Whole word only, and the
+reference table from `abc` down to the `(X+)+` row and its refusal.
+
+**The window had to be 3,200 px tall to take it, and that is a fact about the table rather than
+about the shot.** The panel is `max-block-size:calc(100vh - 4rem)` and its content with the
+reference open is **2,934 px**; at the 1,000 px window every other frame in this chapter was taken
+at, the panel is 780 px and the `(X+)+` row is about 1,900 px below the find box, inside the
+panel's own scroller. No window under roughly 3,180 px can hold both ends at once, so either the
+window grows or the image is two images. It grew.
 
 ## 15.4 The three floating panels
 
@@ -463,16 +472,26 @@ gone there is no longer a second route for a reader who marked first; they reach
 by right-clicking somewhere with nothing marked, or by `Shift+F10`. That is a real narrowing and it
 is stated here rather than absorbed in silence.
 
-> **SCREENSHOT PLACEHOLDER — `rulings/101` owns this.** *All three panels open at once over a live
-> document*, English, showing the cascade offset, three distinct titles, three close buttons, and
-> enough of the transcript visible behind and between them to demonstrate that the viewer is still
-> live. This is the image that proves the non-modal claim, and it cannot be made from any one panel
-> alone.
+[![All three floating panels open at once over a live document, cascading from the left edge](15-document-and-lane-viewer/02-three-panels-open-at-once.png)](15-document-and-lane-viewer/02-three-panels-open-at-once.png)
 
-> **SCREENSHOT PLACEHOLDER — `rulings/101` owns this.** *The step panel mid-walk*, English, with
-> the position line reading something of the form `You are on 3 of the 40 turns that hold it.` and
-> the standing turn emphasised in the document behind it. It should be taken after pressing Next at
-> least twice, so the counter is demonstrably not at 1.
+**All three open at once, and this is the only image that can prove the non-modal claim.** Three
+distinct titles, three close buttons, the cascade at 24 / 56 / 88 from the left edge, and the
+transcript still drawn behind and between them. Measured in the same frame: `:modal` matches
+**none** of the three, which is the engine's own answer to whether `showModal()` was ever called —
+no one panel could show it, because with one dialog on screen a modal and a non-modal look alike.
+
+[![The step panel mid-walk, its position line reading "You are on 3 of the 660 marked points here."](15-document-and-lane-viewer/03-step-panel-mid-walk.png)](15-document-and-lane-viewer/03-step-panel-mid-walk.png)
+
+**The step panel mid-walk**, after Top and then Next mark three times, so the counter is
+demonstrably not at 1: **You are on 3 of the 660 marked points here.** The line above the well says
+the same thing in the other sentence — *Marked point 3 of 660* — and names the mark it landed on.
+
+**The walk photographed is the MARK walk and not the found walk, and that is where the shot list
+and the screen disagree.** The sentence this image was asked for, *"You are on 3 of the 40 turns
+that hold it"*, is `conv.nav.place`, and it is drawn in the **search** panel, beside the match
+stepper that owns it — `.tvnavfoundplace`, one panel over. The step panel's own two position lines
+are `conv.nav.placeMarks` and `conv.nav.placeYous`, and the first of them is what is above. Same
+`drawPlace`, same shape, different walk; the requested sentence cannot appear in this panel at all.
 
 ### The reusable frame, and what a caller supplies
 
@@ -540,11 +559,18 @@ lives — the key kept a meaning rather than gaining one. Binding two fresh lett
 would spend two of the few this screen has left. The menu itself is reachable without a mouse, so
 this is not a mouse-only capability, which is the thing that would be refused.
 
-> **SCREENSHOT PLACEHOLDER — `rulings/101` owns this.** *The right-click menu open over a marked
-> turn*, English, showing all three opener rows with the `/` chip on the first, the horizontal
-> separator, and the act rows below it (*Rename*, *Take it back*). A second frame over an **un**marked
-> turn, showing *Mark this point* instead, would demonstrate the "only what this row can do" rule —
-> `rulings/101`'s call whether that is worth a second image.
+[![The right-click menu over a marked turn: three openers, a separator, then Rename and Take it back](15-document-and-lane-viewer/04-right-click-menu-over-a-marked-turn.png)](15-document-and-lane-viewer/04-right-click-menu-over-a-marked-turn.png)
+
+**The menu over a marked turn** — the three openers with the `/` chip on the first and no key on
+the other two, the separator, and then the two acts this row can do: *Rename* and *Take it back*.
+The turn's own `⚑ Marked` chip is in the frame under the menu, so the frame says for itself which
+kind of row it was opened over.
+
+**A second frame over an unmarked turn was offered by the shot list and declined.** Over an
+unmarked turn the last two rows are one row, *Mark this point*, and nothing else about the menu
+changes — item 5 above already says which rows each kind of turn offers, and it says it as a rule
+rather than as one example. A second half-megabyte frame for one substituted row buys a reader
+nothing the sentence does not already give them.
 
 ## 15.6 The card gives up its controls, and the viewer takes the screen
 
@@ -609,11 +635,25 @@ the control that restores.
 **Expanded, the viewer is 833.9 px tall and 1248 px wide**, from 650.9 × 1034 — carried from the
 same report, same window, same measurement run.
 
-> **SCREENSHOT PLACEHOLDER — `rulings/101` owns this.** *The card before and after*, English, as a
-> pair at 1280×1000: one frame of the viewer in the ordinary shell with no search typed — which
-> should show **no count line at all** — and one frame with `⤢` pressed. The pair is the evidence
-> for this whole section, and the "no count line" frame is the only image that can demonstrate the
-> drawn-only-when-hiding rule.
+[![The card with nothing typed: head, then the well, and no count line between them](15-document-and-lane-viewer/05-the-card-with-nothing-typed.png)](15-document-and-lane-viewer/05-the-card-with-nothing-typed.png)
+
+**The card with nothing typed, every panel shut — and there is no count line at all.** This is the
+frame the disclosure rule can only be shown in: `p.tvcount` is in the DOM and `hidden`, so the head
+is followed by the well and by nothing else. Any frame taken while a search is running would draw
+the line and prove the opposite.
+
+**Chrome above the viewer in this frame is 67.5 px, which is the figure §15.6 carries; the well is
+662.9 × 1034, which is not.** The section says 650.9 × 1034 from the earlier report, at the same
+1280 × 1000 window, and the expanded reading below matches that report to the decimal. So the 12 px
+is under the well rather than above it and it is not explained here — both numbers are real
+readings of the same screen on different days, and the one taken with this image is the one this
+caption reports.
+
+[![The same card with the expand control pressed: the rail is gone and the viewer takes the screen](15-document-and-lane-viewer/06-the-card-expanded.png)](15-document-and-lane-viewer/06-the-card-expanded.png)
+
+**The same card with `⤢` pressed**, at the same window: the rail is gone, the control is lit, and
+the well is **833.9 × 1248**. The two frames are a pair and the second means nothing without the
+first — the numbers in this section are the difference between them.
 
 ## 15.7 Marks in the margin
 
@@ -682,13 +722,18 @@ delay was previously blamed on.
 - **`.tvbar` and `.tvnav` still have CSS rules that style nothing.** The elements are gone; the
   rules in `src/ui/public/styles.css` are not. Harmless, and named here rather than left to be
   rediscovered as evidence the strips still exist.
-- **Every pixel figure in §15.6 is carried, not re-derived.** Reproducing them needs Playwright
-  driven against a live session on the owner's own server, which this pass is out of bounds for;
-  they come from `reports/2026-09-17-the-card-gives-up-its-controls.md`, which took them. The same
-  is true of the per-example hit counts in §15.3.
-- **No screenshot in this chapter exists yet.** Four placeholders are marked in §15.3–§15.6, each
-  saying what its image must show. `rulings/101` owns them, drives the real tool, and runs after
-  this pass — a drawing of a screen nobody opened is the claim this project refuses.
+- **Every pixel figure in §15.6's prose is carried, not re-derived**, from
+  `reports/2026-09-17-the-card-gives-up-its-controls.md`, which took them. The same is true of the
+  per-example hit counts in §15.3. **The two figures in §15.6's own image captions are not
+  carried** — `rulings/101` measured them in the frames it shot, on a server of its own rather than
+  the owner's, and one of the two disagrees with the prose by 12 px. The caption says so where it
+  says the number; neither reading has been chased to its cause.
+- **The six screenshots in §15.3–§15.6 were taken by `rulings/101` against this repository's own
+  session**, through a server started for the purpose on a port of its own. Every one is the real
+  tool; none is a drawing. Two of the five placeholders were not satisfied as written and say so in
+  their own captions: the §15.4 step-panel frame photographs the mark walk because the sentence the
+  shot list named is the search panel's, and the §15.3 frame needed a 3,200 px window because the
+  reference table is 2,934 px tall. The second §15.5 frame was offered and declined.
 - Every timing and pixel measurement in this chapter is against one specific session
   (139,272,173 bytes, 54,524 records, 4,582 prose spans) at one specific window width (1280 px) on
   one specific build of V8. A different session, a different width, or a different engine changes
