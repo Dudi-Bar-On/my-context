@@ -205,6 +205,48 @@ async function openArchive(page: Page): Promise<void> {
 
 /* ══ 0. THE PASS PRODUCED THE FIXTURE, AND THE DISPATCH IS NOT IN IT ══════ */
 
+
+/**
+ * ══ REACHING Top, End AND THE FIND BOX SINCE `semantic/15` ════════════════
+ *
+ * The owner ruled on 2026-09-17 that the controls leave the card: `.tvbar` and
+ * `.tvnav` are gone and every control lives in the panel that owns its
+ * subject. The route to a panel is the right-click menu, whose first three
+ * rows are Search, Step through and Copy — above the separator — so the index
+ * IS the panel.
+ *
+ * `jumpTo` shuts the panel again, because what follows one of these is an
+ * assertion about the document and not about a dialog standing over it.
+ */
+async function usePanelAt(page: Page, at: number, name: string): Promise<void> {
+  const open = `dialog.mcpanel[data-panel="${name}"][open]`;
+  if (await page.locator(open).count() > 0) return;
+  await page.evaluate(() => { document.getSelection()?.removeAllRanges(); });
+  await page.locator('.tvscroll .tvturn').first().click({ button: 'right' });
+  await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
+  await page.locator('.tvmenu .tvmenuitem').nth(at).click();
+  await expect(page.locator(open)).toHaveCount(1, { timeout: 10_000 });
+}
+
+async function jumpTo(page: Page, which: 'top' | 'end'): Promise<void> {
+  // **IT LEAVES THE PANEL AS IT FOUND IT.** A test whose subject is the
+  // stepper has the panel open and needs it to stay open; one that only wants
+  // the reader at an end has nothing open and must not be left with a dialog
+  // over the well it is about to photograph or click into.
+  const open = 'dialog.mcpanel[data-panel="navigate"][open]';
+  const wasOpen = await page.locator(open).count() > 0;
+  await usePanelAt(page, 1, 'navigate');
+  await page.locator(`dialog.mcpanel[data-panel="navigate"] button.tv${which}`).click();
+  if (wasOpen) return;
+  await page.locator('dialog.mcpanel[data-panel="navigate"] .mcpanelclose').click();
+  await expect(page.locator('dialog.mcpanel[open]')).toHaveCount(0);
+}
+
+async function typeInFind(page: Page, query: string): Promise<void> {
+  await usePanelAt(page, 0, 'search');
+  await page.locator('dialog.mcpanel[data-panel="search"] .tvfind').fill(query);
+}
+
 test('the pass wrote a report and a table on this lane, and nothing on the dispatch', async ({ page }) => {
   await openArchive(page);
   const listed = await page.locator('.convanchor').evaluateAll((nodes) => nodes.map((n) => ({
@@ -253,48 +295,65 @@ test('check 1: the kind filter offers `report`, with its own word', async ({ pag
 
 /* ══ 2. THE MENU HAS ITS RADIO, AND THE TICK FOLLOWS IT ══════════════════ */
 
-test('check 2: the right-click menu carries a `report` radio, and the tick moves to it', async ({ page }) => {
+test('check 2: the kind picker carries a `report` option, and the tick moves to it', async ({ page }) => {
   await openLane(page);
-  const turn = page.locator('article.tvturn').first();
-  await turn.click({ button: 'right' });
-  const radios = page.locator('[role="menuitemradio"]');
-  await expect(radios, 'the menu drew no kind radios at all').not.toHaveCount(0);
+  /*
+   * ══ THE RADIOS LEFT THE MENU ON 2026-09-17 — `semantic/15` ═══════════════
+   *
+   * This test named the right-click menu's `menuitemradio` rows, and they are
+   * gone: the owner ruled that the menu keeps only what acts on THE TURN YOU
+   * RIGHT-CLICKED, and *"what am I walking"* is a fact about the document. The
+   * rows were only ever a second route to `kindPick` — they set the real
+   * `<select>` and dispatched its own `change` — so what this test was really
+   * asserting is the VOCABULARY, and the vocabulary is the select's options.
+   *
+   * It is re-aimed at that select rather than deleted, because the thing it
+   * was filed to catch is unchanged and still worth catching: a `report`
+   * offered as the raw core word instead of the string table's *"a report"*,
+   * or a second vocabulary appearing beside the first.
+   */
+  await usePanelAt(page, 1, 'navigate');
+  const radios = page.locator('dialog.mcpanel[data-panel="navigate"] .tvnavkind option');
+  await expect(radios, 'the picker drew no kinds at all').not.toHaveCount(0);
 
   /*
-   * **THE TRAILING `✓` IS STRIPPED, AND THAT IS NOT TIDYING.** The chosen row
-   * draws a tick glyph after its word, so its TEXT moves with the state — and a
-   * comparison that kept it would be asserting the tick twice while asserting
-   * the vocabulary not at all. The tick is read off `aria-checked` below, which
-   * is the carrier a screen reader gets and the one that has to be right.
+   * **THE TRAILING `✓` NO LONGER HAS TO BE STRIPPED.** The menu's chosen row
+   * drew a tick glyph after its word, so its TEXT moved with the state and a
+   * comparison that kept it would have asserted the tick twice and the
+   * vocabulary not at all. An `<option>` carries no tick: the state is
+   * `selected`, which is the same fact `aria-checked` carried and the one a
+   * screen reader gets from a `<select>`.
    */
   const words = (nodes: Element[]): { word: string; checked: string | null }[] =>
     nodes.map((n) => ({
-      word: (n.textContent ?? '').replace(/\s*✓\s*$/u, '').trim(),
-      checked: n.getAttribute('aria-checked'),
+      word: (n.textContent ?? '').trim(),
+      // An `<option>`'s state is `selected`, which is the same fact the menu
+      // row's `aria-checked` carried and is the one a screen reader gets from
+      // a `<select>`.
+      checked: (n as HTMLOptionElement).selected ? 'true' : 'false',
     }));
 
   const before = await radios.evaluateAll(words);
   console.log(`[report] menu radios ${JSON.stringify(before)}`);
-  expect(before.map((r) => r.word), 'the menu rows are not the select\'s options — they are '
-    + 'built from `kindPick.options`, so a mismatch means a second vocabulary')
+  expect(before.map((r) => r.word), 'the picker offers a vocabulary this build does not hold')
     .toEqual(['Marked points of every kind', 'a report', 'a table']);
   expect(before.filter((r) => r.checked === 'true').length,
-    'a radio group must have exactly one tick').toBe(1);
+    'a picker must have exactly one chosen option').toBe(1);
   expect(before.find((r) => r.checked === 'true')?.word,
     'the walk does not open unnarrowed').toBe('Marked points of every kind');
 
-  // **THE TICK MUST MOVE.** A group whose tick never moves is a list of words.
-  await radios.filter({ hasText: 'a report' }).click();
+  // **THE CHOICE MUST MOVE.** A group whose state never moves is a list of words.
+  await page.locator('dialog.mcpanel[data-panel="navigate"] .tvnavkind')
+    .selectOption({ label: 'a report' });
   await expect(page.locator('.tvnavmarkcount')).toContainText('a report', { timeout: 10_000 });
-  await turn.click({ button: 'right' });
   const after = await radios.evaluateAll(words);
-  console.log(`[report] menu radios after choosing ${JSON.stringify(after)}`);
+  console.log(`[report] the picker after choosing ${JSON.stringify(after)}`);
   expect(after.find((r) => r.checked === 'true')?.word,
-    'the tick did not follow the choice, so the menu shows a state the walk is not in')
+    'the choice did not follow, so the picker shows a state the walk is not in')
     .toBe('a report');
-  // And it drove the REAL select, not a second one beside it.
+  // And it is the REAL select the walk reads, not a second one beside it.
   expect(await page.locator('.tvnavkind').inputValue(),
-    'the menu set its own state instead of the control the walk reads').toBe('report');
+    'the picker set its own state instead of the control the walk reads').toBe('report');
 });
 
 /* ══ 3. `K` CYCLES ONTO IT, AND THE COUNT NAMES IT ═══════════════════════ */
@@ -372,9 +431,11 @@ test('check 4: a report draws in the found hue, on the row and in the document a
 
 test('check 5: stepping the report walk lands on the lane\'s final answer', async ({ page }) => {
   await openLane(page);
+  // The picker is in the step panel since `semantic/15`.
+  await usePanelAt(page, 1, 'navigate');
   await page.locator('.tvnavkind').selectOption('report');
   await expect(page.locator('.tvnavmarkcount')).toContainText('a report', { timeout: 10_000 });
-  await page.locator('.tvtop').click();
+  await jumpTo(page, 'top');
 
   /*
    * **THE LANDING IS CHECKED BY WHAT THE READER CAN SEE, NOT BY AN INDEX.**

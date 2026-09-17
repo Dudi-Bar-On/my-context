@@ -182,6 +182,18 @@ async function openDoc(page: Page): Promise<void> {
   // Waiting for the NUMBER rather than for the element, so every assertion
   // below is about a loaded document rather than about a race.
   await expect(page.locator('.tvnavmarkcount')).toContainText(String(MARKS), { timeout: 20_000 });
+  /*
+   * **AND THE STEP PANEL IS OPENED, BECAUSE THAT IS WHERE THE KIND PICKER
+   * LIVES SINCE `semantic/15`.** It was a `<select>` on `.tvnav` until
+   * 2026-09-17; the owner asked for the controls to leave the card, and the
+   * picker went with the walk it narrows. Nothing else about this file's
+   * subject moved: one `markKind`, one walk, one cursor, one select.
+   */
+  await page.locator('.tvscroll .tvturn').first().click({ button: 'right' });
+  await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
+  await page.locator('.tvmenu .tvmenuitem').nth(1).click();
+  await expect(page.locator('dialog.mcpanel[data-panel="navigate"][open]'))
+    .toHaveCount(1, { timeout: 10_000 });
 }
 
 /** The section index at the top of the well — where a step actually left the reader. */
@@ -203,6 +215,48 @@ async function topSection(page: Page): Promise<number> {
 }
 
 /* ══ anchors/6 — THE KINDS GET A READER ═══════════════════════════════════ */
+
+
+/**
+ * ══ REACHING Top, End AND THE FIND BOX SINCE `semantic/15` ════════════════
+ *
+ * The owner ruled on 2026-09-17 that the controls leave the card: `.tvbar` and
+ * `.tvnav` are gone and every control lives in the panel that owns its
+ * subject. The route to a panel is the right-click menu, whose first three
+ * rows are Search, Step through and Copy — above the separator — so the index
+ * IS the panel.
+ *
+ * `jumpTo` shuts the panel again, because what follows one of these is an
+ * assertion about the document and not about a dialog standing over it.
+ */
+async function usePanelAt(page: Page, at: number, name: string): Promise<void> {
+  const open = `dialog.mcpanel[data-panel="${name}"][open]`;
+  if (await page.locator(open).count() > 0) return;
+  await page.evaluate(() => { document.getSelection()?.removeAllRanges(); });
+  await page.locator('.tvscroll .tvturn').first().click({ button: 'right' });
+  await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
+  await page.locator('.tvmenu .tvmenuitem').nth(at).click();
+  await expect(page.locator(open)).toHaveCount(1, { timeout: 10_000 });
+}
+
+async function jumpTo(page: Page, which: 'top' | 'end'): Promise<void> {
+  // **IT LEAVES THE PANEL AS IT FOUND IT.** A test whose subject is the
+  // stepper has the panel open and needs it to stay open; one that only wants
+  // the reader at an end has nothing open and must not be left with a dialog
+  // over the well it is about to photograph or click into.
+  const open = 'dialog.mcpanel[data-panel="navigate"][open]';
+  const wasOpen = await page.locator(open).count() > 0;
+  await usePanelAt(page, 1, 'navigate');
+  await page.locator(`dialog.mcpanel[data-panel="navigate"] button.tv${which}`).click();
+  if (wasOpen) return;
+  await page.locator('dialog.mcpanel[data-panel="navigate"] .mcpanelclose').click();
+  await expect(page.locator('dialog.mcpanel[open]')).toHaveCount(0);
+}
+
+async function typeInFind(page: Page, query: string): Promise<void> {
+  await usePanelAt(page, 0, 'search');
+  await page.locator('dialog.mcpanel[data-panel="search"] .tvfind').fill(query);
+}
 
 test('the walk can be narrowed to one kind, and the choices are the kinds this document holds', async ({ page }) => {
   await openDoc(page);
@@ -241,7 +295,7 @@ test('a filtered walk stops only on that kind, and names the kind at every landi
   await openDoc(page);
   await page.locator('.tvnavkind').selectOption('defect');
   await expect(page.locator('.tvnavmarkcount')).toContainText(String(PER_KIND), { timeout: 10_000 });
-  await page.locator('.tvtop').click();
+  await jumpTo(page, 'top');
 
   const landed: string[] = [];
   const sections: number[] = [];
@@ -271,7 +325,7 @@ test('the end of a filtered walk says which kind has run out, and the button sta
   await openDoc(page);
   await page.locator('.tvnavkind').selectOption('question');
   await expect(page.locator('.tvnavmarkcount')).toContainText(String(PER_KIND), { timeout: 10_000 });
-  await page.locator('.tvtop').click();
+  await jumpTo(page, 'top');
   await page.locator('.tvnavmarkprev').click();
   const said = (await page.locator('.tvnavsaid').textContent() ?? '').trim();
   console.log(`[kinds] at the first of a kind: "${said}"`);
@@ -302,7 +356,7 @@ test('it is a filter over the walk that exists, not a second walk beside it', as
     + 'twelve-buttons shape the item forbids').toHaveCount(1);
 });
 
-test('the bar the filter joined is measured, and the filter did not cost it a line', async ({ page }) => {
+test('the panel the filter joined is measured, and the filter did not cost it a line', async ({ page }) => {
   await openDoc(page);
   /*
    * **THE MEASUREMENT THE ITEM ASKED FOR, TAKEN THE WAY THE STEPPER LANE TOOK
@@ -311,27 +365,59 @@ test('the bar the filter joined is measured, and the filter did not cost it a li
    *
    * It is a REMOVAL measurement rather than a threshold, because a threshold
    * would be an absolute number about a layout and would either be met by
-   * accident or break on a font change. The bar is measured as shipped, then
-   * with the select taken out of the DOM — which is the element set the bar
+   * accident or break on a font change. The surface is measured as shipped,
+   * then with the select taken out of the DOM — which is the element set it
    * had before `anchors/6` — and put back in a `finally`. The claim is the
    * item's claim: the filter did not cost a line.
+   *
+   * **THE SURFACE IS THE STEP PANEL'S BODY SINCE `semantic/15`**, because
+   * `.tvnav` no longer exists: the controls left the card. The claim being
+   * tested is unchanged — the picker shares a row with the buttons it
+   * narrows rather than taking one of its own.
    */
   const measured = await page.evaluate(() => {
-    const nav = document.querySelector('.tvnav') as HTMLElement;
+    const nav = document.querySelector(
+      'dialog.mcpanel[data-panel="navigate"] .tvnavmarks') as HTMLElement;
     const pick = document.querySelector('.tvnavkind') as HTMLElement;
     const parent = pick.parentElement as HTMLElement;
     const next = pick.nextSibling;
     const height = (): number => Math.round(nav.getBoundingClientRect().height);
+    /*
+     * **LINES, COUNTED AS DISTINCT TOPS OF THE GROUP'S OWN CHILDREN.** The
+     * claim being tested is *"the filter did not cost it a line"*, and a
+     * pixel equality was the wrong spelling of it even before the surface
+     * changed: a `<select>` is a couple of pixels taller than a `.tvjump`
+     * whatever else happens, and that is not a line.
+     */
+    const lines = (): number => {
+      /*
+       * **TOPS CLUSTERED, NOT COUNTED.** The comment this replaces said it
+       * already: the group's own children sit on different baselines — a
+       * `<select>`, a chip, two buttons and two counts — so distinct tops
+       * report five rows where a reader sees two. Anything within 12 px of
+       * another top is the SAME row; a real wrap moves a child by the full
+       * height of a control.
+       */
+      const tops = [...nav.children]
+        .map((c) => c.getBoundingClientRect().top).sort((a, b) => a - b);
+      let rows = 0;
+      let at = -Infinity;
+      for (const top of tops) {
+        if (top - at > 12) { rows += 1; at = top; }
+      }
+      return rows;
+    };
     const shipped = height();
+    const shippedLines = lines();
     try {
       pick.remove();
       return {
         shipped,
+        shippedLines,
         without: height(),
-        // The TOP of each child, rather than a count of "lines": the bar's own
-        // label sits on a different baseline from the two groups, so counting
-        // distinct tops would report three where a reader sees two. The raw
-        // numbers are reported and the reader of the log can see the wrap.
+        withoutLines: lines(),
+        // The TOP of each child, rather than a count alone: the raw numbers
+        // are reported so the reader of the log can see the wrap.
         tops: [...nav.children].map((c) => `${(c as HTMLElement).className.split(' ').pop()}`
           + `@${Math.round(c.getBoundingClientRect().top)}`),
       };
@@ -339,13 +425,26 @@ test('the bar the filter joined is measured, and the filter did not cost it a li
       parent.insertBefore(pick, next);
     }
   });
-  console.log(`[kinds] .tvnav is ${measured.shipped}px with the filter and `
-    + `${measured.without}px without it; its children sit at ${measured.tops.join(' ')}`);
-  expect(measured.shipped, 'the bar collapsed to nothing, so this measures nothing')
+  console.log(`[kinds] the mark group is ${measured.shipped}px on ${measured.shippedLines} `
+    + `line(s) with the filter and ${measured.without}px on ${measured.withoutLines} without it; `
+    + `its children sit at ${measured.tops.join(' ')}`);
+  expect(measured.shipped, 'the group collapsed to nothing, so this measures nothing')
     .toBeGreaterThan(0);
-  expect(measured.shipped, 'the filter made the navigation bar taller — which is the one thing '
-    + 'the item forbids, and the reason it is a select rather than twelve buttons')
-    .toBe(measured.without);
+  expect(measured.shippedLines, 'the filter put the mark group on another line — which is the '
+    + 'one thing the item forbids, and the reason it is a select rather than twelve buttons')
+    .toBe(measured.withoutLines);
+  /*
+   * **AND WHAT IT DOES COST IS SAID RATHER THAN ASSERTED AWAY.** `semantic/15`
+   * moved this group off a full-width strip into a 448 px panel, and the
+   * `<select>`'s own box is taller than the buttons beside it: measured at 57
+   * px against 49 px in `e2e/`'s fixture, ON ONE LINE. Eight pixels is the
+   * control's height and not a wrap, so the item's claim holds; the number is
+   * on the lane's report rather than hidden behind an equality that would have
+   * had to be loosened to a range nobody could read.
+   */
+  expect(measured.shipped - measured.without,
+    'the filter cost the group a whole line of height, which is a wrap by another name')
+    .toBeLessThan(19);
 });
 
 /* ══ anchors/7 — THE MARK LIST STOPS SAYING ONE WORD PER ROW ══════════════ */

@@ -181,6 +181,16 @@ async function openDoc(page: Page): Promise<void> {
   // race — `refreshMarks`' own header records the eleven-assertions-then-a-
   // failure shape this avoids.
   await expect(page.locator('.tvnavmarkcount')).toContainText(String(MARKS), { timeout: 20_000 });
+  /*
+   * **AND THE STEP PANEL IS OPENED, BECAUSE THAT IS WHERE THE STEPPER LIVES
+   * SINCE `semantic/15`.** `.tvnav` was a strip on the card until 2026-09-17;
+   * the owner asked for the controls to leave it, and these six buttons went
+   * to the panel named after what they do. Nothing else about this file's
+   * subject moved — `runShortcut` still calls `step(…)` directly, which is why
+   * `e2e/conversations-panels.spec.ts` can prove the same walks with every
+   * panel SHUT.
+   */
+  await usePanelAt(page, 1, 'navigate');
 }
 
 /** Where the caret is, named the way a reader would name it. */
@@ -214,6 +224,48 @@ async function topSection(page: Page): Promise<number> {
 
 /* ══ WHAT THERE IS TO STEP THROUGH, SAID BEFORE ANYTHING IS PRESSED ═══════ */
 
+
+/**
+ * ══ REACHING Top, End AND THE FIND BOX SINCE `semantic/15` ════════════════
+ *
+ * The owner ruled on 2026-09-17 that the controls leave the card: `.tvbar` and
+ * `.tvnav` are gone and every control lives in the panel that owns its
+ * subject. The route to a panel is the right-click menu, whose first three
+ * rows are Search, Step through and Copy — above the separator — so the index
+ * IS the panel.
+ *
+ * `jumpTo` shuts the panel again, because what follows one of these is an
+ * assertion about the document and not about a dialog standing over it.
+ */
+async function usePanelAt(page: Page, at: number, name: string): Promise<void> {
+  const open = `dialog.mcpanel[data-panel="${name}"][open]`;
+  if (await page.locator(open).count() > 0) return;
+  await page.evaluate(() => { document.getSelection()?.removeAllRanges(); });
+  await page.locator('.tvscroll .tvturn').first().click({ button: 'right' });
+  await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
+  await page.locator('.tvmenu .tvmenuitem').nth(at).click();
+  await expect(page.locator(open)).toHaveCount(1, { timeout: 10_000 });
+}
+
+async function jumpTo(page: Page, which: 'top' | 'end'): Promise<void> {
+  // **IT LEAVES THE PANEL AS IT FOUND IT.** A test whose subject is the
+  // stepper has the panel open and needs it to stay open; one that only wants
+  // the reader at an end has nothing open and must not be left with a dialog
+  // over the well it is about to photograph or click into.
+  const open = 'dialog.mcpanel[data-panel="navigate"][open]';
+  const wasOpen = await page.locator(open).count() > 0;
+  await usePanelAt(page, 1, 'navigate');
+  await page.locator(`dialog.mcpanel[data-panel="navigate"] button.tv${which}`).click();
+  if (wasOpen) return;
+  await page.locator('dialog.mcpanel[data-panel="navigate"] .mcpanelclose').click();
+  await expect(page.locator('dialog.mcpanel[open]')).toHaveCount(0);
+}
+
+async function typeInFind(page: Page, query: string): Promise<void> {
+  await usePanelAt(page, 0, 'search');
+  await page.locator('dialog.mcpanel[data-panel="search"] .tvfind').fill(query);
+}
+
 test('the stepper says how many marks and how many of his own messages there are', async ({ page }) => {
   await openDoc(page);
   const marks = await page.locator('.tvnavmarkcount').textContent() ?? '';
@@ -235,7 +287,7 @@ test('the stepper says how many marks and how many of his own messages there are
 
 test('Next mark walks the marks in order and names the one it landed on', async ({ page }) => {
   await openDoc(page);
-  await page.locator('.tvtop').click();
+  await jumpTo(page, 'top');
 
   const seen: string[] = [];
   for (let i = 1; i <= 3; i += 1) {
@@ -260,7 +312,7 @@ test('Next mark walks the marks in order and names the one it landed on', async 
 
 test('Previous mark walks back, and the two directions meet at the same place', async ({ page }) => {
   await openDoc(page);
-  await page.locator('.tvtop').click();
+  await jumpTo(page, 'top');
   for (let i = 0; i < 4; i += 1) await page.locator('.tvnavmarknext').click();
   await expect(page.locator('.tvnavsaid')).toContainText(`4 of ${MARKS}`, { timeout: 10_000 });
   const forward = await topSection(page);
@@ -278,7 +330,7 @@ test('Previous mark walks back, and the two directions meet at the same place', 
 
 test('a step leaves the caret on the button the reader is pressing', async ({ page }) => {
   await openDoc(page);
-  await page.locator('.tvtop').click();
+  await jumpTo(page, 'top');
   await page.locator('.tvnavmarknext').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('.tvnavsaid')).toContainText(`1 of ${MARKS}`, { timeout: 10_000 });
@@ -300,7 +352,7 @@ test('a step leaves the caret on the button the reader is pressing', async ({ pa
 
 test('at the first mark, stepping back says so and does not move the reader', async ({ page }) => {
   await openDoc(page);
-  await page.locator('.tvtop').click();
+  await jumpTo(page, 'top');
   await page.locator('.tvnavmarkprev').click();
   const said = (await page.locator('.tvnavsaid').textContent() ?? '').trim();
   console.log(`[nav first] "${said}"`);
@@ -315,16 +367,30 @@ test('at the first mark, stepping back says so and does not move the reader', as
 
 test('at the last mark, stepping on says so and does not move the reader', async ({ page }) => {
   await openDoc(page);
-  await page.locator('.tvend').click();
+  await jumpTo(page, 'end');
   /*
    * **TWO PRESSES, AND THE FIRST ONE IS THE MEASUREMENT THIS TEST EXISTS
-   * FOR.** End leaves `scrollTop` CLAMPED at `total - clientHeight`, so the
-   * top of the viewport is several rows ABOVE the last mark and the first
-   * press is a real step onto it. A stepper that read the viewport on every
-   * press would then answer that same press for ever — the last two or three
-   * marks of every session collapsing into one — which is exactly what
-   * `cursor` was written for and what this asserts is not happening.
+   * FOR.** A stepper that read the viewport on every press would answer the
+   * same press for ever — the last two or three marks of every session
+   * collapsing into one — which is exactly what `cursor` was written for and
+   * what this asserts is not happening.
+   *
+   * **THE FIRST PRESS IS `Previous mark` SINCE `semantic/15`, AND THAT IS A
+   * FACT ABOUT THE WELL RATHER THAN ABOUT THE STEPPER.** It used to be Next:
+   * End leaves `scrollTop` clamped at `total - clientHeight`, and with the
+   * well at `min(70vh, 860px)` the top of the viewport landed several rows
+   * ABOVE the last mark, so Next was a real step onto it. §4 stopped the outer
+   * scroll, so the well is now sized from what is left after the card — a
+   * different `clientHeight`, a different clamp, and from the end the reader
+   * is already PAST the last mark, where Next correctly answers *"Nothing is
+   * marked after this point"*. Measured: from the end the viewport's top row IS
+   * the last mark, so Previous lands on 23 of 24 and Next then walks the
+   * CURSOR onto 24 — which is the step this test is about, taken from a place
+   * that does not depend on where the clamp happens to leave the reader.
    */
+  await page.locator('.tvnavmarkprev').click();
+  await expect(page.locator('.tvnavsaid'))
+    .toContainText(`${MARKS - 1} of ${MARKS}`, { timeout: 10_000 });
   await page.locator('.tvnavmarknext').click();
   await expect(page.locator('.tvnavsaid'))
     .toContainText(`${MARKS} of ${MARKS}`, { timeout: 10_000 });
@@ -358,7 +424,7 @@ test('the twenty-first mark is reachable from the document although the list pag
 
   // Then the DOCUMENT, which steps to every one of them.
   await openDoc(page);
-  await page.locator('.tvtop').click();
+  await jumpTo(page, 'top');
   for (let i = 1; i <= MARKS; i += 1) {
     await page.locator('.tvnavmarknext').click();
     await expect(page.locator('.tvnavsaid'))
@@ -395,7 +461,7 @@ test('the twenty-first mark is reachable from the document although the list pag
 
 test('stepping his own messages walks the turns drawn as You', async ({ page }) => {
   await openDoc(page);
-  await page.locator('.tvtop').click();
+  await jumpTo(page, 'top');
   /*
    * **FROM THE TOP, THE FIRST STEP IS TO HIS SECOND MESSAGE, and that is the
    * behaviour rather than an off-by-one.** Record 0 of this fixture is one of
@@ -432,7 +498,7 @@ test('a filter that hides marks says how many it is hiding', async ({ page }) =>
   // A needle that matches his turns and no answer, so every mark — all of
   // which sit on answers except where the arithmetic overlaps — leaves the
   // view and the stepper has to say so.
-  await page.locator('.tvfind').fill('I typed myself');
+  await typeInFind(page, 'I typed myself');
   await expect(page.locator('.tvnavmarkcount'), 'the counter never noticed the filter')
     .not.toHaveText(before, { timeout: 20_000 });
   const after = (await page.locator('.tvnavmarkcount').textContent() ?? '').trim();

@@ -589,6 +589,49 @@ bdi{unicode-bidi:isolate}
 .app.pane-open.pane-float{grid-template-columns:214px 1fr;
   grid-template-areas:"top top" "rail body" "prov prov" "strip strip"}
 
+/* ══ THE VIEWER ON THE WHOLE SCREEN — semantic/15 §5 ══════════════════════
+   OWNER, 2026-09-17: "you can make the viewer to apear on the whole screen in
+   a simmilar way you did it for the items in the right pane".
+
+   HE IS NAMING `#panefloat`, AND THIS IS THAT PATTERN. Above, `.pane-float`
+   is a MODE — a class on `.app`, nothing written down, one control that both
+   enters and leaves it. `.doc-wide` is the same three decisions for the
+   document viewer; `screens/conversations.js`' `setWide` is `setPaneFloat`
+   with one word changed, and `button.tvwide` carries the same `⤢` and the
+   same `aria-pressed` as `#panefloat`.
+
+   AND THE SHELL ALREADY PROVED IT CAN DROP TO THE BODY ALONE: `@media print`
+   near the foot of this file hides exactly these four in one line, and the
+   layout does not collapse. This is that fact spent on a reader rather than
+   on paper.
+
+   THREE TEMPLATES BECAUSE THERE ARE THREE STATES BELOW IT, and leaving any of
+   them out would be a grid with a named area nothing occupies: the pane may
+   be shut, open as a column, or floating. `.app.pane-open.pane-float` is
+   (0,3,0) and would otherwise outrank a two-class rule, so its wide form is
+   written out rather than left to lose. Placed AFTER every rule above so that
+   order settles the two-class ties. */
+/* AND EVERY ONE OF THEM IS GATED ON A DOCUMENT BEING ON SCREEN. `doc-wide`
+   hides the header, the rail, the provenance line and the status strip; left
+   applying on a screen with no viewer, it would be a console with no shell and
+   no control to bring the shell back, because the toggle went with the
+   document. `screens/conversations.js` takes the class off in `render()` for
+   the routes it draws; this is the guard for the ones it never sees — a reader
+   who leaves for the Doctor screen does not come back through it at all.
+   `:has()` takes the specificity of its most specific argument, so these keep
+   winning over `.app.pane-open` and its float. */
+.app.doc-wide:has(.body>section:not([hidden])>.tvroot) .hdr,
+.app.doc-wide:has(.body>section:not([hidden])>.tvroot) .rail,
+.app.doc-wide:has(.body>section:not([hidden])>.tvroot) .prov,
+.app.doc-wide:has(.body>section:not([hidden])>.tvroot) .strip{display:none}
+.app.doc-wide:has(.body>section:not([hidden])>.tvroot){
+  grid-template-columns:1fr;grid-template-rows:1fr;grid-template-areas:"body"}
+.app.pane-open.doc-wide:has(.body>section:not([hidden])>.tvroot){
+  grid-template-columns:1fr clamp(280px, var(--pane-w), 70vw);
+  grid-template-rows:1fr;grid-template-areas:"body pane"}
+.app.pane-open.pane-float.doc-wide:has(.body>section:not([hidden])>.tvroot){
+  grid-template-columns:1fr;grid-template-rows:1fr;grid-template-areas:"body"}
+
 /* The header's own layout — grid-area is inert without .app above, but
    display:flex/gap/padding-inline apply regardless, which is what turns
    index.html's logo + picker buttons into a real row instead of a stack. */
@@ -4376,9 +4419,106 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
    found a leading dot at the wrong end under RTL after every assertion passed.
    ══════════════════════════════════════════════════════════════════════════ */
 
+/* ══ THE CARD STAYS ON SCREEN — semantic/15 §4 ════════════════════════════
+   OWNER, 2026-09-17: "make the card area fixed so only the viewer area will
+   be scrollable not the card itself that should remain static and always
+   viewable".
+
+   ── THE BUG WAS TWO NESTED SCROLLERS, AND THE OUTER ONE ──────────────────
+
+   Measured on his own server at 1280x1000, with every panel shut:
+
+     .tvroot    overflow-y visible   scrollH 1026  clientH 1026   not a scroller
+     section    overflow-y visible                                not a scroller
+     .body      overflow-y AUTO      scrollH 1183  clientH  817   *** THE SCROLLER
+     .app       overflow-y visible   scrollH 1000  clientH 1000   not a scroller
+     BODY       overflow-y hidden                                 not a scroller
+
+   `.tvscroll` (the well, 700px, its own `overflow-y:auto`) already behaved:
+   scrolling it does not move `.tvhead`. A lane reported "nothing above the
+   well scrolls — it is already static" and that report was TRUE AND USELESS:
+   the card is static RELATIVE TO THE WELL while `.body` scrolls the whole card
+   out of the window. At the moment of measurement `.tvhead` sat at
+   `top: -135.3px` — above the top of the viewport — and that is exactly what
+   he is complaining about.
+
+   ── THE FIX IS TO STOP THE OUTER SCROLL, NOT TO PIN THE CARD ─────────────
+
+   `position:sticky` on the head would paper over a layout that still
+   overflows, and would fight the panels' stacking. Instead `.body` becomes a
+   flex column on this screen, the card keeps its natural height, and the WELL
+   takes what is left — so `.body` has nothing to scroll and `.tvscroll` is the
+   only scroller on the screen.
+
+   `min-block-size:0` IS NOT OPTIONAL at every level. A flex child's automatic
+   minimum size is its content, so without it the well refuses to shrink below
+   its 700px and the overflow moves straight back out to `.body` — which IS
+   this bug. It is written on `.body`'s child, on `.tvroot` and on `.tvscroll`.
+
+   ── WHY `:has()` AND NOT A CLASS THE SCREEN ADDS AND REMOVES ─────────────
+
+   The router keeps every visited screen inside `#screen`, merely hidden
+   (`app.js`' `visibleSection`). A class on `.body` would have to be taken off
+   on the way out of this screen, by a lifecycle nobody is holding — and the
+   failure would be every OTHER screen silently losing its scroll. `:has()`
+   reads the state instead: the rule applies exactly while the VISIBLE section
+   holds a `.tvroot`, and stops applying the instant that section is hidden,
+   with nothing to remember. `.tvsaid pre[data-lang]:not(:has(span))` is this
+   file's other use of the selector and records the same reasoning.
+
+   `body.lanewin` below does this already for the standalone lane window, in
+   three rules with the same shape; this is that pattern arriving in the app,
+   where the well is the thing the reader came for. ══════════════════════ */
+/* ── AND THE TWO BLOCKS THAT DESCRIBE THE LIST DO NOT STAND OVER A DOCUMENT
+   `semantic/15` §4, and it is arithmetic rather than taste: the fix above
+   gives the card and the well exactly the room `.body` has, so whatever stands
+   ABOVE the card is taken straight out of the viewer. Measured at 1280x1000 on
+   the owner's own session, 187.7 px stood above `.tvhead` — more than the
+   199 px of card chrome this item removed — and 70 px of it is `.psub` ("Every
+   session Claude Code has written for this project. Pick one to read it.")
+   plus the "Where these come from" fold: prose ABOUT THE LIST, on a screen
+   where the reader has already picked one.
+
+   `.phd` STAYS. It carries the screen's own `<h2>` and it is where `app.js`'
+   `affordanceElement()` prepends `#screenstale`, the live-refresh affordance.
+   Hiding it would take a disclosure off the screen to buy 37 px.
+
+   READ, NOT REMEMBERED. Written as `hidden` from `screens/conversations.js`
+   first, and it leaked: the router keeps every visited screen in `#screen` and
+   merely hides it, so the attribute survived the way back out and the sessions
+   LIST lost its own subtitle for the rest of the session. `:has()` cannot
+   leak — the rule stops applying the moment the section stops holding a
+   `.tvroot`. */
+.body>section:has(>.tvroot)>.psub,
+.body>section:has(>.tvroot)>details.help{display:none}
+
+.body:has(>section:not([hidden]) .tvroot){display:flex;flex-direction:column}
+.body:has(>section:not([hidden]) .tvroot)>section:not([hidden]){
+  display:flex;flex-direction:column;flex:1 1 0;min-block-size:0}
+.body:has(>section:not([hidden]) .tvroot) .tvroot{
+  display:flex;flex-direction:column;flex:1 1 0;min-block-size:0}
+/* `flex-basis: 0` AND NOT `auto`, AND IT IS A MEASURED DEFECT rather than a
+   style. With `auto` the flex base size of a box is its CONTENT — and this
+   box's content is `.tvinner`, whose height is the model's sum for the WHOLE
+   session: 2,409,514 px on the owner's own transcript. Every sibling is then
+   negotiating against a base size in the millions, the shrink lands where the
+   `min-block-size` floor stops it, and `redraw('end')`'s landing is computed
+   against a well that is about to be a different height. Driven in the browser
+   suite: `e2e/conversations.spec.ts`' "the last turn is on screen without
+   anybody pressing End" reddened in both languages and went green on `0`.
+   Basis `0` says what is meant — take the room that is left, not the room your
+   content wants. */
+.body:has(>section:not([hidden]) .tvroot) .tvscroll{
+  flex:1 1 0;block-size:auto;min-block-size:200px}
+
 .tvroot{display:block;min-inline-size:0}
 .tvhead{display:flex;flex-wrap:wrap;align-items:baseline;gap:var(--sp-2);
   margin-block-end:var(--sp-2)}
+/* The expand control sits at the END of the head row, away from Back, so the
+   two controls at either end of the line are the two that change what you are
+   looking at. `margin-inline-start:auto` in a flex row pushes it to the end
+   edge in BOTH directions, which is why it is not `margin-left`. */
+.tvwide{margin-inline-start:auto;flex:0 0 auto}
 .tvtitle{margin:0;font-size:var(--fs-3)}
 .tvfacts{margin:0;font-size:var(--fs-00);color:var(--dim);
   overflow-wrap:anywhere}
@@ -4423,6 +4563,15 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .tvnavgroup{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1)}
 .tvnavcount{flex:0 1 auto;margin-inline-start:var(--sp-1);
   font-size:var(--fs-00);color:var(--dim)}
+/* ── WHERE THE WALK IS UP TO, BESIDE HOW MANY THERE ARE ───────────────────
+   `semantic/14` for matches, `semantic/12` for the other two. It wears
+   `.tvnavcount` for its spacing and its dim ground, and adds only the one
+   thing that distinguishes it: the NUMBER IS THE READER'S POSITION, not the
+   document's size, so it is the one of the two a reader watches change under
+   their own finger. --ink rather than --dim for that, which is the same
+   "this is the live one" distinction the current match makes against the
+   others, spending no hue to make it. */
+.tvnavmarkplace,.tvnavyouplace,.tvnavfoundplace{color:var(--ink)}
 .tvnavsaid{margin-block-start:0}
 .tvnavat{font-weight:600;color:var(--ink)}
 
@@ -4615,6 +4764,186 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .mcpanelbody .tvnavfounds{flex-wrap:wrap}
 .mcpanelbody .tvnavcount{margin-inline-start:0}
 .mcpanelbody .tvcount{margin:0}
+/* ── THE COUNTS GET ONE PLACE, AND THE NUMBERS IN THEM GO BLUE ────────────
+   `semantic/14`. The owner, 2026-09-17: *"pleaes put the counts it a statis
+   place up under the edit search expression and it would be nice to see them
+   in blue so they would be more observable"*.
+
+   THE BOX. `screens/conversations.js` puts this block SECOND in the panel,
+   between the find box — whose height is fixed — and the mode radios, the
+   options, the help and the notes, every one of which changes height as the
+   reader works. A rule under it rather than a fill or a frame: the pair has
+   to read as one thing to glance at, and a panel 28rem wide already carries
+   a border, a header rule and a `<details>` of its own. One more filled box
+   inside it would be a frame inside a frame inside a frame.
+
+   ── AND THE BLUE IS `--carry`, WHICH ALREADY MEANS EXACTLY THIS ──────────
+
+   NO SIXTH HUE, and no widening of a fifth. `DEC-the-meaning-hue-budget-is-
+   five-gold-ok-carry-crit-and-warn` closes the budget at five, and the
+   question a count has to answer before it may spend one is what that hue
+   already SAYS. `--carry` is answered in this file, ~1490 and ~1514, in the
+   strip's own three registers:
+
+       white  "this is a NAME"     every label
+       blue   "this is a FACT"     every unlevelled value
+       hue    "this is a VERDICT"  the four levels
+
+   and in as many words beside `.strip .ufield .uval`: *"its use here is
+   NEUTRAL IDENTITY, never severity … a blue value must not be read as a
+   level."*
+
+   **A MATCH COUNT IS AN UNLEVELLED VALUE.** Forty turns is not good and not
+   bad; there is no band it falls into and nothing on this screen may read it
+   as one. So this is the SECOND surface of a rule that already exists rather
+   than a new meaning for an old colour — the same move MODEL, REPO, BRANCH,
+   SESSION NAME, COST, CACHE and ELAPSED already made, and the same ink the
+   terminal gives them (`INK.carry`).
+
+   WHAT IS BLUE IS THE NUMERAL AND NOT THE SENTENCE, which is the discipline
+   `semantic/11` already established one rule up: `lib/i18n.js` marks a value
+   slot whose text is a number with `data-num`, the weight rule at ~443 reads
+   that mark, and this reads the same mark. So the unit, the words and the
+   qualifying clauses stay the ink of the sentence they are part of, exactly
+   as `{ms} ms` bolds the number and not the unit. Nothing new is marked and
+   nothing is marked twice.
+
+   AND IT FOLLOWS THE COUNT RATHER THAN THE PANEL. `p.tvcount` and
+   `.tvnavfoundcount` are LENT to the panel while it is open and go back to
+   the strip when it shuts; scoping the colour to `.mcpanel` would make the
+   same sentence blue in one place and grey in the other, which is a hue
+   saying something about where an element is standing. `.tvroot` scopes it to
+   the document viewer, so the archive list, the anchors screen and the lane
+   roster — which draw their own `p.tvcount` — are untouched.
+
+   MEASURED, dark register, `#8b9ce6`:
+       on `--panel-2` #1d1d24 (the panel's ground)     6.38:1   AA
+       on `--paper`  #0f0f12 (the strip's ground)      7.29:1   AA
+   Both clear AA for body text with room to spare, which is the gate `--crit`
+   failed at a measured 4.06:1 on a surface earlier in this campaign. And
+   colour is never the only carrier: the numeral is also 600 against the
+   sentence's 400, and the sentence names what it is a number of. */
+.mcpanelcounts{display:flex;flex-direction:column;gap:var(--sp-1);
+  margin:0 0 var(--sp-1);padding-block-end:var(--sp-1);
+  border-block-end:1px solid var(--edge)}
+/* ── THE FIELD AND ITS CLEAR BUTTON ARE ONE ROW — `semantic/14` ───────────
+   The owner asked for a button that empties the search expression; the
+   archive search has had one since it shipped, so `.convclear` is the class
+   and `conv.filter.clear` is the words. Beside the field rather than under
+   it: a control that empties a box belongs where the box ends.
+
+   AND THE FIELD GROWS AGAIN HERE, WHICH IS NOT THE DEFECT THE RULE ABOVE
+   CLOSED. `.mcpanelbody .tvfind` is `flex:0 0 auto` because the panel BODY is
+   a column and a grow there made the input 470px tall. This row is a ROW, so
+   the same grow is horizontal — which is what `.tvbar` has always given this
+   field — and `inline-size:auto` hands the button its width back. Both
+   properties are set, because the 100% from the column rule would otherwise
+   push the button off the end. */
+/* ── "1 of 15" — WHERE THE WALK IS UP TO — `semantic/14` ──────────────────
+   The owner asked for that shape by name. It is a `.tvnavcount` like the
+   total beside it, so it takes the same size and colour and needs nothing of
+   its own but a break: the two are one sentence each and reading them as one
+   run would make "40 turn(s) here hold what you typed. You are on 3 of the 40
+   turns that hold it." look like a paragraph. In the panel the group is a
+   column already; in the strip it is a row, and `flex-basis:100%` is what
+   puts the place on its own line without a second element to wrap it. */
+.tvnavfoundplace{flex:1 0 100%;margin-inline-start:0}
+.mcpanelfindrow{display:flex;align-items:center;gap:var(--sp-1)}
+.mcpanelfindrow .tvfind{flex:1 1 auto;inline-size:auto;min-inline-size:0}
+.mcpanelclear{flex:0 0 auto}
+.tvroot p.tvcount .v[data-num],
+.tvroot .tvnavfoundcount .v[data-num]{color:var(--carry)}
+/* ── THE REGULAR-EXPRESSION REFERENCE — `semantic/14` ─────────────────────
+   *"add a full syntax help because it is complicated and hard to remember"*.
+   A second `<details>`, shut until it is asked for, drawn for the pattern
+   mode and no other — three of the four modes cannot read a line of it.
+
+   `.mcpanelhelp`'s treatment exactly, because it is the same kind of thing in
+   the same panel and a second summary that looked different would read as a
+   different kind of control.
+
+   THE TABLE SCROLLS INSIDE ITS OWN BOX. The left column is a construct and
+   must not wrap — `(?<=ab)  (?<!ab)` broken across two lines is two patterns
+   a reader could copy wrong — so the row can be wider than a 28rem panel, and
+   `overflow-x` on the wrapper is what keeps that off the panel itself. */
+.mcpanelref{margin:0;font:var(--fs-00)/1.4 var(--sans)}
+.mcpanelref>summary{cursor:pointer;color:var(--gold);padding:2px 0}
+.mcpanelref>summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.mcpanelrefbody{margin:var(--sp-1) 0 0;overflow-x:auto}
+.mcpanelreftab{border-collapse:collapse;inline-size:100%}
+.mcpanelreftab td,.mcpanelreftab th{vertical-align:top;text-align:start;
+  padding:3px var(--sp-1) 3px 0;border-block-start:1px solid var(--edge)}
+/* The section headings take `.strip .slab`'s treatment — 10.5px/600 with wide
+   tracking — which is this product's spelling for "a heading that is not a
+   sentence", rather than a new one invented in a panel. */
+.mcpanelrefh>th{color:var(--dim);text-transform:uppercase;letter-spacing:.08em;
+  font-size:var(--fs-000,10.5px);font-weight:600;padding-block-start:var(--sp-2)}
+.mcpanelrefwhat{inline-size:1%;white-space:nowrap}
+/* ── A ONE-CHARACTER CONSTRUCT READS AS AN EMPTY CELL, AND A SCREENSHOT IS
+   WHERE THAT WAS FOUND. `.`, `^` and `$` in the left column of a table are
+   one glyph of monospace ink on a dark ground, and the first picture taken of
+   this table showed three rows that looked like they had nothing in them
+   against sentences that plainly described something. `.mcpanelegq`'s chip —
+   the paper ground, the hairline, the small radius — is what this file
+   already uses to say "this is a thing you would type", and it makes a full
+   stop a token rather than a speck. It is not a button and does not pretend
+   to be one: no hover, no cursor, no focus ring. */
+/* ── AND LIGATURES ARE OFF, WHICH IS A CORRECTNESS FIX AND NOT A TASTE ────
+   Found in the third screenshot of this table: `(?<=ab)` was drawn as
+   `(?≤ab)`. Geist Mono ligates `<=` into `≤`, and a REFERENCE that shows a
+   reader a character they cannot type is worse than no reference — they would
+   copy it, the pattern would not compile, and the panel would quote the
+   browser's complaint about a construct the help had just taught them.
+   `(?<!ab)` beside it is unligated, so the row disagreed with itself.
+
+   Scoped to this column rather than to `.m` everywhere: every other `.m` run
+   in this product is a path, an id or a command, where this face's `->`,
+   `!=`, `>=` and `<=` ligatures are a legibility choice somebody made for the
+   whole shell. It is a hazard wherever a run is meant to be RETYPED, and that
+   is on the report rather than repaired here by a lane that owns one table. */
+.mcpanelrefwhat .m{display:inline-block;font-variant-ligatures:none;
+  background:var(--paper);border:1px solid var(--edge);
+  border-radius:var(--r-1);padding:1px 5px}
+.mcpanelrefsays{color:var(--dim)}
+
+/* ── THE NAVIGATION PANEL — `semantic/12` ─────────────────────────────────
+   The two stepper groups are the SAME groups the strip draws; all this says
+   is that in a 28rem column they each get their own block with the count
+   under the pair, which is exactly what `.tvnavfounds` above already asks
+   for and is now asked for all three at once rather than one class at a time.
+
+   `.tvnavh` ("Step to") keeps a line of its own: in the strip it is a caption
+   before a row, and a caption that shared a line with a wrapping group would
+   read as part of whichever group happened to wrap up beside it. */
+.mcpanelbody .tvnavgroup{flex-wrap:wrap;margin-block-start:var(--sp-1)}
+.mcpanelbody .tvnavh{display:block}
+.mcpanelbody .tvnavsaid{margin:var(--sp-1) 0 0}
+
+/* ── THE COPY PANEL — `semantic/13` ───────────────────────────────────────
+   **THE SENTENCE IS THE SUBJECT, NOT THE BUTTON**, which is the item's own
+   words, so the layout is a stack of (control, sentence) pairs rather than a
+   row of controls with prose somewhere near it.
+
+   `align-self:flex-start` on the borrowed buttons, and it is the same defect
+   `.mcpanelbody .tvfind` already carries a paragraph about: `.tvjump` lives
+   in `.tvbar`, which is a ROW, and the panel body is a COLUMN — where the
+   default `align-self:stretch` makes a two-word button as wide as the panel
+   and, next to three others, indistinguishable from a list of fields.
+   `white-space:normal` because `.tvjump` is a monospace chip in the strip and
+   these four names are phrases: "to paste into a prompt" must be allowed to
+   wrap inside 28rem rather than force the panel wider than the clamp. */
+.mccopychoice{display:flex;flex-direction:column;gap:2px;
+  margin-block-start:var(--sp-1)}
+.mcpanelbody .tvcopy{align-self:flex-start;max-inline-size:100%;
+  white-space:normal;text-align:start}
+.mccopysay{margin:0;color:var(--dim)}
+.mccopyneed{margin:0}
+/* The heading that says the fourth control is not a copy. `.mcpanelopth`'s
+   own spacing, because it is the same KIND of thing — a sub-heading inside a
+   panel — and a second set of numbers for one kind of thing is how a panel
+   stops reading as one panel. */
+.mccopynot{margin:var(--sp-2) 0 0;color:var(--dim)}
+.mcpanelbody .tvcopied{margin:var(--sp-2) 0 0}
 
 /* ── THE KIND THE MARK WALK IS OVER ───────────────────────────────────────
    `TASK-the-six-kinds-a-mark-can-carry-have-no-reader-so-you-cannot`.
@@ -4674,6 +5003,22 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .tvmenuitem:hover{border-color:var(--gold);color:var(--gold)}
 .tvmenuhead{margin:var(--sp-1) 0 0;padding-inline:var(--sp-2);color:var(--dim)}
 .tvmenutick{color:var(--gold)}
+/* ── THE RULE BETWEEN THE TWO GROUPS — semantic/15 ────────────────────────
+   The owner asked for it by name: "on the right menu put a horizontal
+   separation line between openning the dialogs and other actions". Above it,
+   the three panel openers; below it, the acts on the turn under the pointer.
+
+   A REAL `<hr>` CARRYING `role="separator"`, not a styled `div`: a rule a
+   screen reader cannot see is a grouping only sighted readers get, and this
+   menu is reachable by ContextMenu and Shift+F10 precisely so that it is not
+   a mouse-only surface.
+
+   `border:0` then one logical edge, which is how a `<hr>` is restyled without
+   drawing the user agent's 3D groove: `border-block-start` is the physical TOP
+   in both directions, because a horizontal rule in an RTL page is still
+   horizontal — nothing here needs reflecting, and saying so is cheaper than
+   the reader of this file wondering. */
+.tvmenurule{margin:var(--sp-1) 0;border:0;border-block-start:1px solid var(--rule)}
 .tvmenuitem:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 
 /* ── COPYING A MARKED PASSAGE ──────────────────────────────────────────────
@@ -4850,6 +5195,31 @@ body.lanewin{display:flex;flex-direction:column;min-block-size:100dvh}
    `left/right`, so a row still spans its column under `dir=rtl`. */
 .tvinner{position:relative;inline-size:100%}
 .tvrow{position:absolute;inset-inline:0}
+/* ── THE TURN THE WALK IS STANDING ON ─────────────────────────────────────
+   `semantic/12`, owner 2026-09-17: "apply the same behaviour of highliting the
+   current for Marks and Messages as navigation standard behaviour".
+
+   NO SIXTH HUE, which is this stylesheet's own rule and the one
+   `::highlight(mycontextfindnow)` twenty lines up already obeyed: the five
+   meaning colours are --gold, --ok, --carry, --crit and --warn, and spending
+   one here would say "carried" or "critical" about a turn the reader merely
+   walked to. The current MATCH is the page inverted; the current TURN is the
+   page's own ink drawn as a frame around it — the same vocabulary, at the
+   scale a whole turn has, and correct in both themes because --ink and
+   --paper are redefined together.
+
+   AN OUTLINE AND NOT A BORDER, and that is layout rather than taste. Every
+   row here is absolutely positioned from a MEASURED model; a border is two
+   more pixels of height, so every row below the current one would move the
+   moment the reader pressed Next, and `measure()` would chase it. An outline
+   is painted outside the box and changes no geometry at all. `outline-offset`
+   is negative so the frame sits just inside the row rather than bleeding into
+   the one above.
+
+   AND IT IS NOT COLOUR ALONE, which is this app's standing rule: the row also
+   carries aria-current="location", written by `paintStanding`, so a reader who
+   cannot separate the two grounds is told which one of the set they are at. */
+.tvrownow{outline:2px solid var(--ink);outline-offset:-2px;border-radius:var(--r-sm)}
 .tvwait{display:flex;align-items:center;font:var(--fs-00)/1.4 var(--mono);
   color:var(--dim)}
 

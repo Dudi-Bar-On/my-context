@@ -145,11 +145,41 @@ async function openDoc(page: Page): Promise<void> {
   await page.evaluate((id) => { location.hash = `#/conversations/${id}`; }, SESSION);
   await page.waitForSelector('.tvscroll', { timeout: 20_000 });
   await expect(page.locator('.tvnavmarkcount')).toContainText(String(MARKS), { timeout: 20_000 });
-  await page.locator('.tvtop').click();
+  // **`semantic/15` TOOK `Top` OFF THE CARD**, so this reaches it the way a
+  // reader now does — through the step panel — and shuts the panel again,
+  // because every test below is about what the keys do with NOTHING open.
+  await usePanel(page, 'navigate');
+  await page.locator('dialog.mcpanel[data-panel="navigate"] .tvtop').click();
+  await shutPanels(page);
   // The row the keyboard acts on is the one at the TOP of the viewport, so
   // every test below starts from a known one rather than from wherever the
   // mount's three-second hold to the end left the scroll.
   await expect(page.locator('.tvrow[data-n="0"]')).toBeVisible({ timeout: 10_000 });
+}
+
+/**
+ * **THE THREE PANELS ARE HOW A CONTROL IS REACHED SINCE `semantic/15`**, and
+ * the route is the reader's own: right-click a turn, take one of the first
+ * three rows. The menu's order is Search, Step through, Copy — above the
+ * separator — so the index IS the panel.
+ */
+async function usePanel(page: Page, name: 'search' | 'navigate' | 'copy'): Promise<void> {
+  const at = { search: 0, navigate: 1, copy: 2 }[name];
+  await page.locator('.tvscroll .tvturn').first().click({ button: 'right' });
+  await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
+  await page.locator('.tvmenu .tvmenuitem').nth(at).click();
+  await expect(page.locator('dialog.mcpanel[data-panel="' + name + '"][open]'))
+    .toHaveCount(1, { timeout: 10_000 });
+}
+
+/** Shut every panel, which is the state the keyboard rules are written about. */
+async function shutPanels(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const box of document.querySelectorAll('dialog.mcpanel[open]')) {
+      (box.querySelector('.mcpanelclose') as HTMLElement | null)?.click();
+    }
+  });
+  await expect(page.locator('dialog.mcpanel[open]')).toHaveCount(0);
 }
 
 /** Where the caret is, named the way a reader would name it. */
@@ -179,19 +209,39 @@ async function nativeMenuSuppressed(page: Page, selector: string): Promise<boole
 
 test('every route the item names exists, and the buttons are still the discovery path', async ({ page }) => {
   await openDoc(page);
-  for (const control of ['.tvfind', '.tvtop', '.tvend',
+  /*
+   * **`semantic/15` MOVED THESE, IT DID NOT DELETE THEM**, and that is exactly
+   * what this assertion is now for. The ruling was ALSO, not ONLY — a
+   * capability whose only route is a right-click is `D58` from the other side
+   * — and the owner has since ruled that the controls LEAVE THE CARD. Both
+   * hold at once only if every one of them is still a real, visible control
+   * once the panel that owns it is open.
+   */
+  await usePanel(page, 'search');
+  await expect(page.locator('dialog.mcpanel[data-panel="search"] .tvfind')).toBeVisible();
+  await usePanel(page, 'navigate');
+  for (const control of ['.tvtop', '.tvend',
     '.tvnavmarkprev', '.tvnavmarknext', '.tvnavyouprev', '.tvnavyounext']) {
-    await expect(page.locator(control),
-      `${control} is gone — the ruling is ALSO, not ONLY, and a capability whose only route is `
-      + 'a right-click is D58 from the other side').toBeVisible();
+    await expect(page.locator(`dialog.mcpanel[data-panel="navigate"] ${control}`),
+      `${control} is gone — moving a control into a panel may not lose it`).toBeVisible();
   }
+  await shutPanels(page);
   await expect(page.locator('.tvrow[data-n="0"] .tvanchormark'),
     'the row lost its own write button').toBeVisible();
-  // And the route that no button can teach is taught in a sentence.
-  await expect(page.locator('.tvmenuhint'),
-    'nothing on the screen says the right-click exists, which is the exact defect the item '
-    + 'describes from the other side').toBeVisible();
-  await expect(page.locator('.tvmenuhint')).toContainText('Shift+F10');
+  /*
+   * **AND THE ROUTE NO BUTTON CAN TEACH IS ON THE WELL ITSELF.**
+   * `p.tvmenuhint` was 18.6 px of a card the owner asked to shrink, and
+   * `semantic/15` took it down; the sentence went to the well's `title`, which
+   * is `STD-the-fact-on-the-line-the-explanation-on-hover-the`'s approved home
+   * for an explanation a line stopped carrying. It is a real narrowing for a
+   * reader who never hovers, and it is recorded in
+   * `reports/2026-09-17-the-card-gives-up-its-controls.md` rather than hidden.
+   */
+  await expect(page.locator('p.tvmenuhint'),
+    'the strip line came back — the card is meant to carry no instruction line at all')
+    .toHaveCount(0);
+  expect(await page.locator('.tvscroll').getAttribute('title'),
+    'the right-click is now taught nowhere at all').toContain('Shift+F10');
 });
 
 /* ══ 2 — INERT INSIDE A FIELD ════════════════════════════════════════════ */
@@ -199,9 +249,13 @@ test('every route the item names exists, and the buttons are still the discovery
 test('a shortcut fires nothing while a field has the caret', async ({ page }) => {
   await openDoc(page);
   const said = page.locator('.tvnavsaid');
-  await page.locator('.tvnavmarknext').click();
+  await usePanel(page, 'navigate');
+  await page.locator('dialog.mcpanel[data-panel="navigate"] .tvnavmarknext').click();
   await expect(said).toContainText(`of ${MARKS}`, { timeout: 10_000 });
   const before = (await said.textContent() ?? '').trim();
+  // The field is in the SEARCH panel; the step panel stays open behind it,
+  // which is the frame's own rule — nothing here closes a sibling.
+  await usePanel(page, 'search');
 
   /*
    * **A WORD MADE OF NOTHING BUT BOUND KEYS.** `n`, `m`, `u` and `/` are every
@@ -209,9 +263,10 @@ test('a shortcut fires nothing while a field has the caret', async ({ page }) =>
    * or a write box would open, or the find box would be re-focused mid-word —
    * and the field would be missing a character.
    */
-  await page.locator('.tvfind').click();
-  await page.locator('.tvfind').pressSequentially('numbness/mmm');
-  expect(await page.locator('.tvfind').inputValue(),
+  const box = page.locator('dialog.mcpanel[data-panel="search"] .tvfind');
+  await box.click();
+  await box.pressSequentially('numbness/mmm');
+  expect(await box.inputValue(),
     'a shortcut ate a keystroke that belonged to the find box').toBe('numbness/mmm');
   expect(await caret(page), 'a shortcut moved the caret out of the field being typed into')
     .toContain('tvfind');
@@ -265,7 +320,7 @@ test('Escape closes the rename box and nothing else, exactly as it did', async (
 
 test('the menu\'s Escape closes the menu and stops there', async ({ page }) => {
   await openDoc(page);
-  await page.locator('.tvnavmarknext').focus();
+  await page.locator('.tvscroll').focus();
   await page.keyboard.press('Shift+F10');
   await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
   await page.keyboard.press('Escape');
@@ -293,7 +348,7 @@ test('the menu\'s Escape closes the menu and stops there', async ({ page }) => {
 
 test('Shift+F10 opens the menu on the turn the reader is on, and focus moves into it', async ({ page }) => {
   await openDoc(page);
-  await page.locator('.tvnavmarknext').focus();
+  await page.locator('.tvscroll').focus();
   await page.keyboard.press('Shift+F10');
   const menu = page.locator('.tvmenu:not([hidden])');
   await expect(menu, 'the context-menu gesture a browser already sends does nothing, so a '
@@ -303,14 +358,50 @@ test('Shift+F10 opens the menu on the turn the reader is on, and focus moves int
     + 'user behind a dialog they cannot reach').toContain('tvmenuitem');
   // The row at the top of the viewport is record 0, which is NOT marked — so
   // the menu must offer to mark it rather than to rename it.
-  await expect(menu.locator('.tvmenuitem').first(),
-    'the menu does not act on the turn the reader is on').toContainText('Mark this point');
-  await expect(menu.locator('.tvmenuitem').first()).toHaveAttribute('aria-keyshortcuts', 'M');
+  /*
+   * **`.last()` AND NOT `.first()` SINCE `semantic/15`.** The menu is now two
+   * groups with a `<hr role="separator">` between them: the three panel
+   * openers, then the acts on the turn under the pointer. The row that acts on
+   * THIS turn is therefore the last one, and naming it by its key rather than
+   * by a position is what stops this assertion moving again.
+   */
+  const act = menu.locator('.tvmenuitem[aria-keyshortcuts="M"]');
+  await expect(act, 'the menu does not act on the turn the reader is on')
+    .toContainText('Mark this point');
+  await expect(act).toHaveCount(1);
+  /*
+   * **AND THE RULE IS THERE, WITH A ROLE A SCREEN READER CAN SEE** — the
+   * owner's own request: "on the right menu put a horizontal separation line
+   * between openning the dialogs and other actions".
+   */
+  await expect(menu.locator('hr.tvmenurule'),
+    'the two groups run together with nothing between them').toHaveCount(1);
+  await expect(menu.locator('hr.tvmenurule')).toHaveAttribute('role', 'separator');
+  /*
+   * **AND THE SEVEN ROWS THE OWNER ASKED TO BE RID OF ARE GONE.** Each was
+   * already in a dialog; each acted on the DOCUMENT rather than on the turn
+   * under the pointer, which is the principle that decided the cull.
+   */
+  const rows = await menu.locator('.tvmenuitem, [role="menuitemradio"]').evaluateAll(
+    (nodes) => nodes.map((n) => (n.textContent ?? '').trim()));
+  console.log(`[menu] after the cull: ${JSON.stringify(rows)}`);
+  for (const gone of ['Previous mark', 'Next mark', 'Your previous message',
+    'Your next message']) {
+    expect(rows.some((r) => r.startsWith(gone)),
+      `"${gone}" is still on the menu — it is in the step panel and acts on the document, `
+      + 'not on the turn you right-clicked').toBe(false);
+  }
+  expect(await menu.locator('[role="menuitemradio"]').count(),
+    'the kind radios are still on the menu — they are the step panel\'s own picker')
+    .toBe(0);
+  expect(await menu.locator('.tvmenuhead').count(),
+    'the "Step only through" heading outlived the radios it headed').toBe(0);
   // Arrow keys walk it, which is what `role="menu"` promises a reader.
   await page.keyboard.press('ArrowDown');
   expect(await caret(page), 'the arrow keys do not walk the menu').toContain('tvmenuitem');
   const second = (await page.evaluate(() => document.activeElement?.textContent ?? '')).trim();
-  expect(second, 'ArrowDown did not move to the next item').toContain('Previous mark');
+  expect(second, 'ArrowDown did not move to the next item')
+    .toContain('Step through this conversation');
 });
 
 test('the menu offers what the turn under the cursor can actually do', async ({ page }) => {
@@ -338,7 +429,10 @@ test('a menu item runs the row\'s own control, and the caret ends where that con
   await page.locator('.tvrow[data-n="0"] .tvsaid').click({ button: 'right' });
   const menu = page.locator('.tvmenu:not([hidden])');
   await expect(menu).toHaveCount(1, { timeout: 10_000 });
-  await menu.locator('.tvmenuitem').first().click();
+  // Named by its key, not by its position: the three panel openers come first
+  // since `semantic/15`, and a test that counts rows is a test a layout change
+  // silently repoints.
+  await menu.locator('.tvmenuitem[aria-keyshortcuts="M"]').click();
   await expect(page.locator('.tvmenu:not([hidden])'),
     'the menu stayed open over the box it just opened').toHaveCount(0);
   /*
@@ -360,18 +454,24 @@ test('a menu item runs the row\'s own control, and the caret ends where that con
 
 test('the browser keeps its own menu everywhere this screen has no action', async ({ page }) => {
   await openDoc(page);
+  // The panels are OPEN for this one, because three of the four places below
+  // are inside them since `semantic/15` and a control in a closed dialog
+  // suppresses nothing whatever the page does — which would make three of
+  // these four assertions vacuously green.
+  await usePanel(page, 'search');
+  await usePanel(page, 'navigate');
   const overATurn = await nativeMenuSuppressed(page, '.tvrow[data-n="0"] .tvsaid');
   const overTheBar = await nativeMenuSuppressed(page, '.tvnavmarknext');
   const overTheField = await nativeMenuSuppressed(page, '.tvfind');
-  const outsideTheWell = await nativeMenuSuppressed(page, '.tvcount');
-  console.log(`[native] turn=${overATurn} bar=${overTheBar} field=${overTheField} `
+  const outsideTheWell = await nativeMenuSuppressed(page, '.tvhead');
+  console.log(`[native] turn=${overATurn} panel=${overTheBar} field=${overTheField} `
     + `outside=${outsideTheWell}`);
   expect(overATurn, 'the right-click over a turn does nothing, so the third route does not '
     + 'exist').toBe(true);
   // **THE ITEM'S THIRD CONSTRAINT.** Suppressing the native menu costs the
   // reader copy, open-in-new-tab and inspect, so it is suppressed ONLY where
   // this screen genuinely has actions.
-  expect(overTheBar, 'the native menu was taken over the navigation bar, where this screen '
+  expect(overTheBar, 'the native menu was taken over the step panel, where this screen '
     + 'offers nothing in its place').toBe(false);
   expect(overTheField, 'the native menu was taken inside a text field, where it is cut, copy '
     + 'and paste and there is no version of this screen\'s menu that replaces it').toBe(false);
@@ -415,7 +515,7 @@ test('a live selection keeps the browser\'s menu, because the reader means Copy'
 
 test('closing the menu hands the caret back where it came from', async ({ page }) => {
   await openDoc(page);
-  await page.locator('.tvnavmarknext').focus();
+  await page.locator('.tvscroll').focus();
   const before = await caret(page);
   await page.keyboard.press('Shift+F10');
   await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });

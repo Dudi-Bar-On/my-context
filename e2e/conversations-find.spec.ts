@@ -163,9 +163,24 @@ async function painted(page: Page): Promise<{ texts: string[]; live: boolean; co
 }
 
 /** Type into the find box and wait past the 250 ms settle and the scan. */
+/**
+ * Type into the find box, opening the panel it lives in first.
+ *
+ * **`semantic/15` TOOK THE BOX OFF THE CARD.** It was a `.tvbar` control until
+ * 2026-09-17 and is now the search panel's own; `/` is still bound to it and
+ * still opens the panel and lands the caret in the field, which is the route a
+ * reader takes and therefore the route this takes.
+ */
 async function find(page: Page, query: string): Promise<void> {
-  await page.locator('.tvfind').click();
-  await page.locator('.tvfind').fill(query);
+  if (await page.locator('dialog.mcpanel[data-panel="search"][open]').count() === 0) {
+    await page.locator('.tvscroll').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('/');
+    await expect(page.locator('dialog.mcpanel[data-panel="search"][open]'))
+      .toHaveCount(1, { timeout: 10_000 });
+  }
+  const box = page.locator('dialog.mcpanel[data-panel="search"] .tvfind');
+  await box.click();
+  await box.fill(query);
   // Past the 250 ms settle, the round trip and the scan.
   await page.waitForTimeout(2_500);
 }

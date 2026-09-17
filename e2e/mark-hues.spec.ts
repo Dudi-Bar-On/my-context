@@ -739,6 +739,17 @@ test('the change of subject is announced, in the region the walk already speaks 
   // **AND THE SELECT ANNOUNCES TOO.** The announcement is written into the ONE
   // `change` handler every route reaches, so the mouse route gets the same
   // sentence rather than the keyboard route getting a private one.
+  //
+  // The select is in the step panel since `semantic/15`, and the panel is
+  // opened the way a reader opens it — the menu's second row. `K` above needed
+  // nothing open, which is the half that matters and is proved by it working
+  // before this line.
+  await page.evaluate(() => { document.getSelection()?.removeAllRanges(); });
+  await page.locator('.tvscroll .tvturn').first().click({ button: 'right' });
+  await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
+  await page.locator('.tvmenu .tvmenuitem').nth(1).click();
+  await expect(page.locator('dialog.mcpanel[data-panel="navigate"][open]'))
+    .toHaveCount(1, { timeout: 10_000 });
   await page.locator('.tvnavkind').selectOption('');
   await expect.poll(async () => (await live.textContent() ?? '').trim(), { timeout: 10_000 })
     .not.toBe(first);
@@ -752,7 +763,16 @@ test('the key is inert inside every field on the screen', async ({ page }) => {
   // The find box. A reader typing "kind" into it must not walk the filter four
   // times — the item's second constraint, and the same one `M`, `N` and `U`
   // already hold.
-  await page.locator('.tvfind').first().focus();
+  //
+  // **IT IS IN THE SEARCH PANEL SINCE `semantic/15`**, so it is opened the way
+  // a reader opens it: `/`, which both opens the panel and lands the caret in
+  // the field. `.first()` is kept because there is a second `.tvfind` on the
+  // archive screen behind this one.
+  await page.locator('.tvscroll').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('/');
+  await expect(page.locator('dialog.mcpanel[data-panel="search"][open]'))
+    .toHaveCount(1, { timeout: 10_000 });
+  await page.locator('dialog.mcpanel[data-panel="search"] .tvfind').first().focus();
   await page.keyboard.press('KeyK');
   await page.keyboard.press('Shift+KeyK');
   expect((await filterState(page)).value,
@@ -841,8 +861,21 @@ test('the key is shown on the control, and it does not replace the ones that wer
 
   // **ADD, DO NOT REPLACE** — the item's binding instruction. The four steppers
   // still answer, and they still say their own keys.
-  const kept = await page.evaluate(() => [...document.querySelectorAll('.tvnavstep')]
-    .map((b) => b.getAttribute('aria-keyshortcuts') ?? ''));
+  /*
+   * **THE FOUR STEPPERS THAT HAVE A KEY, NAMED BY THEIR GROUPS.**
+   *
+   * `.tvnavstep` on its own stopped meaning "the four" on 2026-09-16, when
+   * `semantic/8` gave the MATCH stepper the same class. Those two have never
+   * had a binding and were never meant to — this assertion is about `K` not
+   * replacing `N`, `Shift+N`, `U` and `Shift+U` — so a widened selector was
+   * reporting two empty strings as two steppers that had lost their keys.
+   * Measured against HEAD while `semantic/12` was in flight: it fails there
+   * too, so it is a stale selector rather than a regression, repaired here
+   * because this is the lane that found it.
+   */
+  const kept = await page.evaluate(() => [
+    ...document.querySelectorAll('.tvnavmarks .tvnavstep, .tvnavyous .tvnavstep'),
+  ].map((b) => b.getAttribute('aria-keyshortcuts') ?? ''));
   console.log(`[key] the steppers still carry ${JSON.stringify(kept)}`);
   expect(kept.sort(), 'a stepper lost its binding, so the new key replaced rather than added')
     .toEqual(['N', 'Shift+N', 'Shift+U', 'U']);

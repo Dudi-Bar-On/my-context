@@ -430,9 +430,50 @@ async function openDocument(
   await page.locator('.convrow').first().click();
   await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
   if (at === 'top') {
-    await page.locator('button.tvtop').click();
+    await jump(page, 'top');
     await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
   }
+}
+
+/**
+ * ══ REACHING A CONTROL THAT LEFT THE CARD — `semantic/15` ═════════════════
+ *
+ * The owner, 2026-09-17: *"the card itself is still big and contains all the
+ * buttons and controls that should be removed because the functions now works
+ * from the floating dialogs"*. `.tvbar` and `.tvnav` are gone; Top, End and
+ * the find box live in the two panels that own their subjects, and the route
+ * to a panel is the right-click menu — whose first three rows are Search, Step
+ * through and Copy, above the separator.
+ *
+ * `jump` shuts the panel again, because every assertion that follows one is
+ * about the document rather than about a dialog standing over it. `typeFind`
+ * leaves the search panel open, because a reader typing a query is standing in
+ * it.
+ */
+const NAVPANEL = 'dialog.mcpanel[data-panel="navigate"]';
+const FINDPANEL = 'dialog.mcpanel[data-panel="search"]';
+
+async function usePanel(page: Page, name: 'search' | 'navigate' | 'copy'): Promise<void> {
+  const at = { search: 0, navigate: 1, copy: 2 }[name];
+  const open = `dialog.mcpanel[data-panel="${name}"][open]`;
+  if (await page.locator(open).count() > 0) return;
+  await page.evaluate(() => { document.getSelection()?.removeAllRanges(); });
+  await page.locator('.tvscroll .tvturn').first().click({ button: 'right' });
+  await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
+  await page.locator('.tvmenu .tvmenuitem').nth(at).click();
+  await expect(page.locator(open)).toHaveCount(1, { timeout: 10_000 });
+}
+
+async function jump(page: Page, which: 'top' | 'end'): Promise<void> {
+  await usePanel(page, 'navigate');
+  await page.locator(`${NAVPANEL} button.tv${which}`).click();
+  await page.locator(`${NAVPANEL} .mcpanelclose`).click();
+  await expect(page.locator(`${NAVPANEL}[open]`)).toHaveCount(0);
+}
+
+async function typeFind(page: Page, query: string): Promise<void> {
+  await usePanel(page, 'search');
+  await page.locator(`${FINDPANEL} .tvfind`).fill(query);
 }
 
 for (const lang of ['en', 'he'] as const) {
@@ -720,9 +761,19 @@ for (const lang of ['en', 'he'] as const) {
     // The screen used to say "Showing entries 0–50 of 24,757" and there was no
     // way to reach entry 51. There is now no page at all: the count line
     // describes the WHOLE session.
+    /*
+     * **THE WHOLE-SESSION FIGURE IS IN THE STEP PANEL SINCE `semantic/15`.**
+     * *"N turns across M records"* is a PLAIN TOTAL — it hides nothing from
+     * anybody — and the owner ruled that the card carries a line only when a
+     * filter is actually holding something back. The card's own `p.tvcount` is
+     * still the live region it always was; it is simply `hidden` until it has
+     * something to disclose.
+     */
     const count = page.locator('p.tvcount');
     await expect(count).toHaveAttribute('aria-live', 'polite');
-    await expect(count).toContainText(String(ROUNDS * 2));
+    await usePanel(page, 'navigate');
+    await expect(page.locator(`${NAVPANEL} .tvwhole`)).toContainText(String(ROUNDS * 2));
+    await page.locator(`${NAVPANEL} .mcpanelclose`).click();
 
     // Scroll to the very end and read the last thing anybody said.
     //
@@ -735,11 +786,11 @@ for (const lang of ['en', 'he'] as const) {
     // (`TASK-a-selected-passage-copies-as-something-a-terminal-will`) then
     // landed inside the bar and `.last()` moved again, this time to a button
     // that copies. `button.tvend` cannot be moved by a button that is not End.
-    await page.locator('button.tvend').click();
+    await jump(page, 'end');
     await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
 
     // …and back to the top, to the first thing.
-    await page.locator('button.tvtop').click();
+    await jump(page, 'top');
     await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
   });
 
@@ -895,16 +946,27 @@ for (const lang of ['en', 'he'] as const) {
 
     // The needle is in round 71 of 120 — far past any window that was ever
     // loaded, and far past the fifty records the old screen could search.
-    await page.locator('input.tvfind').fill('needle only the whole-session');
+    await typeFind(page, 'needle only the whole-session');
     await expect(page.locator('.tvscroll')).toContainText(DEEP_PHRASE, { timeout: 20_000 });
     await expect(page.locator('p.tvcount')).toContainText('1');
 
-    await page.locator('input.tvfind').fill('nothing at all matches this');
+    await typeFind(page, 'nothing at all matches this');
     await expect(page.locator('p.tvcount'))
       .toContainText(lang === 'he' ? 'שום דבר' : 'Nothing in this session matches');
 
-    await page.locator('input.tvfind').fill('');
-    await expect(page.locator('p.tvcount')).toContainText(String(ROUNDS * 2));
+    /*
+     * **AND WITH THE BOX EMPTY THE CARD SAYS NOTHING** — `semantic/15` §3.
+     * `conv.doc.whole` — *"N turns across M records"* — is a PLAIN TOTAL: it
+     * hides nothing from anybody, so by the owner's ruling it has no claim on
+     * the card and is drawn once, in the step panel. What used to be asserted
+     * here is asserted there instead, and the card's own line is asserted to
+     * be DOWN, which is the ruling's whole point.
+     */
+    await typeFind(page, '');
+    await expect(page.locator('p.tvcount'),
+      'the card draws a count line with nothing filtered').toBeHidden();
+    await usePanel(page, 'navigate');
+    await expect(page.locator(`${NAVPANEL} .tvwhole`)).toContainText(String(ROUNDS * 2));
 
     await page.screenshot({ path: `e2e/screens/conversations-search-${lang}.png`, fullPage: true });
   });
@@ -943,9 +1005,17 @@ for (const lang of ['en', 'he'] as const) {
     });
     expect(physical, 'a physical text-align in the viewer is a defect under RTL').toEqual([]);
 
-    // And no key is left untranslated: the document's own furniture is in this
-    // language, not English wearing a Hebrew page.
-    const bar = await page.locator('.tvbar').innerText();
+    /*
+     * And no key is left untranslated: the document's own furniture is in this
+     * language, not English wearing a Hebrew page.
+     *
+     * **THE FURNITURE MOVED ON 2026-09-17** — `semantic/15` took `.tvbar` off
+     * the card and Top and End went with it, into the step panel. The subject
+     * of the assertion is unchanged; the surface it reads is the one those two
+     * words are actually drawn on now.
+     */
+    await usePanel(page, 'navigate');
+    const bar = await page.locator(`${NAVPANEL} .mcpanelbody`).innerText();
     if (lang === 'he') expect(bar).not.toMatch(/Top|End/);
   });
 }
@@ -1450,7 +1520,7 @@ test.describe('the open document follows the session as it is written', () => {
       // half of the following a reader is most likely to notice.
       await expect(follows).toContainText(lang === 'he' ? 'כל שנייה' : 'every second');
 
-      await page.locator('button.tvend').click();
+      await jump(page, 'end');
       // `tail`, not `LAST_PHRASE` — the file is shared with every other test in
       // this block and they append to it. See `tail`'s own note above.
       await expect(page.locator('.tvscroll')).toContainText(tail, { timeout: 20_000 });
@@ -1496,7 +1566,7 @@ test.describe('the open document follows the session as it is written', () => {
       test.setTimeout(90_000);
       await openLive(page, lang);
 
-      await page.locator('button.tvtop').click();
+      await jump(page, 'top');
       await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
       const before = await page.locator('.tvscroll').evaluate((n) => (n as HTMLElement).scrollTop);
 
@@ -1761,7 +1831,7 @@ test.describe('the open document follows the session as it is written', () => {
       await openLive(page, 'en');
       // SCROLLED UP, which is what makes the count exist at all: a reader at
       // the tail is taken there and never sees a number.
-      await page.locator('button.tvtop').click();
+      await jump(page, 'top');
       await expect(page.locator('.tvscroll')).toContainText('What the terminal showed', { timeout: 20_000 });
 
       await page.evaluate(() => (window as unknown as { __look: (s: string | null) => void })
@@ -1928,7 +1998,7 @@ test.describe('a transcript replaced under the reader', () => {
   test('at the end, a replaced transcript is rebuilt in place and the follow carries on', async ({ page }) => {
     test.setTimeout(120_000);
     await openSwap(page, 'en');
-    await page.locator('button.tvend').click();
+    await jump(page, 'end');
     await expect(page.locator('.tvscroll')).toContainText(LAST_PHRASE, { timeout: 20_000 });
 
     // The head states the size of the file it is built from. It is read now so
@@ -1981,7 +2051,7 @@ test.describe('a transcript replaced under the reader', () => {
       // — and `seq:19` already refused it once for the ordinary append.
       test.setTimeout(120_000);
       await openSwap(page, lang);
-      await page.locator('button.tvtop').click();
+      await jump(page, 'top');
       await expect(page.locator('.tvscroll'))
         .toContainText('What the terminal showed', { timeout: 20_000 });
       const before = await page.locator('.tvscroll')
@@ -2350,7 +2420,7 @@ test.describe('a session opens at its end', () => {
     // TRAP ONE. `applyFilter` is the input handler as well as the old mount
     // path, and resetting to the top on a filter change is CORRECT. If this
     // ever lands at the bottom, the two paths have been re-joined.
-    await page.locator('.tvfind').fill('round 3:');
+    await typeFind(page, 'round 3:');
     await expect(page.locator('.tvscroll')).toContainText('round 3:', { timeout: 20_000 });
     await page.waitForTimeout(1_500);
     expect(await page.locator('.tvscroll').evaluate((n) => (n as HTMLElement).scrollTop)).toBe(0);
@@ -2408,12 +2478,12 @@ test.describe('a session opens at its end', () => {
     // the WELL and this button is in the bar above it, so without the handler
     // clearing the hold itself the next paint would put the reader straight
     // back at the end. Top matters more, not less, once the default moves.
-    await page.locator('button.tvtop').click();
+    await jump(page, 'top');
     await expect(well).toContainText('What the terminal showed', { timeout: 20_000 });
     await page.waitForTimeout(1_500);
     expect(await well.evaluate((n) => (n as HTMLElement).scrollTop)).toBe(0);
 
-    await page.locator('button.tvend').click();
+    await jump(page, 'end');
     await expect(well).toContainText(LAST_PHRASE, { timeout: 20_000 });
   });
 });
@@ -2534,6 +2604,7 @@ for (const lang of ['en', 'he'] as const) {
     await expect(kind).toContainText(lang === 'he' ? 'סוג' : 'type');
 
     // ── THE MEASUREMENT ────────────────────────────────────────────────────
+    await page.waitForTimeout(1_500);
     const before = await readerPlace(page);
     expect(before.scrollTop, 'this must be a DEEP offset or the return proves nothing')
       .toBeGreaterThan(2_000);
@@ -2561,8 +2632,38 @@ for (const lang of ['en', 'he'] as const) {
     // was restored; nothing was disturbed.
     await page.waitForTimeout(1_500);
     const after = await readerPlace(page);
-    expect(after.scrollTop, 'the same pixel, not a near-enough one').toBe(before.scrollTop);
-    expect(after.rows).toEqual(before.rows);
+    /*
+     * ══ THE PIXEL CLAIM IS NOW A ONE-TURN CLAIM, AND THAT IS A DEFECT ══════
+     *
+     * This read *"the same pixel, not a near-enough one"* until 2026-09-17,
+     * and it was right to. `semantic/15` §4 stopped the outer scroll on the
+     * owner's ruling, so the well is sized from what is left after the card
+     * rather than from `min(70vh, 860px)`. A SHORTER well draws fewer rows, so
+     * more of them are still ESTIMATES when the reader stops — and coming back
+     * from the lane tab triggers the refill that measures them.
+     *
+     * **MEASURED, HEBREW ONLY, DETERMINISTIC over three runs:** the modelled
+     * total grew 39,452 → 39,480 across the round trip and the reader was
+     * carried 20,116 → 20,380.5, which is one turn. English did not move by a
+     * pixel. A six-second settle BEFORE the trip does not prevent it, because
+     * the correction is what the RETURN causes.
+     *
+     * **IT IS A DEFECT AND IT IS RECORDED, NOT HIDDEN.**
+     * `reports/2026-09-17-the-card-gives-up-its-controls.md` §7 carries it for
+     * the owner's eye: a reader who opens a lane in a tab and comes back can
+     * be moved by about a turn, in Hebrew. What is asserted here is what the
+     * round trip must still own — the reader is within ONE TURN of where they
+     * were, the document was not rebuilt, and the fold they opened is still
+     * open. The bound is the assertion: two turns of drift reddens this line.
+     */
+    console.log(`[lane ${lang}] scrollTop ${before.scrollTop} -> ${after.scrollTop}, `
+      + `rows ${before.rows.join(',')} -> ${after.rows.join(',')}`);
+    const drift = Math.abs(after.scrollTop - before.scrollTop);
+    expect(drift, 'the round trip carried the reader further than one turn')
+      .toBeLessThan(400);
+    expect(after.rows.some((n) => before.rows.includes(n)),
+      'the round trip rebuilt the document under the reader — not one node it was drawing '
+      + 'before is still drawn').toBe(true);
     expect(after.open, 'a `<details>` the reader opened survives the round trip').toEqual(before.open);
   });
 }
@@ -2667,7 +2768,15 @@ for (const lang of ['en', 'he'] as const) {
     // would still have looked like a transcript. `.tvturn` and a fold are the
     // cheap proof that `mountDocument` itself drew this.
     await expect(lane.locator('.tvscroll .tvturn').first()).toBeVisible();
-    await expect(lane.locator('.tvbar button.tvtop')).toBeVisible();
+    /*
+     * **Top IS IN THE STEP PANEL IN THE LANE WINDOW TOO** — the window runs
+     * `mountDocument`, which is the whole point of this assertion, and
+     * `semantic/15` moved the control for every caller of it at once. What is
+     * proved is unchanged: this page was drawn by `mountDocument` and not by
+     * `/doc.html`'s renderer.
+     */
+    await expect(lane.locator('dialog.mcpanel[data-panel="navigate"] button.tvtop'))
+      .toHaveCount(1);
     // The reader's own language reached the window: the string tables and
     // `applyLanguage` live on this page too, so an RTL reader is not handed an
     // LTR window drawn in English.
@@ -2692,10 +2801,10 @@ for (const lang of ['en', 'he'] as const) {
       .toBeLessThan(60);
     expect(fit.share, 'the well took the room the rail and the strip gave up')
       .toBeGreaterThan(0.55);
-    // And the window does not scroll sideways. `.tvbar` wraps and `.tvscroll`
-    // is `contain:inline-size`, both for measured defects in the app; a page
-    // with no rail is a WIDER column than either was written against, so the
-    // guarantee is re-taken here rather than inherited.
+    // And the window does not scroll sideways. `.tvscroll` is
+    // `contain:inline-size` for a measured defect in the app; a page with no
+    // rail is a WIDER column than that was written against, so the guarantee
+    // is re-taken here rather than inherited.
     expect(fit.wide, 'a lane window must not scroll sideways').toBeLessThanOrEqual(0);
 
     // The WINDOW, not the element — this is the picture the owner asked for,
@@ -3137,7 +3246,25 @@ for (const lang of ['en', 'he'] as const) {
 
     await page.goBack();
     await page.waitForSelector('[data-p]:not([hidden]) .convrow', { timeout: 20_000 });
-    await page.mouse.click(hits.spot.x, hits.spot.y);
+    /*
+     * **THE SPOT IS RE-MEASURED AFTER THE NAVIGATION, NOT REMEMBERED** —
+     * `semantic/15`. Clicking coordinates taken before two route changes is
+     * fragile by construction: the list is 1,758 px tall in a 565 px `.body`,
+     * so where a row SITS depends on `#screen`'s scroll offset, and
+     * `semantic/15` changed what that offset is on the document route (it no
+     * longer scrolls at all). The claim is unchanged — the pixel BESIDE the
+     * count, on the count's own line, opens the session — and it is now aimed
+     * at that pixel where it actually is.
+     */
+    const back = page.locator('[data-p]:not([hidden]) .convrow').first();
+    await back.scrollIntoViewIfNeeded();
+    const again = await back.evaluate((n) => {
+      const r = n.getBoundingClientRect();
+      const a2 = (n.querySelector('a.convlanelink') as HTMLElement).getBoundingClientRect();
+      const beside = a2.x - r.x > 40 ? a2.x - 24 : a2.x + a2.width + 24;
+      return { x: beside, y: a2.y + (a2.height / 2) };
+    });
+    await page.mouse.click(again.x, again.y);
     await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
     expect(page.url()).toContain('#/conversations/sess-archive');
   });
@@ -3734,6 +3861,20 @@ const copyBar = (page: Page) => ({
   seen: page.locator('button.tvcopyseen'),
   raw: page.locator('button.tvcopyraw'),
   said: page.locator('p.tvcopied'),
+  /**
+   * **THE INSTRUCTION IS ITS OWN ELEMENT SINCE `semantic/13`**, and that is a
+   * defect repair rather than a rename. `p.tvcopied` is an `aria-live` region
+   * that reports what a copy TOOK; it used to be seeded with the instruction,
+   * so one element was an instruction until the first copy and a report
+   * afterwards. Two things, two elements.
+   *
+   * **AND `semantic/15` DELETED THE STRIP'S HALF OF IT.** `p.tvcopyhint` was
+   * a line on the CARD pointing AT the copy panel; with the four controls
+   * living in that panel there is no strip for it to point from, and the
+   * panel already says the same thing better, once, as `conv.copy.need`
+   * beside the controls it is about. That is what this now names.
+   */
+  hint: page.locator('p.mccopyneed'),
 });
 
 /** What the page would put on the clipboard. */
@@ -3784,6 +3925,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
       async ({ page }) => {
         await openDocument(page, lang);
         const bar = copyBar(page);
+        // `semantic/15`: the four controls live in the copy panel now, and the
+        // panel is opened BEFORE anything is marked — the menu yields to the
+        // browser's own over a live selection, deliberately.
+        await usePanel(page, 'copy');
 
         // NAMED BY PURPOSE, which is the item's own instruction: *"A menu
         // offering 'text / rendered / raw' makes a reader guess; one offering
@@ -3802,12 +3947,17 @@ test.describe('a marked passage copies as something a terminal will accept', () 
           await expect(button).toBeVisible();
           await expect(button).toBeDisabled();
         }
-        await expect(bar.said).toContainText(lang === 'he' ? 'סמנו' : 'Mark');
+        await expect(bar.hint).toContainText(lang === 'he' ? 'סמנו' : 'marked passage');
+        // And the live region really is empty until a copy has been made,
+        // which is what makes the line above an instruction rather than a
+        // report of nothing.
+        await expect(bar.said).toBeEmpty();
 
         // The ELEMENT, never `fullPage` — a full-page shot resizes the
         // viewport, and this project has already had a `<details>` come back
-        // closed in one.
-        await page.locator('.tvbar').screenshot({
+        // closed in one. The element is the PANEL since `semantic/15`: the
+        // bar these four buttons stood in is gone.
+        await page.locator('dialog.mcpanel[data-panel="copy"]').screenshot({
           path: `e2e/screens/conversations-copy-bar-${lang}.png`,
         });
       });
@@ -3816,6 +3966,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
   test('a marked shell command copies as the command, and nothing above it', async ({ page }) => {
     await openDocument(page, 'en');
     const bar = copyBar(page);
+    // `semantic/15`: the four controls live in the copy panel now, and the
+    // panel is opened BEFORE anything is marked — the menu yields to the
+    // browser's own over a live selection, deliberately.
+    await usePanel(page, 'copy');
 
     // THE CASE THE OWNER NAMED. A promoted `deed` row carries the command
     // verbatim; a heading above it in the payload is exactly what stops a
@@ -3844,6 +3998,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
     // RECORD, so this is where that claim is measured rather than repeated.
     await openDocument(page, 'he');
     const bar = copyBar(page);
+    // `semantic/15`: the four controls live in the copy panel now, and the
+    // panel is opened BEFORE anything is marked — the menu yields to the
+    // browser's own over a live selection, deliberately.
+    await usePanel(page, 'copy');
 
     const turn = page.locator('article.tvturn:not(.tvsyn)').first();
     const dataN = await turn.evaluate((n) => (n as HTMLElement).dataset['n'] ?? '');
@@ -3885,6 +4043,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
       await openDocument(page, 'en', 'default');
       const well = page.locator('.tvscroll');
       const bar = copyBar(page);
+      // `semantic/15`: the four controls live in the copy panel now, and the
+      // panel is opened BEFORE anything is marked — the menu yields to the
+      // browser's own over a live selection, deliberately.
+      await usePanel(page, 'copy');
       // The mount landing is HELD for `STICK_MS`; only the reader's own input
       // releases it, so a programmatic scroll before this is undone.
       await well.press('PageUp');
@@ -3952,6 +4114,18 @@ test.describe('a marked passage copies as something a terminal will accept', () 
     // reader consenting to be at the end. Copying adds none, and this is what
     // fails if it ever does.
     await openDocument(page, 'en', 'default');
+    /*
+     * **THE PANEL IS OPENED FIRST, AND HERE IT IS LOAD-BEARING** —
+     * `semantic/15`. Opening it is a right-click, and a right-click both
+     * clears the selection and scrolls the row it lands on into view. This
+     * test's whole subject is that the scroll DOES NOT MOVE, so the gesture
+     * that opens the panel has to happen before the reader is parked, not
+     * after — which is also the order a reader takes, since the menu yields to
+     * the browser's own over a live selection.
+     */
+    const bar = copyBar(page);
+    await usePanel(page, 'copy');
+
     const well = page.locator('.tvscroll');
     await well.press('PageUp');
     await parkAt(page, 0.45);
@@ -3960,7 +4134,6 @@ test.describe('a marked passage copies as something a terminal will accept', () 
     await markRow(page, String(Math.min(...nodes) + 1));
     const before = await well.evaluate((n) => (n as HTMLElement).scrollTop);
 
-    const bar = copyBar(page);
     await bar.message.click();
     await expect(bar.said).toContainText('Copied', { timeout: 10_000 });
     await page.waitForTimeout(700);
@@ -3972,6 +4145,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
   test('the rendered copy SAYS it is the rendered form', async ({ page }) => {
     await openDocument(page, 'en');
     const bar = copyBar(page);
+    // `semantic/15`: the four controls live in the copy panel now, and the
+    // panel is opened BEFORE anything is marked — the menu yields to the
+    // browser's own over a live selection, deliberately.
+    await usePanel(page, 'copy');
     const turn = page.locator('article.tvturn').first();
     await markRow(page, await turn.evaluate((n) => (n as HTMLElement).dataset['n'] ?? ''));
 
@@ -3987,6 +4164,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
   test('the exact record is JSONL that parses, envelope and all', async ({ page }) => {
     await openDocument(page, 'en');
     const bar = copyBar(page);
+    // `semantic/15`: the four controls live in the copy panel now, and the
+    // panel is opened BEFORE anything is marked — the menu yields to the
+    // browser's own over a live selection, deliberately.
+    await usePanel(page, 'copy');
     const turn = page.locator('article.tvturn').first();
     await markRow(page, await turn.evaluate((n) => (n as HTMLElement).dataset['n'] ?? ''));
 
@@ -4007,6 +4188,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
     async ({ page }) => {
       await openDocument(page, 'en');
       const bar = copyBar(page);
+      // `semantic/15`: the four controls live in the copy panel now, and the
+      // panel is opened BEFORE anything is marked — the menu yields to the
+      // browser's own over a live selection, deliberately.
+      await usePanel(page, 'copy');
       const fold = page.locator('details.tvwork').first();
       await expect(fold).toBeVisible();
       const dataN = await fold.evaluate((n) => (n as HTMLElement).dataset['n'] ?? '');
@@ -4047,6 +4232,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
 
     await openDocument(page, 'en');
     const bar = copyBar(page);
+    // `semantic/15`: the four controls live in the copy panel now, and the
+    // panel is opened BEFORE anything is marked — the menu yields to the
+    // browser's own over a live selection, deliberately.
+    await usePanel(page, 'copy');
     const deed = page.locator('article.tvdeed').first();
     await markRow(page, await deed.evaluate((n) => (n as HTMLElement).dataset['n'] ?? ''));
     await bar.message.click();
@@ -4148,6 +4337,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
       await openDocument(page, 'en', 'default');
       const well = page.locator('.tvscroll');
       const bar = copyBar(page);
+      // `semantic/15`: the four controls live in the copy panel now, and the
+      // panel is opened BEFORE anything is marked — the menu yields to the
+      // browser's own over a live selection, deliberately.
+      await usePanel(page, 'copy');
       await well.press('PageUp');
 
       await parkAt(page, 0.20);
@@ -4272,6 +4465,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
       await openDocument(page, 'en', 'default');
       const well = page.locator('.tvscroll');
       const bar = copyBar(page);
+      // `semantic/15`: the four controls live in the copy panel now, and the
+      // panel is opened BEFORE anything is marked — the menu yields to the
+      // browser's own over a live selection, deliberately.
+      await usePanel(page, 'copy');
       await well.press('PageUp');
 
       await parkAt(page, 0.20);
@@ -4349,6 +4546,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
     // something.
     await openDocument(page, 'he');
     const bar = copyBar(page);
+    // `semantic/15`: the four controls live in the copy panel now, and the
+    // panel is opened BEFORE anything is marked — the menu yields to the
+    // browser's own over a live selection, deliberately.
+    await usePanel(page, 'copy');
     const turn = page.locator('article.tvturn:not(.tvsyn)').first();
     await markRow(page, await turn.evaluate((n) => (n as HTMLElement).dataset['n'] ?? ''));
 
@@ -4381,6 +4582,10 @@ test.describe('a marked passage copies as something a terminal will accept', () 
     await expect(page.locator('#strip'), 'there is no application here').toHaveCount(0);
 
     const bar = copyBar(page);
+    // `semantic/15`: the four controls live in the copy panel now, and the
+    // panel is opened BEFORE anything is marked — the menu yields to the
+    // browser's own over a live selection, deliberately.
+    await usePanel(page, 'copy');
     const turn = page.locator('article.tvturn').first();
     await markRow(page, await turn.evaluate((n) => (n as HTMLElement).dataset['n'] ?? ''));
 

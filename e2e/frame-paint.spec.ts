@@ -239,9 +239,40 @@ async function openDocument(page: Page, lang: 'en' | 'he'): Promise<void> {
   await dismissSkew(page);
   await page.locator('.convrow').first().click();
   await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
-  // A session opens at its END with `stickUntil` live; Top is what clears it.
-  await page.locator('button.tvtop').click();
+  /*
+   * A session opens at its END with `stickUntil` live; Top is what clears it.
+   *
+   * **AND SINCE `semantic/15` TOP IS IN THE STEP PANEL**, because the owner
+   * asked for the controls to leave the card. It is opened from the
+   * right-click menu — the reader's own route — and SHUT AGAIN: this file
+   * photographs the edges of boxes INSIDE the well, and a panel left standing
+   * over the well covers the start edge of every one of them. Measured: with
+   * it open, the fence's start edge reported 1.12:1 against a token that is
+   * 3.79:1, which is the panel's own ground and not a defect in the box.
+   */
+  await openStepPanel(page);
+  await page.locator('dialog.mcpanel[data-panel="navigate"] button.tvtop').click();
+  await shutPanels(page);
   await expect(page.locator('.tvscroll')).toContainText('Four edges', { timeout: 20_000 });
+}
+
+/** Open the step panel the way a reader does — the menu's second row. */
+async function openStepPanel(page: Page): Promise<void> {
+  await page.locator('.tvscroll .tvturn').first().click({ button: 'right' });
+  await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
+  await page.locator('.tvmenu .tvmenuitem').nth(1).click();
+  await expect(page.locator('dialog.mcpanel[data-panel="navigate"][open]'))
+    .toHaveCount(1, { timeout: 10_000 });
+}
+
+/** Shut every panel, so nothing floats over the boxes this file photographs. */
+async function shutPanels(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const box of document.querySelectorAll('dialog.mcpanel[open]')) {
+      (box.querySelector('.mcpanelclose') as HTMLElement | null)?.click();
+    }
+  });
+  await expect(page.locator('dialog.mcpanel[open]')).toHaveCount(0);
 }
 
 /**
@@ -740,6 +771,11 @@ for (const lang of ['en', 'he'] as const) {
    */
   test(`the jump control's border, token against paint (${lang})`, async ({ page }) => {
     await openDocument(page, lang);
+    // **THIS ONE PHOTOGRAPHS A CONTROL AND THE CONTROL IS IN THE PANEL.**
+    // Every other test in this file photographs a box inside the well and
+    // shuts the panels for it; this one needs `End` drawn, so it opens the
+    // step panel and leaves it open.
+    await openStepPanel(page);
     // **THE POINTER IS MOVED OFF FIRST, AND IT IS NOT HOUSEKEEPING.**
     // `openDocument` CLICKS Top, so the pointer is left resting on it and
     // `.tvjump:hover{border-color:var(--gold)}` paints that one control
@@ -758,7 +794,7 @@ for (const lang of ['en', 'he'] as const) {
       const active = document.activeElement as HTMLElement | null;
       if (active !== null && active !== document.body) active.blur();
     });
-    await page.locator('.tvbar').evaluate(() => new Promise(
+    await page.locator('dialog.mcpanel[data-panel="navigate"]').evaluate(() => new Promise(
       (done) => { requestAnimationFrame(() => requestAnimationFrame(() => done(null))); }));
 
     // THE REACH, counted in the live document rather than read off a grep.
@@ -783,14 +819,16 @@ for (const lang of ['en', 'he'] as const) {
     expect(bordered.length, 'every .tvjump that keeps a border').toBeGreaterThan(0);
     for (const control of bordered) expect(control.colour).toBe(rgb('#a9a6b8'));
 
-    const jump = page.locator('.tvbar button.tvjump.tvend').first();
+    const jump = page.locator('dialog.mcpanel[data-panel="navigate"] button.tvjump.tvend')
+      .first();
     const box = await jump.boundingBox();
     expect(box).not.toBeNull();
     // **THE GUARD THIS FILE LEARNED THE HARD WAY.** A page clip can only
     // photograph what the viewport holds, and the well's lower half is off
-    // screen. The bar is above the well, so a clip of it is legal — but that is
-    // asserted rather than assumed, because assuming it is what produced a
-    // measured 1.06:1 that was really a fact about a card.
+    // screen. The step panel is `position:fixed` and `clampPlace` keeps it
+    // inside the window, so a clip of it is legal — but that is asserted
+    // rather than assumed, because assuming it is what produced a measured
+    // 1.06:1 that was really a fact about a card.
     const view = page.viewportSize();
     expect(view).not.toBeNull();
     expect(box!.y - 4).toBeGreaterThan(0);
@@ -922,7 +960,23 @@ for (const lang of ['en', 'he'] as const) {
     // it is read off the control rather than assumed -- and it is the first token
     // that clears the bar on the painted ground.
     expect(ratio(rgb('#6e6e7e'), FILL)).toBeGreaterThan(3);
-    expect(ratio(rgb('#6e6e7e'), ground['top']!)).toBeLessThan(3);
+    /*
+     * **AND THE GROUND MOVED WITH THE CONTROL ON 2026-09-17** — `semantic/15`.
+     * `End` stood in `.tvbar` on the card's `--panel`, where `--edge-3`
+     * measured 2.67:1 and that is what made it the token that LOOKS like it
+     * works and does not. The control is in the step panel now, whose ground
+     * is lighter: the same token measures **3.38:1** there.
+     *
+     * The middle rung of the ladder is therefore re-stated rather than
+     * deleted — it recorded a MEASUREMENT, and the measurement changed because
+     * the control moved, not because the reasoning was wrong. What the ruling
+     * turned on is unchanged and is asserted above and below: the boundary a
+     * reader actually meets clears 3, and `--dim` is what delivers it on the
+     * ground it is really painted over.
+     */
+    expect(ratio(rgb('#6e6e7e'), ground['top']!),
+      `--edge-3 on the panel's own ground: ${ratio(rgb('#6e6e7e'), ground['top']!).toFixed(2)}:1`)
+      .toBeGreaterThan(3);
     expect(ratio(rgb('#a9a6b8'), ground['top']!)).toBeGreaterThan(3);
   });
 

@@ -598,6 +598,7 @@ export const strings = {
   // can be stepped to. Twelve marks becoming two must be legible as a filter
   // and not as lost bookmarks.
   'conv.nav.region': 'Step through this conversation',
+  'conv.nav.close': 'Close the navigation panel',
   'conv.nav.h': 'Step to',
   'conv.nav.markPrev': 'Previous mark',
   'conv.nav.markNext': 'Next mark',
@@ -605,11 +606,11 @@ export const strings = {
   'conv.nav.youNext': 'Your next message',
   'conv.nav.marks': '{n} marked point(s) here.',
   'conv.nav.marksNone': 'Nothing is marked in this conversation. Mark a point on any turn below and it becomes a stop here.',
-  'conv.nav.marksHidden': '{n} more are in this conversation and the search above is hiding them — clear it to step to them.',
+  'conv.nav.marksHidden': '{n} more are in this conversation and the search is hiding them — clear it to step to them.',
   'conv.nav.marksDoubled': '{n} of them carry two marks — a turn that is both a table and a helper’s report is one stop here and two rows in the list of marks.',
   'conv.nav.yous': '{n} message(s) of yours here.',
   'conv.nav.yousNone': 'This conversation holds no message of yours. Everything in it came from somewhere else — a helper agent’s brief, or a machine.',
-  'conv.nav.yousHidden': '{n} more are in this conversation and the search above is hiding them — clear it to step to them.',
+  'conv.nav.yousHidden': '{n} more are in this conversation and the search is hiding them — clear it to step to them.',
   'conv.nav.atMark': 'Marked point {n} of {total}:',
   'conv.nav.atYou': 'Your message {n} of {total}.',
   'conv.nav.markLast': 'Nothing is marked after this point. This is the last mark in the conversation, and it is still where you are.',
@@ -624,10 +625,41 @@ export const strings = {
   'conv.nav.foundsIdle': 'Nothing is being looked for yet.',
   'conv.nav.foundsNone': 'No turn here holds what you typed.',
   'conv.nav.foundsUnreached': '{n} more hold it further down the file than this page could read.',
-  'conv.nav.atFound': 'Match {n} of {total}.',
+  // ── WHAT THE FOUND WALK ACTUALLY STEPS THROUGH IS TURNS — `semantic/14`.
+  // `foundStops()` is one stop per TURN and `showMatch` lands on the FIRST
+  // match inside it, so a turn holding four occurrences is one stop and the
+  // other three cannot be reached by these buttons. This said *"Match {n} of
+  // {total}"* over a total that was turns, beside a panel reporting 40 turns
+  // and 56 times — one word claiming a walk the feature does not have.
+  'conv.nav.atFound': 'Turn {n} of {total} that holds what you typed.',
+  // ── "1 of 15", which the owner asked for by name on 2026-09-17. The place
+  // the walk is up to, which is a fact about the reader rather than about the
+  // transcript, and it names what it counts for the reason above.
+  'conv.nav.place': 'You are on {n} of the {total} turns that hold it.',
+  'conv.nav.placeIdle': 'Press Next match to walk them.',
+  // ── THE SAME TWO SENTENCES FOR THE OTHER TWO WALKS — `semantic/12`, owner
+  // 2026-09-17: *"apply the same behaviour of highliting the current for Marks
+  // and Messages as navigation standard behaviour"*. One `drawPlace`, three
+  // callers, and three sentences rather than one with the noun swapped: a
+  // count whose subject is only knowable from what sits beside it changes
+  // meaning the day that thing moves — and these move into a floating panel.
+  'conv.nav.placeMarks': 'You are on {n} of the {total} marked points here.',
+  'conv.nav.placeIdleMarks': 'Press Next mark to walk them.',
+  'conv.nav.placeYous': 'You are on {n} of the {total} messages of yours here.',
+  'conv.nav.placeIdleYous': 'Press Your next message to walk them.',
   'conv.nav.foundLast': 'Nothing after this point holds what you typed. This is the last match, and it is still where you are.',
   'conv.nav.foundFirst': 'Nothing before this point holds what you typed. This is the first match, and it is still where you are.',
-  'conv.nav.noFounds': 'There is nothing to step to. Type in the find box above first.',
+  'conv.nav.noFounds': 'There is nothing to step to. Type in the find box first.',
+  // ── A SCAN THAT REFUSED IS NOT A SCAN THAT FOUND NOTHING — `semantic/14`,
+  // and the owner's own report: *"the next match and preious match stopped
+  // working after the first use that was correct"*. Driven on a current
+  // server the stepper is correct; driven against a server older than the
+  // page — which is his, and which this product creates for itself because
+  // the assets reload and the server's modules do not — the find request is
+  // a 400, the walk has no stops, and these two sentences were claiming a
+  // measured zero over a query that holds forty turns.
+  'conv.nav.foundsUnknown': 'This search could not be answered, so nothing here has been looked at.',
+  'conv.nav.noFoundsFailed': 'There is nothing to step to because this search could not be answered — not because nothing was found.',
   'conv.nav.kindLabel': 'Which kind of marked point to step through',
   'conv.nav.kindAny': 'Marked points of every kind',
   'conv.nav.marksKind': '{n} marked point(s) here of one kind — {kind}.',
@@ -639,7 +671,7 @@ export const strings = {
   'conv.menu.region': 'What you can do with this turn',
   'conv.menu.hint': 'Right-click any turn below for what you can do to it, or press {m:Shift+F10} to open the same menu from the keyboard. Every button here says its own key.',
   'conv.menu.kinds': 'Step only through —',
-  'conv.menu.noRow': 'There is no turn on screen to mark. The search above is hiding all of them — clear it, and the key works again.',
+  'conv.menu.noRow': 'There is no turn on screen to mark. The search is hiding all of them — clear it, and the key works again.',
   // ── THE SEARCH PANEL ─────────────────────────────────────────────────
   //
   // `TASK-the-find-options-the-owner-asked-for-twice-in-a-floating`,
@@ -654,7 +686,7 @@ export const strings = {
   'conv.find.h': 'Search this conversation',
   'conv.find.open': 'Search in this conversation',
   'conv.find.close': 'Close the search panel',
-  'conv.find.hint': 'Drag this panel by its title to put it where you want it. It stays where you leave it, it stays open while you read, and it closes on its own button or on Escape.',
+  'conv.panel.hint': 'Drag this panel by its title to put it where you want it. It stays where you leave it, it stays open while you read, and it closes on its own button or on Escape.',
   'conv.find.moved': 'The find box and the match stepper are in the search panel while it is open.',
   'conv.find.modes': 'How to read what you typed',
   'conv.find.options': 'Both of these apply whichever of the four you choose',
@@ -718,6 +750,70 @@ export const strings = {
   'conv.find.egR2': 'Anything shaped like an address.',
   'conv.find.egR3': 'A date. Its groups are repeated no number of times at all, so this is not the shape that is refused.',
   'conv.find.egR4': 'And the shape that IS refused — click it to read why, in the panel.',
+  // ── FIVE MORE EXAMPLES AND A SYNTAX REFERENCE — `semantic/14`, and his own
+  // words after using what `semantic/11` shipped: *"about regex - add more
+  // examples and also add a full syntax help because it is complicated and
+  // hard to remember"*.
+  //
+  // Fifteen worked examples already shipped and he asked anyway, so what was
+  // missing is not another example — it is a LOOKUP TABLE. The five examples
+  // added here are the five constructs of that table a reader is least likely
+  // to get right from memory, and every one of them was run against his own
+  // archive before it was written down.
+  //
+  // NO `}` INSIDE AN `{m:…}` RUN in any of these: `lib/i18n.js` ends such a run
+  // at the first `}`, so a construct carrying a brace lives in the reference's
+  // left column, which is a code literal in `screens/conversations.js` and not
+  // a string at all.
+  'conv.find.egW5': 'Every browser test this project has — a fixed head and a fixed tail with one star between them.',
+  'conv.find.egL5': 'Brackets group, so this is either of the first two words, and then the third one as well.',
+  'conv.find.egR5': 'The same timings as the example above it, with only the NUMBER coloured: what is inside a look-ahead is tested and never painted.',
+  'conv.find.egR6': 'Every number this session printed with a thousands separator. The inner group does not remember what it matched, which is what {m:(?:} is for.',
+  'conv.find.egR7': 'A Markdown heading — and the proof that {m:^} is the start of a TURN here: one match per turn, never one per line.',
+  'conv.find.egR8': 'Every run of Hebrew, written as a range between two character numbers.',
+  'conv.find.egR9': 'A word typed twice in a row. {m:\\1} is the same text the first group matched.',
+  'conv.find.scanFailed': 'This search could not be answered, so nothing was searched for and no number below is a count of anything. If this page was updated while the server was running, the server is older than the page and does not understand what this panel asked it: stop it and start it again with {m:mycontext ui}.',
+  'conv.find.ref': 'Full regular-expression syntax — every construct in one table',
+  'conv.find.refChars': 'Characters',
+  'conv.find.refLit': 'The characters themselves. A letter or a digit means only itself.',
+  'conv.find.refDot': 'Any one character except a line break. For any character at all, including a line break, write {m:[\\s\\S]}.',
+  'conv.find.refEsc': 'A backslash makes the next character ordinary, so this one is a full stop and not “any character”.',
+  'conv.find.refEscList': 'Each of these means something in a pattern, so each needs a backslash in front of it to mean itself. A letter, a digit or a space never does.',
+  'conv.find.refWhite': 'A tab, and a line break.',
+  'conv.find.refUni': 'A character by its number — this one is {m:א}. Above four digits, write the number in braces after {m:\\u}.',
+  'conv.find.refClasses': 'One character out of a set',
+  'conv.find.refSet': 'Any ONE of the characters between the brackets. Most punctuation loses its meaning in there.',
+  'conv.find.refNotSet': 'Any one character that is NOT one of them. {m:^} has this meaning only as the first thing inside the brackets.',
+  'conv.find.refRange': 'Any one character in the range, counted by number. {m:[\\u0590-\\u05ff]} is any one Hebrew letter.',
+  'conv.find.refDigit': 'A digit, and anything that is not a digit.',
+  'conv.find.refWord': 'A letter, a digit or {m:_}, and anything that is not one. It knows Latin letters only — a Hebrew letter is not a {m:\\w}.',
+  'conv.find.refSpace': 'A space, a tab or a line break, and anything that is not one.',
+  'conv.find.refProp': 'Any letter, and any number, in ANY alphabet — this is the pair that knows Hebrew. It needs the pattern to be read one character at a time, which is the ordinary case here.',
+  'conv.find.refCount': 'How many of the thing before it',
+  'conv.find.refStar': 'None or more of the thing before it, so it can also match nothing at all.',
+  'conv.find.refPlus': 'One or more.',
+  'conv.find.refOpt': 'None or one — the thing before it is optional.',
+  'conv.find.refExactly': 'Exactly three of them.',
+  'conv.find.refBetween': 'Two, three or four of them.',
+  'conv.find.refOrMore': 'Two or more. This is the unbounded one, and it is what the last row of this table looks for.',
+  'conv.find.refLazy': 'A {m:?} after any of the five above asks for as FEW as possible. Between two quotation marks the greedy form takes the longest run and this one the shortest.',
+  'conv.find.refWhere': 'Where in the turn',
+  'conv.find.refCaret': 'The start of the TURN, not of a line. This search reads one turn of words at a time and never turns the multi-line flag on, so a turn has exactly one start.',
+  'conv.find.refDollar': 'The end of the turn, for the same reason.',
+  'conv.find.refBound': 'A word boundary, and anywhere that is not one. With it, {m:cat} stops finding {m:category}.',
+  'conv.find.refGroups': 'Groups, choices and what stands next to them',
+  'conv.find.refAlt': 'One side or the other. The brackets also make a group, which is a thing you can repeat and refer back to.',
+  'conv.find.refNonCap': 'A group that does NOT remember what it matched — it groups and nothing else, and it takes no number.',
+  'conv.find.refBack': 'The same text the first group matched, again. {m:\\b(\\w+) \\1\\b} finds a word typed twice in a row.',
+  'conv.find.refAhead': 'Followed by, and not followed by. What is inside is tested and never coloured: {m:\\d+(?= ms)} colours the number and leaves the unit alone.',
+  'conv.find.refBehind': 'Preceded by, and not preceded by. Tested and never coloured, exactly as above.',
+  'conv.find.refHere': 'What THIS search does with a pattern',
+  'conv.find.refCase': 'Off, a pattern is read without regard to case. Ticking the box is the only way to turn that on — there is no letter to type.',
+  'conv.find.refWhole': 'Applies ON TOP of the pattern: with it ticked, every match must still begin and end at a word boundary.',
+  'conv.find.refTurn': 'The unit is one turn of words. A pattern can never reach out of the turn it is reading, whatever it says — so {m:^} and {m:$} are that turn’s ends and {m:.} never crosses a line break.',
+  'conv.find.refUnits': 'The pattern is read one character at a time. A pattern this browser will not read that way is read one UTF-16 unit at a time instead, which can cut an emoji in half — and the panel says so when it happens.',
+  'conv.find.refNoFlags': 'There are no flag letters to type here. Multi-line and dot-matches-everything are not offered: a turn has one start and one end, and {m:[\\s\\S]} is the spelling for any character at all.',
+  'conv.find.refRefused': 'REFUSED BEFORE ANYTHING IS READ: a group that repeats and whose body itself repeats without a bound — {m:(a+)+}, {m:(a*)*}, {m:(\\w+\\s?)+}. One of those took 108,785 ms inside a SINGLE turn of this archive and had to be abandoned, and no time limit can stop it, so it is refused instead of run. The refusal is narrow: {m:(foo|bar)+} and {m:[\\w.-]+@[\\w.-]+} both run, and so does a group repeated a bounded number of times.',
   'conv.find.matchHere': 'The match you are on',
   'conv.keys.on': 'Keyboard shortcut: {mv:key}',
   // A PAIR of keys on one control, for the kind filter — `TASK-stepping-to-
@@ -734,6 +830,27 @@ export const strings = {
   'conv.doc.findCapped': 'This transcript holds more turns of words than one search may read, so only the first {cap} were searched.',
   'conv.doc.findUnreached': '{n} more hold it further down the file than this page could read.',
   'conv.doc.findNoPaint': 'This browser cannot colour matches without rewriting the page, so nothing below is highlighted. Every number on this line is still true.',
+  // ── THE CARD'S OWN DISCLOSURE — `semantic/15` §3 ─────────────────────────
+  //
+  // Three clauses that only ever appear on the line under "Back to all
+  // sessions", and only while what they say is true. They are NOT copies of
+  // `conv.nav.marksHidden` / `conv.nav.yousHidden`: those two sit beside the
+  // walk's own count inside the step panel and lean on it ("{n} MORE are in
+  // this conversation"), and a line standing alone on the card has to name
+  // what it is counting or it counts nothing a reader can identify.
+  'conv.doc.hidingMarks': 'The search is also hiding {n} marked point(s) — clear it to step to them.',
+  'conv.doc.hidingYous': 'It is hiding {n} message(s) of yours — clear it to step to them.',
+  // The kind filter is not "hidden" in `markStops`' sense — the reader chose
+  // it — but with every panel shut nothing else on the screen would say the
+  // mark walk had been narrowed, and K narrows it from the keyboard.
+  'conv.doc.hidingKind': 'Stepping through marks is narrowed to {kind}; marks of every other kind are not stops.',
+  // ── THE EXPAND CONTROL — `semantic/15` §5 ────────────────────────────────
+  //
+  // The same two states `aria.panefloat` names for the item pane, which is the
+  // pattern the owner pointed at. One control, two labels, because the control
+  // that expands is the control that restores.
+  'conv.doc.wide': 'Show the viewer on the whole screen',
+  'conv.doc.narrow': 'Put the rest of the console back',
   'conv.doc.follows': 'This session may still be being written. New turns are looked for every second while this tab is in front, and at once when you come back to it.',
   // What the follow line says on a copy. It replaces the sentence above
   // rather than being hidden: a document that says nothing about following
@@ -809,11 +926,18 @@ export const strings = {
   // Copying a marked passage — three forms, each NAMED BY WHAT IT IS FOR.
   // "A menu offering text / rendered / raw makes a reader guess; one offering
   // paste into a prompt / paste as it looks / the exact record does not."
-  'conv.copy.h': 'Copy what you have marked:',
+  'conv.copy.h': 'Copy what you have marked',
+  'conv.copy.close': 'Close the copy panel',
   'conv.copy.msg': 'to paste into a prompt',
   'conv.copy.seen': 'to paste as it looks',
   'conv.copy.raw': 'the exact record',
-  'conv.copy.hint': 'Mark part of the document below, then copy it. The first is the one to reach for: it is the text as the record holds it, with no page formatting in it, and a command comes out as the command.',
+  'conv.copy.hint': 'Mark part of the document below, then copy it. Right-click any turn for the copy panel, which says what each of these takes.',
+  'conv.copy.need': 'Three of these need a marked passage, and nothing is marked yet — which is why they are grey. Drag across any part of the document below: this panel stays open while you do it, and they come alive.',
+  'conv.copy.sayMsg': 'The text as the record holds it, with no page formatting in it, and a command comes out as the command. This is the one to reach for.',
+  'conv.copy.saySeen': 'The browser’s own text for what is on the screen. It can carry direction marks you cannot see and spacing the page collapsed.',
+  'conv.copy.sayRaw': 'The bytes of the transcript file itself, between the two offsets your passage spans. Nothing is re-rendered, and a record is taken whole or not at all.',
+  'conv.copy.notCopy': 'And one that is not a copy —',
+  'conv.copy.sayRecall': 'It puts nothing on the clipboard and sends nothing. It fills the reconstruct panel at the foot of this document with what you marked, and takes you to it.',
   'conv.copy.empty': 'Nothing is marked in the document, so there was nothing to copy.',
   'conv.copy.turn': 'A turn',
   'conv.copy.notTyped': 'nobody typed this',

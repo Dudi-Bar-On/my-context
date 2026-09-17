@@ -1,5 +1,7 @@
 // @basis TASK-the-find-options-the-owner-asked-for-twice-in-a-floating,
 // TASK-the-find-panel-offers-regular-expressions-and-no-help-and,
+// TASK-the-find-panel-s-counts-move-as-you-type-and-the-regex-mode,
+// DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn,
 // INV-nothing-is-dropped-silently,
 // REQ-the-conversation-archive-is-a-terminal-you-can-scroll-not-a
 /**
@@ -160,6 +162,22 @@ async function openDocument(page: Page, lang: 'en' | 'he'): Promise<void> {
   await dismissSkew(page);
 }
 
+/**
+ * **THIS PANEL, BY NAME** — `semantic/12` and `semantic/13`.
+ *
+ * `dialog.mcpanel` addressed exactly one element while search was the frame's
+ * only caller. There are three now, so every locator below that evaluates ONE
+ * element says WHICH, through the `data-panel` handle `createPanel` has
+ * always written for exactly this. Six tests in this file went strict-mode
+ * red the moment the navigation panel mounted, which is the handle earning
+ * its place rather than a cost of the new panels.
+ *
+ * `dialog.mcpanel[open]` is left alone wherever it COUNTS rather than
+ * evaluates: "how many panels are open" is still the question those
+ * assertions ask, and the answer is still one.
+ */
+const SEARCH = 'dialog.mcpanel[data-panel="search"]';
+
 /** Open the panel the way a reader does: right-click, then the Search row. */
 async function openPanel(page: Page): Promise<void> {
   await page.locator('.tvrow .tvsaid').first().click({ button: 'right' });
@@ -167,12 +185,20 @@ async function openPanel(page: Page): Promise<void> {
   // Named by its keyboard shortcut rather than by its words, so this test is
   // the same test in both languages.
   await page.locator('.tvmenu .tvmenuitem[aria-keyshortcuts="/"]').click();
-  await expect(page.locator('dialog.mcpanel[open]')).toHaveCount(1, { timeout: 10_000 });
+  await expect(page.locator(`${SEARCH}[open]`)).toHaveCount(1, { timeout: 10_000 });
 }
 
-/** Type into the find box and wait past the 250 ms settle and the scan. */
+/**
+ * Type into the find box and wait past the 250 ms settle and the scan.
+ *
+ * **`semantic/15` GAVE THE BOX ONE HOME.** It was borrowed out of `.tvbar`
+ * while this panel was open and put back when it shut; the owner then asked
+ * for the controls to leave the card altogether, so the panel is opened first
+ * — which is what a reader does, and what `/` does for them.
+ */
 async function find(page: Page, query: string): Promise<void> {
-  await page.locator('.tvfind').fill(query);
+  if (await page.locator(`${SEARCH}[open]`).count() === 0) await openPanel(page);
+  await page.locator(`${SEARCH} .tvfind`).fill(query);
   await page.waitForTimeout(2_500);
 }
 
@@ -213,7 +239,7 @@ for (const lang of ['en', 'he'] as const) {
   test(`the panel opens from the right-click menu and leaves the viewer live (${lang})`, async ({ page }) => {
     await openDocument(page, lang);
     await openPanel(page);
-    const panel = page.locator('dialog.mcpanel');
+    const panel = page.locator(SEARCH);
 
     /*
      * **`show()` AND NEVER `showModal()`.** *"stays on screen while you can
@@ -239,37 +265,56 @@ for (const lang of ['en', 'he'] as const) {
       'and the panel is still there after the page behind it moved').toHaveCount(1);
   });
 
-  /* ══ 2 — THE BAR SHRINKS AS THE PANEL FILLS ══════════════════════════════ */
+  /* ══ 2 — THERE IS NO STRIP LEFT TO SHRINK ════════════════════════════════ */
 
-  test(`the strip gives its room back when the panel takes the controls (${lang})`, async ({ page }) => {
+  test(`the panel owns the find box and the card carries no strip at all (${lang})`, async ({ page }) => {
     await openDocument(page, lang);
-    const box = async (selector: string): Promise<number> =>
-      page.locator(selector).evaluate((el) => el.getBoundingClientRect().height);
     const chrome = async (): Promise<number> => page.evaluate(() => {
-      const bar = document.querySelector('.tvbar')!.getBoundingClientRect();
+      const head = document.querySelector('.tvhead')!.getBoundingClientRect();
       const well = document.querySelector('.tvscroll')!.getBoundingClientRect();
-      return well.top - bar.top;
+      return Math.round((well.top - head.top) * 10) / 10;
     });
 
+    /*
+     * **THE ITEM'S ACCEPTANCE TEST WAS *"if it does not shrink, the change has
+     * not landed"* AND `semantic/15` RETIRED THE QUESTION.** The owner looked
+     * at the result of the lend and pointed out that with every panel SHUT the
+     * card had not shrunk at all, because the controls came back. So the
+     * measurement is now taken with nothing open, and what it measures is that
+     * the strips do not exist.
+     */
+    const idle = await chrome();
+    console.log(`[card ${lang}] chrome above the viewer, panel shut: ${idle}px`);
+    expect(await page.locator('.tvbar').count(), 'the button bar is still on the card').toBe(0);
+    expect(await page.locator('.tvnav').count(), 'the stepper strip is still on the card').toBe(0);
+
     await find(page, 'byte offset');
-    const before = { nav: await box('.tvnav'), bar: await box('.tvbar'), chrome: await chrome() };
-    await openPanel(page);
-    await page.waitForTimeout(500);
-    const after = { nav: await box('.tvnav'), bar: await box('.tvbar'), chrome: await chrome() };
-    console.log(`[strip ${lang}] before ${JSON.stringify(before)} after ${JSON.stringify(after)}`);
-
-    // The item's own acceptance test, in its own words: *"if it does not
-    // shrink, the change has not landed."*
-    expect(after.nav, 'the stepper strip did not shrink').toBeLessThan(before.nav);
-    expect(after.bar, 'the button bar did not shrink').toBeLessThan(before.bar);
-    expect(after.chrome, 'the chrome above the viewer did not shrink').toBeLessThan(before.chrome);
-
     // And the controls are in the panel rather than merely gone, which is the
     // half a "did it shrink" assertion cannot tell apart from a broken build.
-    const panel = page.locator('dialog.mcpanel');
-    for (const which of ['.tvfind', '.tvnavfounds', 'p.tvcount']) {
+    const panel = page.locator(SEARCH);
+    for (const which of ['.tvfind', '.tvnavfounds', '.mcpanelclear']) {
       expect(await panel.locator(which).count(), `${which} is not in the panel`).toBe(1);
     }
+    /*
+     * **AND THE COUNT SENTENCE IS NOT AMONG THEM, WHICH IS `semantic/15` §3.**
+     * `p.tvcount` is a DISCLOSURE — it says what a search is holding back —
+     * and a disclosure legible only while a panel happens to be open is the
+     * defect the lend existed to prevent, arriving by the other door. It is on
+     * the card, under *"Back to all sessions"*, and it is up right now because
+     * the query above is hiding sections.
+     */
+    expect(await panel.locator('p.tvcount').count(),
+      'the disclosure was moved into the panel a reader may have shut').toBe(0);
+    await expect(page.locator('.tvroot > p.tvcount'),
+      'the search is hiding sections and the card says nothing about it').toBeVisible();
+    // The card grew to hold it, and the well gave the room up — which is the
+    // outer-scroll fix working rather than the page overflowing.
+    expect(await chrome(), 'the disclosure was drawn with no room made for it')
+      .toBeGreaterThan(idle);
+    expect(await page.evaluate(() => {
+      const b = document.querySelector('.body')!;
+      return b.scrollHeight <= b.clientHeight + 2;
+    }), 'the card grew the page past the window instead of taking it from the well').toBe(true);
   });
 
   /* ══ 3 — DRAG, CLOSE, REOPEN WHERE IT WAS LEFT ═══════════════════════════ */
@@ -277,7 +322,7 @@ for (const lang of ['en', 'he'] as const) {
   test(`the panel drags, closes on its own button, and reopens where it was left (${lang})`, async ({ page }) => {
     await openDocument(page, lang);
     await openPanel(page);
-    const panel = page.locator('dialog.mcpanel');
+    const panel = page.locator(SEARCH);
     const at = async (): Promise<{ left: number; top: number }> =>
       panel.evaluate((d) => {
         const b = d.getBoundingClientRect();
@@ -285,7 +330,7 @@ for (const lang of ['en', 'he'] as const) {
       });
 
     const start = await at();
-    const grip = await page.locator('.mcpanelhead').boundingBox();
+    const grip = await page.locator(`${SEARCH} .mcpanelhead`).boundingBox();
     expect(grip).not.toBeNull();
     // A real pointer drag. `mouse.move` with steps, so `pointermove` fires
     // more than once and a handler that only reads the last event is caught.
@@ -317,11 +362,18 @@ for (const lang of ['en', 'he'] as const) {
     expect(dragged.top).toBe(start.top + 90);
 
     // **CLOSED ON ITS OWN BUTTON, AS A STANDARD WINDOW** — his words.
-    await page.locator('.mcpanelclose').click();
+    await page.locator(`${SEARCH} .mcpanelclose`).click();
     await expect(page.locator('dialog.mcpanel[open]')).toHaveCount(0);
-    // Everything it borrowed goes home, whatever route closed it.
-    expect(await page.locator('.tvbar .tvfind').count(), 'the find box did not go back').toBe(1);
-    expect(await page.locator('.tvnav .tvnavfounds').count()).toBe(1);
+    /*
+     * **AND NOTHING GOES HOME, BECAUSE THERE IS NOWHERE TO GO** —
+     * `semantic/15`. This asserted the restore until 2026-09-17; it asserts
+     * the opposite contract now, rather than being deleted, because a control
+     * escaping onto the card would otherwise go unnoticed.
+     */
+    expect(await page.locator(`${SEARCH} .tvfind`).count(),
+      'the find box left the panel when it closed').toBe(1);
+    expect(await page.locator('.tvroot > .tvfind').count(),
+      'the find box came back out onto the card').toBe(0);
     // And the caret is not on the body, which is the 47-tab-stop defect this
     // screen has already been repaired for once.
     expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY');
@@ -343,7 +395,7 @@ for (const lang of ['en', 'he'] as const) {
      */
     await page.keyboard.press('Escape');
     await expect(page.locator('dialog.mcpanel[open]')).toHaveCount(0);
-    expect(await page.locator('.tvbar .tvfind').count()).toBe(1);
+    expect(await page.locator(`${SEARCH} .tvfind`).count()).toBe(1);
 
     // And the key still means what it meant with the panel shut: `confirm/5`
     // bound it on the rename box and `app.js` on the item pane, and this is a
@@ -716,16 +768,28 @@ for (const lang of ['en', 'he'] as const) {
      * panel is put where the defect lives: as far down as the frame's own
      * clamp allows, which is `KEEP_VISIBLE_PX` from the bottom.
      */
-    const grip = await page.locator('.mcpanelhead').boundingBox();
+    const grip = await page.locator(`${SEARCH} .mcpanelhead`).boundingBox();
     expect(grip).not.toBeNull();
+    /*
+     * **AIMED AT A FRACTION OF THE WINDOW, NOT MOVED BY A FIXED 260 px** —
+     * `semantic/15`. The panel opens at the top of the WELL now rather than
+     * under a strip of controls, and the strip was ~199 px tall, so a fixed
+     * delta lands the panel somewhere else than it used to and the bound it is
+     * measured against (`calc(100vh - top - 1rem)`) moves with it. Aiming at
+     * 55% of the window says what the drag is FOR — put the panel where its
+     * own bottom is the thing at risk — in a way a layout change cannot
+     * silently repoint.
+     */
+    const seat = page.viewportSize();
+    expect(seat).not.toBeNull();
     await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
     await page.mouse.down();
-    await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2 + 260,
+    await page.mouse.move(grip!.x + grip!.width / 2, Math.round(seat!.height * 0.55),
       { steps: 8 });
     await page.mouse.up();
     await page.waitForTimeout(400);
 
-    const fits = await page.locator('dialog.mcpanel').evaluate((d) => {
+    const fits = await page.locator(SEARCH).evaluate((d) => {
       const box = d.getBoundingClientRect();
       return { top: Math.round(box.top), bottom: Math.round(box.bottom),
         height: Math.round(box.height),
@@ -815,5 +879,655 @@ for (const lang of ['en', 'he'] as const) {
       'the engine message must still be a value slot').toBeGreaterThan(0);
     expect(await page.locator('.mcnoterebad .v[data-num]').count(),
       'a sentence was marked as a number').toBe(0);
+  });
+
+  /* ══ 12 — THE COUNTS HAVE ONE PLACE AND DO NOT MOVE ══════════════════════ */
+
+  test(`the counts sit under the find box and stay there whatever else changes (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    /*
+     * **THE OWNER, 2026-09-17:** *"pleaes put the counts it a statis place up
+     * under the edit search expression"*. They were the LAST two things in
+     * the panel, under four groups of controls that each change height as the
+     * reader works — so they slid down the panel as he typed.
+     *
+     * **WHAT IS ASSERTED IS THAT THE TOP DOES NOT MOVE**, not that the block
+     * is in position 2 of a list. An order assertion would pass on a build
+     * where something above it grew; this one is the reader's own complaint,
+     * written down.
+     */
+    const top = async (selector: string): Promise<number> => page.locator(selector)
+      .evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    const panelTop = await top(SEARCH);
+
+    await find(page, 'byte');
+    /*
+     * **`p.tvcount` LEFT THIS BLOCK ON 2026-09-17** — `semantic/15` §3. It is
+     * a disclosure and the owner ruled that it belongs under *"Back to all
+     * sessions"*, drawn only when a filter is actually hiding something. What
+     * he asked for HERE is unchanged and is what is still measured: the
+     * numbers he watches keep one top whatever the panel below them does. The
+     * card's own line gets the same assertion in its own place, below.
+     */
+    const first = { counts: await top('.mcpanelcounts'),
+      stepper: await top('.mcpanelcounts .tvnavfounds'),
+      sentence: await top('.tvroot > p.tvcount') };
+    console.log(`[counts ${lang}] panel ${panelTop} ${JSON.stringify(first)}`);
+
+    // Directly under the box, which is the other half of his sentence: the
+    // only thing between the panel's own header and this block is the field.
+    const boxBottom = await page.locator(`${SEARCH} .tvfind`)
+      .evaluate((el) => Math.round(el.getBoundingClientRect().bottom));
+    expect(first.counts - boxBottom,
+      'the counts are not directly under the find box').toBeLessThan(24);
+
+    /*
+     * Now change every one of the four things that used to push them down: a
+     * mode (which draws two or three sentences of its own), an option (one
+     * more), the help (nine examples), and a query long enough to make the
+     * count sentence wrap differently.
+     */
+    await mode(page, 'logical');
+    await option(page, 'mcoptcase', true);
+    await page.locator('.mcpanelhelp summary').click();
+    await page.waitForTimeout(400);
+    await find(page, 'byte OR question OR nothing');
+
+    const after = { counts: await top('.mcpanelcounts'),
+      stepper: await top('.mcpanelcounts .tvnavfounds'),
+      sentence: await top('.tvroot > p.tvcount') };
+    console.log(`[counts ${lang}] after ${JSON.stringify(after)}`);
+    expect(after.counts, 'the count block moved when the panel below it grew')
+      .toBe(first.counts);
+    expect(after.stepper, 'the stepper moved').toBe(first.stepper);
+    /*
+     * **AND WHAT IS PINNED FOR THE SENTENCE, SAID EXACTLY.** The stepper is
+     * above it because `.tvnavfounds` holds only short lines and `p.tvcount`
+     * wraps to between one and four; the other order lets the long one push
+     * the short ones about, which is the defect wearing different clothes.
+     *
+     * The sentence's own top is pinned against everything BELOW the block —
+     * which is what the owner reported — and not against the stepper's own
+     * text changing: *"This search could not be answered…"* is two lines where
+     * *"40 turn(s) here hold what you typed."* is one, and no order of these
+     * three elements makes a sentence that grew by a line not move what is
+     * under it. One line of slack is the honest bound; this reddens at 23 px
+     * on a build where the notes were above the counts, which is the
+     * measurement it exists for.
+     */
+    expect(Math.abs(after.sentence - first.sentence),
+      'the count sentence moved by more than the line its neighbour gained')
+      .toBeLessThanOrEqual(30);
+  });
+
+  /* ══ 13 — AND THE NUMBERS IN THEM ARE `--carry`, WHICH ALREADY MEANS THIS ═ */
+
+  test(`the find counts are drawn in the meaning-hue blue and clear the contrast gate (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    await find(page, 'byte offset');
+    /*
+     * *"it would be nice to see them in blue so they would be more
+     * observable"*. `--carry` is the blue in the five-hue budget
+     * (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`) and
+     * it already means "this is a FACT — an unlevelled value", which is
+     * exactly what a match count is. So this asserts the hue is the TOKEN and
+     * not a literal: a build that spent a sixth colour on this would redden
+     * here even if it looked identical.
+     */
+    const carry = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--carry').trim());
+    expect(carry, 'the token this rests on is gone').not.toBe('');
+
+    const measured = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 4; canvas.height = 4;
+      const c2 = canvas.getContext('2d')!;
+      const paint = (layers: string[]): number[] => {
+        c2.clearRect(0, 0, 4, 4);
+        for (const colour of layers) { c2.fillStyle = colour; c2.fillRect(0, 0, 4, 4); }
+        const d = c2.getImageData(1, 1, 1, 1).data;
+        return [d[0]!, d[1]!, d[2]!];
+      };
+      const lum = (rgb: number[]): number => {
+        const c = rgb.map((v) => {
+          const s = v / 255;
+          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+        });
+        return (0.2126 * c[0]!) + (0.7152 * c[1]!) + (0.0722 * c[2]!);
+      };
+      const ground = (el: Element): number[] => {
+        const layers: string[] = [];
+        let node: Element | null = el;
+        while (node !== null && node !== document.documentElement) {
+          const bg = getComputedStyle(node).backgroundColor;
+          if (bg !== 'rgba(0, 0, 0, 0)') layers.unshift(bg);
+          node = node.parentElement;
+        }
+        layers.unshift(getComputedStyle(document.documentElement).backgroundColor);
+        return paint(layers.filter((l) => l !== 'rgba(0, 0, 0, 0)'));
+      };
+      // `p.tvcount` is on the CARD since `semantic/15` — see §3 of that item.
+      // The ground it is measured against moved with it, which is exactly why
+      // this probe walks the ancestors rather than naming a token.
+      const numeral = document.querySelector('.tvroot > p.tvcount .v[data-num]');
+      const sentence = document.querySelector('.tvroot > p.tvcount');
+      if (numeral === null || sentence === null) return null;
+      const bg = ground(numeral);
+      const fg = paint([getComputedStyle(numeral).color]);
+      const a = lum(fg); const b = lum(bg);
+      return {
+        numeral: getComputedStyle(numeral).color,
+        sentence: getComputedStyle(sentence).color,
+        token: paint([getComputedStyle(document.documentElement)
+          .getPropertyValue('--carry').trim()]),
+        rgb: fg,
+        ratio: Number(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)).toFixed(2)),
+      };
+    });
+    expect(measured, 'no marked numeral in the count line').not.toBeNull();
+    console.log(`[blue ${lang}] ${JSON.stringify(measured)}`);
+    expect(measured!.rgb, 'the count is not drawn in --carry').toEqual(measured!.token);
+    /*
+     * **THE CONTRAST GATE IS REAL ON THIS PROJECT** — `--crit` was refused on
+     * a surface at a measured 4.06:1. This is the same measurement, taken on
+     * the panel's real ground, which is `--panel-2` at 94% over the page.
+     */
+    expect(measured!.ratio, 'the blue does not clear AA on the panel ground')
+      .toBeGreaterThanOrEqual(4.5);
+    /*
+     * **AND THE CONTROL, WHICH IS WHAT MAKES THIS A PROOF.** A build that
+     * coloured the whole count LINE would satisfy every line above. The
+     * sentence around the number keeps the ink it had: the hue marks the
+     * quantity, exactly as the weight does, and a blue sentence would be a
+     * hue spent on prose.
+     */
+    expect(measured!.sentence, 'the sentence went blue too, not only the number')
+      .not.toBe(measured!.numeral);
+  });
+
+  /* ══ 14 — THE REGULAR-EXPRESSION REFERENCE ═══════════════════════════════ */
+
+  test(`the pattern mode has a syntax reference that says what is refused (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    /*
+     * *"add a full syntax help because it is complicated and hard to
+     * remember"*. Fifteen worked examples already shipped and he asked
+     * anyway, so what this adds is a LOOKUP TABLE rather than a sixteenth
+     * example.
+     */
+    const reference = page.locator('.mcpanelref');
+    await expect(reference,
+      'the reference is drawn for a mode that cannot read a line of it').toBeHidden();
+    await mode(page, 'wildcard');
+    await expect(reference).toBeHidden();
+    await mode(page, 'logical');
+    await expect(reference).toBeHidden();
+    await mode(page, 'regex');
+    await expect(reference, 'the pattern mode has no reference').toBeVisible();
+
+    await expect(reference, 'the reference is open before it is asked for')
+      .not.toHaveAttribute('open', /.*/);
+    await reference.locator('summary').click();
+    await expect(reference).toHaveAttribute('open', /.*/);
+
+    // Every section the item names, and enough rows to be a reference rather
+    // than a second list of examples.
+    expect(await page.locator('.mcpanelrefh').count(),
+      'the reference has lost a section').toBeGreaterThanOrEqual(6);
+    expect(await page.locator('.mcpanelreftab tr').count()).toBeGreaterThanOrEqual(33);
+    const body = page.locator('.mcpanelrefbody');
+    for (const construct of ['\\d', '\\w', '\\s', '\\b', 'a{2,}', '(?:ab)', '\\1', '^', '$']) {
+      expect(await page.locator('.mcpanelrefwhat .m', { hasText: construct }).count(),
+        `the reference does not name ${construct}`).toBeGreaterThan(0);
+    }
+
+    /*
+     * **AND IT SAYS WHAT THE SCAN REFUSES, IN THE TABLE ITSELF.** A reference
+     * listing a construct this engine rejects is worse than no reference: the
+     * reader would type it, be refused, and find the help had taught it to
+     * them. The 108,785 ms is the measurement that bought the refusal, and it
+     * is in the row rather than only in the prose above it.
+     */
+    await expect(body, 'the reference does not say what is refused')
+      .toContainText('(X+)+');
+    await expect(body, 'the refusal in the reference carries no measurement')
+      .toContainText('108,785');
+
+    /*
+     * **A CONSTRUCT IS DRAWN AS IT WOULD BE TYPED, LIGATURES OFF.** Found in
+     * a screenshot: this face ligates `<=` into `≤`, so `(?<=ab)` was drawn as
+     * `(?≤ab)` — a character no keyboard produces, in a table whose whole job
+     * is to be copied from. The text content is right either way, so the
+     * assertion has to be about how it is PAINTED.
+     */
+    const look = page.locator('.mcpanelrefwhat .m').first();
+    expect(await look.evaluate((el) => getComputedStyle(el).fontVariantLigatures),
+      'a construct is drawn with ligatures, so `<=` reads as a character nobody can type')
+      .toBe('none');
+  });
+
+  /* ══ 15 — AND EVERY EXAMPLE STILL RUNS ═══════════════════════════════════ */
+
+  test(`every example in every mode runs when it is clicked (${lang})`, async ({ page }) => {
+    // Twenty-one examples across four modes, each with the settle and the scan
+    // after it. The default 30 s is a bound on ONE interaction and this test is
+    // deliberately twenty-one of them; raised rather than thinned, because
+    // which example is broken is exactly what a sample would not tell anyone.
+    test.setTimeout(240_000);
+    await openDocument(page, lang);
+    await openPanel(page);
+    await page.locator('.mcpanelhelp summary').click();
+    await page.waitForTimeout(300);
+    /*
+     * **THE STANDING RULE FOR THIS LIST**: every example RUNS, and clicking it
+     * puts it in the box. `semantic/11` had one example replaced because it
+     * demonstrated nothing, and `semantic/14` added five more — so this walks
+     * ALL of them in all four modes rather than the first and the last.
+     *
+     * What a fixture can prove is that each one reached the scan and was
+     * READABLE — no engine error, no grammar refusal. Whether each finds
+     * something on the owner's own archive is a different measurement, taken
+     * against the live 139 MB session and recorded in the report, because a
+     * 64-turn fixture cannot hold a date, an address and a run of Hebrew at
+     * once without becoming a fixture about examples.
+     *
+     * The LAST pattern example is the shape that is refused, and it is the
+     * one exception: it must produce the refusal and nothing else.
+     */
+    for (const which of ['normal', 'wildcard', 'logical', 'regex']) {
+      await mode(page, which);
+      const buttons = page.locator('.mcpanelegq');
+      const total = await buttons.count();
+      expect(total, `${which} has no examples`).toBeGreaterThan(2);
+      for (let i = 0; i < total; i += 1) {
+        const button = buttons.nth(i);
+        const query = await button.textContent();
+        await button.click();
+        await page.waitForTimeout(2_500);
+        expect(await page.locator('.tvfind').inputValue(),
+          `clicking the ${which} example ${query} did not put it in the box`).toBe(query);
+        const refused = which === 'regex' && i === total - 1;
+        if (refused) {
+          await expect(page.locator('.mcnoterefused'),
+            'the last pattern example must be the refusal').toBeVisible();
+          continue;
+        }
+        await expect(page.locator('.mcnoterebad'),
+          `the ${which} example ${query} is not a pattern this engine reads`).toBeHidden();
+        await expect(page.locator('.mcnotewhy'),
+          `the ${which} example ${query} is not a query this mode reads`).toBeHidden();
+        await expect(page.locator('.mcnoterefused'),
+          `the ${which} example ${query} was refused`).toBeHidden();
+        // And it really reached the scan: the stepper is the server's answer.
+        await expect(page.locator('.tvnavfoundcount')).toBeVisible();
+      }
+    }
+  });
+
+  /* ══ 16 — THE POSITION COUNTER, WHICH MOVES AS HE STEPS ══════════════════ */
+
+  test(`the position counter counts up as you step and back down again (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    /*
+     * **THE OWNER, 2026-09-17:** *"when the user clicks the next match for
+     * example, the 1 will become 2 then 3 etc' till 15 of 15, the same but
+     * decrease for previous match"*. A LIVE POSITION, not a label.
+     *
+     * **WHAT IT COUNTS AGAINST IS TURNS, AND THAT IS MEASURED RATHER THAN
+     * ASSUMED.** `foundStops()` is one stop per TURN and `showMatch` lands on
+     * the first match inside it, so a turn holding four occurrences is one
+     * stop and the other three cannot be reached by these buttons. The
+     * sentence therefore says `turns` rather than leaving the reader to
+     * choose between the two totals above it.
+     */
+    const place = async (): Promise<number[]> => {
+      const text = (await page.locator('.tvnavfoundplace').textContent()) ?? '';
+      return [...text.matchAll(/\d+/g)].map((m) => Number(m[0]));
+    };
+    await find(page, 'byte');
+    /*
+     * **BEFORE THE FIRST STEP THERE IS NO POSITION, AND IT DOES NOT CLAIM
+     * ONE.** Not `0 of 15` and not `1 of 15`: the reader is standing on none
+     * of them, which is a different fact from standing on the first —
+     * `nothing-to-do-and-could-not-look-are-different-answers` in the shape
+     * this counter can take.
+     */
+    expect(await place(), 'it claims a position before anything was stepped to').toEqual([]);
+    await expect(page.locator('.tvnavfoundplace')).toBeVisible();
+
+    await page.locator('.tvnavfoundnext').click();
+    await page.waitForTimeout(800);
+    const first = await place();
+    expect(first.length, 'the counter says no position after a step').toBe(2);
+    expect(first[0], 'the first step is not position 1').toBe(1);
+    const total = first[1]!;
+    expect(total, 'the total is not a real number of stops').toBeGreaterThan(2);
+
+    await page.locator('.tvnavfoundnext').click();
+    await page.waitForTimeout(800);
+    expect(await place(), 'Next did not advance the counter').toEqual([2, total]);
+    await page.locator('.tvnavfoundnext').click();
+    await page.waitForTimeout(800);
+    expect(await place()).toEqual([3, total]);
+    await page.locator('.tvnavfoundprev').click();
+    await page.waitForTimeout(800);
+    expect(await place(), 'Previous did not count back down').toEqual([2, total]);
+
+    /*
+     * **AND IT MUST STAY HONEST WHEN THE SET CHANGES UNDER HIM.** `15 of 15`
+     * becoming `15 of 3` is the shape of the bug. Ticking an option re-asks
+     * the server, which is a different answer with a different number of
+     * stops — and the walk is given up rather than carried across, because a
+     * position in a list that no longer exists is not a position.
+     */
+    await option(page, 'mcoptcase', true);
+    expect(await place(), 'the counter kept a place in an answer that was replaced')
+      .toEqual([]);
+    await option(page, 'mcoptcase', false);
+    await mode(page, 'wildcard');
+    expect(await place(), 'a mode change left a position standing').toEqual([]);
+  });
+
+  /* ══ 17 — AND IT STOPS AT THE END RATHER THAN WRAPPING ═══════════════════ */
+
+  test(`the walk ends at N of N and pressing past it says so (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    /*
+     * **ROUND ONE REFUSED WRAP-AROUND** — *"wrap is a property of a caret
+     * that must keep moving; a stepper that names the end is the honest
+     * version of it"* — and that refusal was made when there was no counter.
+     * A counter changes the question, because `N of N` states the end
+     * explicitly. **The refusal STILL HOLDS**, and this is the assertion that
+     * says so: the counter stops at the last stop, the sentence names the
+     * end, and nothing silently takes the reader back to the first.
+     */
+    await find(page, 'Byte');
+    await option(page, 'mcoptcase', true);
+    const place = async (): Promise<number[]> => {
+      const text = (await page.locator('.tvnavfoundplace').textContent()) ?? '';
+      return [...text.matchAll(/\d+/g)].map((m) => Number(m[0]));
+    };
+    await page.locator('.tvnavfoundnext').click();
+    await page.waitForTimeout(800);
+    const total = (await place())[1]!;
+    expect(total, 'this fixture has no walk to reach the end of').toBeGreaterThan(1);
+    for (let i = 1; i < total; i += 1) {
+      await page.locator('.tvnavfoundnext').click();
+      await page.waitForTimeout(400);
+    }
+    expect(await place(), 'the walk did not reach the last stop').toEqual([total, total]);
+    await page.locator('.tvnavfoundnext').click();
+    await page.waitForTimeout(600);
+    expect(await place(), 'pressing past the end wrapped, under a refusal that is on the record')
+      .toEqual([total, total]);
+    await expect(page.locator('.tvnavsaid'),
+      'the end of the walk is not named').toBeVisible();
+  });
+
+  /* ══ 18 — THE CURRENT MATCH IS SOMEWHERE HE CAN SEE IT ═══════════════════ */
+
+  test(`a stepped-to match lands where the reader can actually see it (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    /*
+     * **THE OWNER, 2026-09-17:** *"when you highlite the current match, verify
+     * it is in focus so the user could see it"*. Stepping already scrolled —
+     * so the assertion cannot be "did it move". It is **"what would a click at
+     * the middle of the match hit"**, which is the only question that answers
+     * whether he is looking at it: `elementFromPoint` returns the TOPMOST
+     * element, so a match under this floating, draggable, remembered panel
+     * answers with the panel.
+     *
+     * The panel is dragged OVER the well first, because where it opens it
+     * covers the head of the document rather than the body, and a test that
+     * never puts a panel in the way cannot see the defect. That is the same
+     * finding the panel-fit test records one section up, in its own words:
+     * *"the first draft of this test reddened nothing"*.
+     */
+    await find(page, 'byte');
+    const grip = await page.locator(`${SEARCH} .mcpanelhead`).boundingBox();
+    expect(grip).not.toBeNull();
+    const rtl = await page.evaluate(() =>
+      document.documentElement.getAttribute('dir') === 'rtl');
+    await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip!.x + grip!.width / 2 + (rtl ? -200 : 200),
+      grip!.y + grip!.height / 2 + 260, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+
+    const seen = async (): Promise<{ over: string | null; reachable: boolean } | null> =>
+      page.evaluate(() => {
+        // `AbstractRange` is what the highlight registry is typed to hold; a
+        // `Range` is what the page puts in it, and only a `Range` has a box.
+        const ranges = [...(CSS.highlights.get('mycontextfindnow') ?? [])] as Range[];
+        if (ranges.length === 0) return null;
+        const b = ranges[0]!.getBoundingClientRect();
+        if (b.width === 0 && b.height === 0) return null;
+        const at = document.elementFromPoint(
+          Math.round((b.left + b.right) / 2), Math.round((b.top + b.bottom) / 2));
+        const well = document.querySelector('.tvscroll')!.getBoundingClientRect();
+        const panel = document.querySelector('dialog.mcpanel[data-panel="search"]')!
+          .getBoundingClientRect();
+        return {
+          over: at === null ? null : `${at.tagName}.${String(at.className).split(' ')[0]}`,
+          reachable: at !== null && at.closest('.tvscroll') !== null,
+          match: [Math.round(b.top), Math.round(b.bottom), Math.round(b.left), Math.round(b.right)],
+          well: [Math.round(well.top), Math.round(Math.min(well.bottom, window.innerHeight))],
+          panel: [Math.round(panel.top), Math.round(panel.bottom),
+            Math.round(panel.left), Math.round(panel.right)],
+        };
+      });
+
+    let looked = 0;
+    for (let i = 0; i < 4; i += 1) {
+      await page.locator('.tvnavfoundnext').click();
+      await page.waitForTimeout(800);
+      const answer = await seen();
+      if (answer === null) continue;
+      looked += 1;
+      console.log(`[visible ${lang}] step ${i + 1} ${JSON.stringify(answer)}`);
+      expect(answer.reachable,
+        `the current match is under ${answer.over}, where the reader cannot see it`).toBe(true);
+    }
+    expect(looked, 'no step produced a current match, so this asserted nothing')
+      .toBeGreaterThan(1);
+
+    /*
+     * ── AND THE TWO CASES THE DRAG ABOVE CANNOT REACH ────────────────────────
+     *
+     * Both were found by driving the live session by hand, and the removal
+     * proof for each reddened NOTHING against the drag above — which is the
+     * fixture failing to carry a proof's power, and it is recorded rather than
+     * hidden. The geometry each needs is computed from the page instead of
+     * guessed, because both are about where the panel's EDGE falls relative to
+     * the match, and that is not a constant.
+     *
+     * **1. THE LARGER SLICE THE SCROLL CANNOT REACH.** The window is made tall
+     * so the well has room either side of the panel, and the panel is put near
+     * the TOP of it. The reader is then at `scrollTop` 0 on the first match:
+     * the big slice is below the panel and reaching it means scrolling UP,
+     * which the browser clamps. A build that takes the biggest slice without
+     * asking leaves the match where it was — under the panel.
+     */
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await page.waitForTimeout(600);
+    const box = async (sel: string): Promise<DOMRect> =>
+      page.locator(sel).evaluate((el) => el.getBoundingClientRect().toJSON()) as Promise<DOMRect>;
+    const well = await box('.tvscroll');
+    let panel = await box(SEARCH);
+    const head = async (): Promise<{ x: number; y: number }> => {
+      const grip2 = await page.locator(`${SEARCH} .mcpanelhead`).boundingBox();
+      return { x: grip2!.x + grip2!.width / 2, y: grip2!.y + grip2!.height / 2 };
+    };
+    const shove = async (dx: number, dy: number): Promise<void> => {
+      const from = await head();
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(from.x + dx, from.y + dy, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(400);
+    };
+    // 60 px of well above the panel: more than a line, far less than what is
+    // left below it.
+    await shove(0, Math.round(well.top + 60 - panel.top));
+    // Back to the first match: retyping gives the walk up and starts it again.
+    await find(page, 'byte');
+    await page.locator('.tvnavfoundnext').click();
+    await page.waitForTimeout(900);
+    const high = await seen();
+    if (high !== null) {
+      console.log(`[reach ${lang}] ${JSON.stringify(high)}`);
+      expect(high.reachable,
+        `the first match is under ${high.over}: the slice chosen could not be scrolled to`)
+        .toBe(true);
+    }
+
+    /*
+     * **2. A MATCH THAT STARTS BESIDE THE PANEL AND RUNS UNDER IT.** The panel
+     * is moved so its own start edge falls INSIDE the match that is currently
+     * standing. A column test that reads the collapsed caret rather than the
+     * match's real box answers "this panel is not over it" about a match whose
+     * second half is behind the panel.
+     */
+    const at = await page.evaluate(() => {
+      const ranges = [...(CSS.highlights.get('mycontextfindnow') ?? [])] as Range[];
+      if (ranges.length === 0) return null;
+      const r = ranges[0]!.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top };
+    });
+    if (at !== null && at.right - at.left > 8) {
+      panel = await box(SEARCH);
+      // Put the panel's leading edge a few pixels inside the match.
+      const want = rtl ? at.right - 4 : at.left + 4;
+      await shove(Math.round(want - (rtl ? panel.right : panel.left)), 0);
+      await page.locator('.tvnavfoundnext').click();
+      await page.waitForTimeout(900);
+      const split = await seen();
+      if (split !== null) {
+        console.log(`[split ${lang}] ${JSON.stringify(split)}`);
+        expect(split.reachable,
+          `the current match is under ${split.over}: it starts beside the panel and runs under it`)
+          .toBe(true);
+      }
+    }
+  });
+
+  /* ══ 19 — THE CLEAR BUTTON ═══════════════════════════════════════════════ */
+
+  test(`Clear empties the box, the highlights and the counts, and keeps the caret (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    await find(page, 'byte offset');
+    // It found something first, or clearing it proves nothing.
+    expect(await painted(page), 'nothing was painted, so clearing it is not a test')
+      .toBeGreaterThan(0);
+    expect(await held(page)).toBeGreaterThan(0);
+
+    const clear = page.locator('.mcpanelclear');
+    await expect(clear, 'the panel has no Clear button').toBeVisible();
+    await clear.click();
+    await page.waitForTimeout(1_500);
+
+    expect(await page.locator('.tvfind').inputValue(), 'the box is not empty').toBe('');
+    expect(await painted(page), 'the highlights outlived the query').toBe(0);
+    /*
+     * **AND THE CARET IS BACK IN THE FIELD.** A reader who cleared the box is
+     * about to type in it. This is not the frame's `fallbackFocus`, which is
+     * about a CLOSED panel; the panel is still open here.
+     */
+    expect(await page.evaluate(() => document.activeElement?.className ?? ''),
+      'the caret was left on the button').toContain('tvfind');
+    // The counts go back to the whole-document reading rather than to zero.
+    await expect(page.locator('.tvnavfoundcount')).toBeVisible();
+    expect(await page.locator('.tvnavfoundplace').textContent(),
+      'a position survived the query being cleared').toBe('');
+  });
+
+  /* ══ 20 — A SCAN THAT REFUSED IS NOT A SCAN THAT FOUND NOTHING ═══════════ */
+
+  test(`a find request the server refuses is said, not drawn as a measured zero (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    /*
+     * **THE OWNER'S 2026-09-17 REPORT, REPRODUCED** — *"the next match and
+     * preious match stopped working after the first use that was correct"*.
+     * It was not the stepper. His server on 58888 started before `semantic/9`
+     * and its find route's whole vocabulary is `q`; the browser assets reload
+     * on every request and a server's own modules do not, so his page was
+     * today's and his scan was yesterday's, and `case`, `word` and `mode`
+     * were each a 400 from it.
+     *
+     * The route is intercepted here to answer exactly what that server would
+     * have answered, which is the only way a current build can stand in his
+     * shoes. What is asserted is not the 400 — it is what the screen SAYS
+     * about it: the stepper drew *"No turn here holds what you typed"* over a
+     * query that holds forty, and every press answered *"There is nothing to
+     * step to."*
+     */
+    await page.route('**/find?*', async (route) => {
+      if (/[?&](case|word|mode)=/.test(route.request().url())) {
+        await route.fulfill({ status: 400, contentType: 'application/json',
+          body: JSON.stringify({ error: 'unknown query parameter "case".' }) });
+        return;
+      }
+      await route.continue();
+    });
+    await openPanel(page);
+    await find(page, 'byte');
+    const before = await held(page);
+    expect(before, 'the plain find must work first, or the split is invisible')
+      .toBeGreaterThan(0);
+
+    /*
+     * **AND A GENUINE ZERO IS MEASURED FIRST, BECAUSE THAT IS WHAT THIS HAS TO
+     * BE TOLD APART FROM.** The first draft asserted that the stepper said
+     * SOMETHING, and its removal proof reddened nothing: *"No turn here holds
+     * what you typed"* is also something. What the rule asks —
+     * `nothing-to-do-and-could-not-look-are-different-answers` — is that the
+     * two states do not draw the same sentence, so the zero is taken here and
+     * the refusal is compared against it.
+     */
+    await find(page, 'unmistakablyabsentneedlenobodytyped');
+    const zeroTotal = ((await page.locator('.tvnavfoundcount').textContent()) ?? '').trim();
+    await page.locator('.tvnavfoundnext').click();
+    await page.waitForTimeout(600);
+    const zeroSaid = ((await page.locator('.tvnavsaid').textContent()) ?? '').trim();
+    expect(zeroTotal.length, 'a measured zero says nothing at all').toBeGreaterThan(0);
+
+    await find(page, 'byte');
+    await option(page, 'mcoptcase', true);
+    /*
+     * Three sentences, and each is a different reader looking in a different
+     * place: the panel note, the stepper's own count, and the answer a press
+     * of Next gives.
+     */
+    await expect(page.locator('.mcnotefailed'),
+      'the panel says nothing about a search that was refused').toBeVisible();
+    expect(await held(page)).toBe(0);
+    const total = ((await page.locator('.tvnavfoundcount').textContent()) ?? '').trim();
+    expect(total.length, 'the stepper says nothing at all').toBeGreaterThan(0);
+    expect(total,
+      'the stepper draws a refused scan with the same words it draws a measured zero')
+      .not.toBe(zeroTotal);
+    await page.locator('.tvnavfoundnext').click();
+    await page.waitForTimeout(600);
+    const said = ((await page.locator('.tvnavsaid').textContent()) ?? '').trim();
+    expect(said.length).toBeGreaterThan(0);
+    expect(said, 'the step answers a refused scan the way it answers a measured zero')
+      .not.toBe(zeroSaid);
+
+    /*
+     * **AND IT COMES BACK DOWN.** A note left standing under a query that has
+     * since been answered is the same defect in the other direction, which is
+     * the rule `askFind`'s own `catch` was rewritten for.
+     */
+    await option(page, 'mcoptcase', false);
+    await expect(page.locator('.mcnotefailed')).toBeHidden();
+    expect(await held(page)).toBe(before);
   });
 }

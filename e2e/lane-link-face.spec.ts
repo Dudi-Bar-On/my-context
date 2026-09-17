@@ -148,7 +148,7 @@ const face = (link: Locator): Promise<{
   probe.remove();
   // The nearest control still wearing `.tvjump` alone — a real jump button,
   // whose mono face is the thing this link must no longer share.
-  const jump = document.querySelector('.tvbar button.tvjump');
+  const jump = document.querySelector('dialog.mcpanel button.tvjump.tvtop');
   return {
     fontFamily: s.fontFamily,
     decoration: s.textDecorationLine,

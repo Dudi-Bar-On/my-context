@@ -288,7 +288,7 @@ async function openDocument(page: Page, lang: 'en' | 'he'): Promise<void> {
   // performed inside that window is undone and every screenshot taken in it is
   // a byte-identical tail image with all assertions green. Pressing Top clears
   // `stickUntil`, which is the handler's own first statement.
-  await page.locator('button.tvtop').click();
+  await jumpTo(page, 'top');
   await expect(page.locator('.tvscroll')).toContainText('The grand D table', { timeout: 20_000 });
 }
 
@@ -660,6 +660,48 @@ for (const lang of ['en', 'he'] as const) {
  * them, in ONE line, which is why the value is a custom property rather than a
  * literal inside `.tvsaid .m`.
  */
+
+/**
+ * ══ REACHING Top, End AND THE FIND BOX SINCE `semantic/15` ════════════════
+ *
+ * The owner ruled on 2026-09-17 that the controls leave the card: `.tvbar` and
+ * `.tvnav` are gone and every control lives in the panel that owns its
+ * subject. The route to a panel is the right-click menu, whose first three
+ * rows are Search, Step through and Copy — above the separator — so the index
+ * IS the panel.
+ *
+ * `jumpTo` shuts the panel again, because what follows one of these is an
+ * assertion about the document and not about a dialog standing over it.
+ */
+async function usePanelAt(page: Page, at: number, name: string): Promise<void> {
+  const open = `dialog.mcpanel[data-panel="${name}"][open]`;
+  if (await page.locator(open).count() > 0) return;
+  await page.evaluate(() => { document.getSelection()?.removeAllRanges(); });
+  await page.locator('.tvscroll .tvturn').first().click({ button: 'right' });
+  await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
+  await page.locator('.tvmenu .tvmenuitem').nth(at).click();
+  await expect(page.locator(open)).toHaveCount(1, { timeout: 10_000 });
+}
+
+async function jumpTo(page: Page, which: 'top' | 'end'): Promise<void> {
+  // **IT LEAVES THE PANEL AS IT FOUND IT.** A test whose subject is the
+  // stepper has the panel open and needs it to stay open; one that only wants
+  // the reader at an end has nothing open and must not be left with a dialog
+  // over the well it is about to photograph or click into.
+  const open = 'dialog.mcpanel[data-panel="navigate"][open]';
+  const wasOpen = await page.locator(open).count() > 0;
+  await usePanelAt(page, 1, 'navigate');
+  await page.locator(`dialog.mcpanel[data-panel="navigate"] button.tv${which}`).click();
+  if (wasOpen) return;
+  await page.locator('dialog.mcpanel[data-panel="navigate"] .mcpanelclose').click();
+  await expect(page.locator('dialog.mcpanel[open]')).toHaveCount(0);
+}
+
+async function typeInFind(page: Page, query: string): Promise<void> {
+  await usePanelAt(page, 0, 'search');
+  await page.locator('dialog.mcpanel[data-panel="search"] .tvfind').fill(query);
+}
+
 test('the inline hue flattens to black on paper, and the frame costs nothing there', async ({ page }) => {
   await openDocument(page, 'en');
   const body = await said(page, 'The grand D table');

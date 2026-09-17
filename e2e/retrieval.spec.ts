@@ -418,8 +418,19 @@ test('the retrieval panel is on the document too, seeded from the marked passage
   });
   await page.waitForSelector('.tvscroll', { timeout: 20_000 });
 
-  // The control lives in the copy bar, beside the three copies, because that
-  // is where a reader is the moment he has a passage marked.
+  /*
+   * The control lives beside the three copies, because that is where a reader
+   * is the moment he has a passage marked — and since `semantic/15` that place
+   * is the COPY PANEL rather than a strip on the card. The route is the
+   * reader's own: right-click a turn, take the third row (Search, Step
+   * through, Copy, above the separator).
+   */
+  await page.evaluate(() => { document.getSelection()?.removeAllRanges(); });
+  await page.locator('.tvscroll .tvturn').first().click({ button: 'right' });
+  await expect(page.locator('.tvmenu:not([hidden])')).toHaveCount(1, { timeout: 10_000 });
+  await page.locator('.tvmenu .tvmenuitem').nth(2).click();
+  await expect(page.locator('dialog.mcpanel[data-panel="copy"][open]'))
+    .toHaveCount(1, { timeout: 10_000 });
   const control = page.locator('button.tvrecall');
   await expect(control).toBeVisible();
   await expect(page.locator('.convrecall')).toHaveCount(1);

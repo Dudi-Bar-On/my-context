@@ -261,6 +261,35 @@ for (const lang of ['en', 'he'] as const) {
 
 /* ══ CAPABILITY 2 — SEE, WITH THE DETAILS AN ANCHOR CARRIES ═══════════════ */
 
+
+/**
+ * Type into the find box, opening the panel it lives in first.
+ *
+ * **`semantic/15` TOOK THE BOX OFF THE CARD.** It was a `.tvbar` control until
+ * 2026-09-17; the owner asked for the controls to leave the card, and `/`
+ * still opens the panel the box is in and lands the caret in it — which is the
+ * route a reader takes and therefore the route this takes.
+ */
+async function findInDoc(page: Page, query: string): Promise<void> {
+  if (await page.locator('dialog.mcpanel[data-panel="search"][open]').count() === 0) {
+    await page.locator('.tvscroll').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('/');
+    await expect(page.locator('dialog.mcpanel[data-panel="search"][open]'))
+      .toHaveCount(1, { timeout: 10_000 });
+  }
+  await page.locator('dialog.mcpanel[data-panel="search"] .tvfind').fill(query);
+  /*
+   * **AND THE PANEL IS SHUT AGAIN**, because every assertion in this file acts
+   * on a ROW in the well and a panel floating over it intercepts the pointer:
+   * measured, `.tvnavfoundplace` inside the open dialog swallowed the click
+   * aimed at a turn's own Mark button. Filtering is a thing a reader does and
+   * then leaves; the query survives the close, which is the whole point of the
+   * box having one home.
+   */
+  await page.locator('dialog.mcpanel[data-panel="search"] .mcpanelclose').click();
+  await expect(page.locator('dialog.mcpanel[open]')).toHaveCount(0);
+}
+
 test('a marked point shows what it carries: name, kind, who marked it, when, and the byte', async ({ page }) => {
   await open(page, 'en');
   const row = page.locator('.convanchor', { hasText: TABLE_HEADER });
@@ -522,7 +551,7 @@ for (const lang of ['en', 'he'] as const) {
     // reader takes to get to a turn they remember — the one the archive search
     // is not, because that box searches every session and this one searches
     // this document.
-    await page.locator('.tvfind').fill('the weather in the afternoon');
+    await findInDoc(page, 'the weather in the afternoon');
 
     // The prose turn, which nothing marked — the control on a row that IS
     // marked is the other branch, asserted below.
@@ -563,7 +592,7 @@ test('a turn the automatic pass marked shows its name in the document, not an of
   // The filter, for the reason the test above gives: this document is
   // virtualised and opens at its end, so the table is not drawn until asked
   // for.
-  await page.locator('.tvfind').fill('Here is what was measured');
+  await findInDoc(page, 'Here is what was measured');
   const turn = page.locator('.tvturn', { hasText: 'Here is what was measured' });
   await expect(turn).toBeVisible({ timeout: 20_000 });
   await expect(turn.locator('.tvanchored')).toBeVisible({ timeout: 20_000 });

@@ -4045,6 +4045,30 @@ const FIND_PAINT_PER_ROW = 300;
 const MATCH_MARGIN_PX = 80;
 
 /**
+ * **THE SMALLEST SLICE OF WELL WORTH LANDING A MATCH IN** — `semantic/14`.
+ *
+ * `showMatch` subtracts any floating panel that covers the match from the
+ * band it aims into, because a panel is draggable and remembered and a match
+ * scrolled to underneath one is highlighted where nobody can see it. With
+ * three panels open on a short window the slice that is left can be smaller
+ * than a line of text, and scrolling a reader so that their match lands in a
+ * gap they cannot read is worse than the landing they had before.
+ *
+ * It is a FLOOR and not the figure itself: what a band has to hold is the
+ * match's own box, which `showMatch` measures, and this is what that
+ * measurement falls back to when a collapsed range answers with no height.
+ * 24 px is one line of this face (19 px measured) with a little around it.
+ *
+ * The number was MEASURED DOWN TWICE, and both readings are worth keeping. A
+ * first guess of 120 px refused a 56 px slice on a 1000 px window and put
+ * every landing back underneath the panel — the outcome this exists to
+ * prevent. 48 px then passed in English and reddened in Hebrew, where the
+ * only reachable slice was 33 px. A band big enough for the match is the rule
+ * that has no arbitrary number in it at all.
+ */
+const MATCH_BAND_MIN_PX = 24;
+
+/**
  * **THE ELEMENTS A MATCH MAY NOT RUN ACROSS.**
  *
  * A row's text is read by walking its text nodes and JOINING them, because
@@ -5938,7 +5962,86 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     });
     head.append(roster);
   }
+  /*
+   * **THE ONE CONTROL THAT TAKES THE VIEWER TO THE WHOLE SCREEN** —
+   * `semantic/15` §5, owner 2026-09-17: *"you can make the viewer to apear on
+   * the whole screen in a simmilar way you did it for the items in the right
+   * pane"*.
+   *
+   * **HE IS NAMING `#panefloat`, AND THIS IS THAT PATTERN AND NOT A SECOND
+   * ONE.** `index.html:322` declares `<button class="icon" id="panefloat"
+   * aria-pressed="false" data-t-aria="aria.panefloat">⤢</button>`;
+   * `app.js`'s `setPaneFloat` toggles `pane-float` ON `.app` and writes
+   * `aria-pressed`; `styles.css:589` re-cuts the grid while it is on. Every
+   * one of those four decisions is re-used here verbatim — the same glyph,
+   * the same `.icon` class, the same `aria-pressed` on the same control, the
+   * same class-on-`.app`, and the same rule that **a MODE is not written
+   * down** (`setPaneFloat`'s own words: *"A float that survived a reload…
+   * would greet the next reader with a page-covering panel they never asked
+   * for"*).
+   *
+   * **THE CONTROL THAT EXPANDS IS THE CONTROL THAT RESTORES**, which is the
+   * item's requirement and is also how `#panefloat` behaves. Escape is NOT
+   * bound to it, and that is deliberate rather than an omission: on this
+   * screen Escape already means "close the panel" (`lib/panel.js`, with
+   * `stopPropagation`) and "close the rename box" (`confirm/5`), and
+   * `DOC_SHORTCUTS`' own header rules a THIRD meaning out. `#panefloat` can
+   * afford Escape because the item pane has no such competition.
+   *
+   * **THE PANELS SURVIVE IT UNTOUCHED AND THAT IS A PROPERTY OF THE FRAME,
+   * NOT A THING WIRED HERE.** `.mcpanel` is `position:fixed` — `panel.js`'s
+   * header says why in as many words — so a panel is placed against the
+   * VIEWPORT, which this expansion does not change. Nothing re-clamps,
+   * because nothing moved.
+   */
+  const wide = el('button', 'icon tvwide');
+  wide.type = 'button';
+  wide.setAttribute('aria-pressed', 'false');
+  wide.setAttribute('aria-label', ctx.tFlat('conv.doc.wide'));
+  wide.title = ctx.tFlat('conv.doc.wide');
+  const wideGlyph = el('span', null, '⤢');
+  wideGlyph.setAttribute('aria-hidden', 'true');
+  wide.append(wideGlyph);
+  const setWide = (on) => {
+    const app = document.getElementById('app');
+    if (app === null) return;
+    if (on) app.classList.add('doc-wide');
+    else app.classList.remove('doc-wide');
+    wide.setAttribute('aria-pressed', on ? 'true' : 'false');
+    wide.setAttribute('aria-label', ctx.tFlat(on ? 'conv.doc.narrow' : 'conv.doc.wide'));
+    wide.title = ctx.tFlat(on ? 'conv.doc.narrow' : 'conv.doc.wide');
+  };
+  wide.addEventListener('click', () => {
+    setWide(document.getElementById('app')?.classList.contains('doc-wide') !== true);
+  });
+  head.append(wide);
   host.append(head);
+
+  /**
+   * **THE DISCLOSURE, AND IT IS DRAWN ONLY WHEN IT HAS SOMETHING TO
+   * DISCLOSE** — `semantic/15` §3, owner 2026-09-17: *"bring the text under
+   * the \"Back to all sessions\" button, then under it open the viewer"*.
+   *
+   * It is the SAME element `p.tvcount` has always been and it is in the card
+   * rather than lent to a panel, because `INV-nothing-is-dropped-silently` is
+   * what this line discharges: a search or a kind filter that is holding turns
+   * back must say so where a reader is, with every panel shut.
+   *
+   * **THE CONDITION IS "IS SOMETHING HIDDEN", NEVER "IS A PANEL OPEN".**
+   * `drawDisclosure` reads the view, the two walks and the kind filter and
+   * hides this line when all four answer "nothing". A line that disappeared
+   * because a panel happened to be open would be the same defect wearing a
+   * different trigger.
+   *
+   * The PLAIN TOTALS are not disclosures and are not here: `conv.doc.whole`
+   * (*"1044 turns across 52027 records"*), `conv.nav.marks` and
+   * `conv.nav.yous` state the size of the document, hide nothing, and live in
+   * the step panel.
+   */
+  const count = el('p', 'tvcount');
+  count.setAttribute('aria-live', 'polite');
+  count.hidden = true;
+  host.append(count);
 
   // **A LANE SAYS IT IS A LANE, AND SAYS WHOSE.** Opened in a tab of its own it
   // otherwise arrives with no context at all: a transcript whose title is a
@@ -6073,8 +6176,29 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    */
   if (outline.source !== 'subagent') mountSecrets(ctx, host, outline);
 
-  /* ── bar ───────────────────────────────────────────────────────────────── */
-  const bar = el('div', 'tvbar');
+  /* ── THE CONTROLS, WHICH NO LONGER HAVE A STRIP TO STAND IN ──────────────
+   *
+   * **`semantic/15` §2: THE CONTROLS LEAVE THE CARD.** `semantic/12` and `/13`
+   * built the three panels and LENT them these controls, so with every panel
+   * shut the card was exactly as big as it was before any of that work — 298.9
+   * px of chrome above the viewer in English, measured on the owner's own
+   * server at 1280x1000. `.tvbar` was 62.6 px of it and `.tvnav` 99.2 px.
+   *
+   * **THERE IS NO `.tvbar` AND NO `.tvnav` ANY MORE.** Each control below is
+   * built exactly as it was and is appended ONCE, at mount, to the panel that
+   * owns its subject. Nothing is lent, so nothing has to be restored, so
+   * `borrow()`, `tidyStrip()` and the three `onClose` restore paths are gone
+   * with the strips — and the whole class of defect they existed to manage
+   * (two panels lending out of one strip, a recorded next sibling that another
+   * panel is holding) cannot occur, because no control has two homes.
+   *
+   * **WHAT DOES NOT MOVE IS THE HALF THAT MATTERS.** `runShortcut` calls
+   * `openFindPanel()`, `step(…)` and `cycleKind(…)` DIRECTLY and has never
+   * gone through any of these buttons, so `/`, `N`, `Shift+N`, `U`,
+   * `Shift+U`, `K`, `Shift+K` and `M` act identically with every panel shut.
+   * Deleting a MENU ROW or a STRIP does not delete a KEY BINDING, and
+   * `DOC_SHORTCUTS` is untouched by this item.
+   */
   const find = el('input', 'tvfind');
   find.type = 'text';
   find.placeholder = ctx.tFlat('conv.doc.filter');
@@ -6096,7 +6220,6 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * new idea.
    */
   find.setAttribute('dir', 'auto');
-  bar.append(find);
 
   // **`tvtop` AND `tvend` ARE HANDLES, and they exist because counting broke
   // twice.** `seq:19` added a third `button.tvjump` and the note on `toNew`
@@ -6112,7 +6235,6 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const toEnd = el('button', 'tvjump tvend');
   toEnd.type = 'button';
   toEnd.append(...ctx.t('conv.doc.end'));
-  bar.append(toTop, toEnd);
 
   /* ── THE THREE COPIES ───────────────────────────────────────────────────
    *
@@ -6135,8 +6257,6 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * and `border` explicitly and is the class Top, End and "N new below"
    * already wear, so the only new rule is `:disabled`.
    */
-  const copyLabel = el('span', 'tvcopyh');
-  copyLabel.append(...ctx.t('conv.copy.h'));
   const copyMessage = el('button', 'tvjump tvcopy tvcopymsg');
   copyMessage.type = 'button';
   copyMessage.append(...ctx.t('conv.copy.msg'));
@@ -6165,8 +6285,6 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const recall = el('button', 'tvjump tvcopy tvrecall');
   recall.type = 'button';
   recall.append(...ctx.t('conv.recall.h'));
-  bar.append(copyLabel, copyMessage, copySeen, copyRaw, recall);
-  host.append(bar);
 
   /* ── THE STEPPER ────────────────────────────────────────────────────────
    *
@@ -6196,9 +6314,6 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * page direction is a second thing to reconcile for no reader's benefit, so
    * the buttons carry words in both languages and no mark at all.
    */
-  const nav = el('div', 'tvnav');
-  nav.setAttribute('role', 'group');
-  nav.setAttribute('aria-label', ctx.tFlat('conv.nav.region'));
   const navHead = el('span', 'small tvnavh');
   navHead.append(...ctx.t('conv.nav.h'));
   const markPrev = el('button', 'tvjump tvnavstep tvnavmarkprev');
@@ -6208,6 +6323,24 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   markNext.type = 'button';
   markNext.append(...ctx.t('conv.nav.markNext'));
   const markCount = el('span', 'small tvnavcount tvnavmarkcount');
+  /**
+   * **WHERE THE WALK IS UP TO — "1 of 15"** — `semantic/12`, owner 2026-09-17:
+   * *"because you are still 3 dialogs, apply the same behaviour of highliting
+   * the current for Marks and Messages as navigation standard behaviour"*.
+   *
+   * `semantic/14` built this for the MATCH walk first, hours before this, and
+   * it is the same slot, the same class and the same `drawPlace` below — ONE
+   * implementation, three callers, which is the whole of what he asked for.
+   *
+   * **THE COUNT AND THE PLACE ARE TWO DIFFERENT FACTS**, which is why there
+   * are two elements and not one longer sentence. `markCount` says how many
+   * there are and what a filter is hiding; it changes when the DOCUMENT or the
+   * query changes. This says which one the reader is standing on; it changes
+   * when the READER presses a button. A single sentence carrying both would be
+   * redrawn for either reason, and the one a reader is watching would flicker
+   * for changes that are not about them.
+   */
+  const markPlace = el('span', 'small tvnavcount tvnavmarkplace');
   const youPrev = el('button', 'tvjump tvnavstep tvnavyouprev');
   youPrev.type = 'button';
   youPrev.append(...ctx.t('conv.nav.youPrev'));
@@ -6215,6 +6348,7 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   youNext.type = 'button';
   youNext.append(...ctx.t('conv.nav.youNext'));
   const youCount = el('span', 'small tvnavcount tvnavyoucount');
+  const youPlace = el('span', 'small tvnavcount tvnavyouplace');
   /*
    * **EACH PAIR AND ITS COUNT ARE ONE GROUP**, and it was laid out the other
    * way first. With all six controls in one flex row and the counts at
@@ -6310,9 +6444,9 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const kindChip = el('span', 'm tvkey tvnavkindkey', kindNextKey.show);
   kindChip.setAttribute('aria-hidden', 'true');
   const markGroup = el('div', 'tvnavgroup tvnavmarks');
-  markGroup.append(kindPick, kindChip, markPrev, markNext, markCount);
+  markGroup.append(kindPick, kindChip, markPrev, markNext, markCount, markPlace);
   const youGroup = el('div', 'tvnavgroup tvnavyous');
-  youGroup.append(youPrev, youNext, youCount);
+  youGroup.append(youPrev, youNext, youCount, youPlace);
   /*
    * **AND A THIRD PAIR, FOR WHAT THE FIND BOX FOUND** — `semantic/8`.
    *
@@ -6335,9 +6469,38 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   foundNext.append(...ctx.t('conv.nav.foundNext'));
   const foundCount = el('span', 'small tvnavcount tvnavfoundcount');
   const foundGroup = el('div', 'tvnavgroup tvnavfounds');
-  foundGroup.append(foundPrev, foundNext, foundCount);
-  nav.append(navHead, markGroup, youGroup, foundGroup);
-  host.append(nav);
+  /*
+   * **WHERE IN THEM YOU ARE — "1 of 15"** — `semantic/14`, and the owner asked
+   * for that shape by name on 2026-09-17.
+   *
+   * It answers a question neither existing number answers. The count line
+   * says how many turns hold the words and how many times they occur; this
+   * says WHERE THE WALK IS UP TO, which is a fact about the reader rather
+   * than about the transcript.
+   *
+   * ── WHAT IT COUNTS AGAINST, MEASURED RATHER THAN ASSUMED ─────────────────
+   *
+   * **TURNS, and not times, because turns are what this walk actually steps
+   * through.** `foundStops()` returns one stop per TURN (`foundAt` is keyed
+   * by node index), and `showMatch` scrolls to `asked.find(whole, 1)[0]` —
+   * the FIRST match inside the turn it landed on. A turn holding four
+   * occurrences is one stop and the other three are not reachable by these
+   * two buttons at all. So "3 of 40" here is three of the forty TURNS, on a
+   * query the panel above also reports as 56 times, and the sentence says
+   * `turns` in as many words rather than leaving the reader to guess which of
+   * the two numbers above it this one belongs to.
+   *
+   * That the walk is over turns and not occurrences is a real limit of the
+   * feature rather than of this counter; it is on the report, and the counter
+   * is honest about it instead of implying an occurrence walk that does not
+   * exist.
+   *
+   * `aria-live` is NOT set here: `navSaid` already announces every landing in
+   * a live region, and two regions announcing one step would read it twice to
+   * somebody using a screen reader.
+   */
+  const foundPlace = el('span', 'small tvnavcount tvnavfoundplace');
+  foundGroup.append(foundPrev, foundNext, foundCount, foundPlace);
 
   /**
    * The kind the mark walk is narrowed to, or `null` for every kind.
@@ -6362,21 +6525,32 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * The same trap `.convanchsaid` was mounted at the card for: a sentence
    * rendered on the ROW a step lands on is destroyed by the next `paint` —
    * rows are evicted the moment they leave the window, and a step that moves
-   * the reader is exactly the gesture that evicts things. This region is a
-   * sibling of the bar, so nothing the scroll does can take it down.
+   * the reader is exactly the gesture that evicts things. Nothing the scroll
+   * does can take it down.
    *
    * It is also the whole of how a step is legible to a reader who cannot see
    * the scroll move: `aria-live` announces "marked point 3 of 12" with the
    * name on it, which is the one thing that says WHICH mark this is.
+   *
+   * ── AND `semantic/15` LEFT IT ON THE CARD RATHER THAN MOVING IT INTO THE
+   * PANEL WITH THE BUTTONS ─────────────────────────────────────────────────
+   *
+   * `semantic/12` LENT it to the step panel so a reader stepping from inside
+   * the panel saw the answer inside it. Every other control on that panel has
+   * now MOVED there for good — but this one may not, and the reason is the
+   * item's first constraint: **`N`, `Shift+N`, `U` and `Shift+U` act with
+   * EVERY PANEL SHUT**, and a landing announced into a closed `<dialog>` is a
+   * keystroke that appears to do nothing. It is drawn directly under the
+   * disclosure line — the top of a card that no longer scrolls away (§4) and
+   * well above where the panels cascade — so it is legible in both states.
+   *
+   * It costs the card nothing when idle: `hidden` until the first step, and
+   * the reset's `[hidden]{display:none}` gives it zero height.
    */
   const navSaid = el('p', 'tvnote tvnavsaid');
   navSaid.setAttribute('aria-live', 'polite');
   navSaid.hidden = true;
-  host.append(navSaid);
-
-  const count = el('p', 'tvcount');
-  count.setAttribute('aria-live', 'polite');
-  host.append(count);
+  host.insertBefore(navSaid, count.nextSibling);
 
   /**
    * What the last copy actually took — and, before there has been one, how to
@@ -6398,8 +6572,26 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    */
   const copied = el('p', 'tvnote tvcopied');
   copied.setAttribute('aria-live', 'polite');
-  copied.append(...ctx.t('conv.copy.hint'));
-  host.append(copied);
+  /**
+   * **AND THE INSTRUCTION IS A SECOND ELEMENT SINCE `semantic/13`, WHICH IS A
+   * DEFECT FOUND BY LOOKING AT THE PANEL.**
+   *
+   * `conv.copy.hint` used to be the initial CONTENT of the live region above:
+   * one element that was an instruction until the first copy and a report
+   * afterwards. The copy panel borrows the report — a reader who copies from
+   * inside the panel must be told what was taken inside the panel — and
+   * borrowing the report borrowed the instruction with it, so the panel drew
+   * *"Right-click any turn for the copy panel"* INSIDE the copy panel. Seen
+   * in the first screenshot, not by any assertion.
+   *
+   * **AND `semantic/15` DELETED THE SECOND ONE ALTOGETHER**, which is that
+   * argument carried to its end. `p.tvcopyhint` was a strip line POINTING AT
+   * the copy panel; with the four controls living in that panel there is no
+   * strip for it to point from, and the panel already says the same thing
+   * better, once, as `conv.copy.need` beside the controls it is about. What is
+   * left here is `p.tvcopied` alone: the live region, starting EMPTY, in the
+   * panel that holds every control that writes it.
+   */
 
   /**
    * The text the page would put on the clipboard, kept in the document.
@@ -6581,6 +6773,35 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   /** The find answer as served, or `null` when nothing has been asked yet. */
   let findBody = null;
   /**
+   * **THE SCAN WAS ASKED AND DID NOT ANSWER, WHICH IS NOT THE SAME AS ZERO** —
+   * `semantic/14`.
+   *
+   * The owner, 2026-09-17: *"the next match and preious match stopped working
+   * after the first use that was correct"*. It was driven on a current server
+   * and the stepper is correct — and then it was driven under HIS condition,
+   * which is a page newer than the server answering it: his server on 58888
+   * started at 16:06:35 on 2026-09-16 and the panel landed at 18:43 and 20:42
+   * the same day. The assets under `src/ui/public/` are read live from disk;
+   * the server's own modules are frozen at start. So his server's find route
+   * is the one whose vocabulary is `['q']` — and `case`, `word` and `mode` are
+   * every one of them a `400` from it.
+   *
+   * **AND THIS IS WHAT THE SCREEN SAID ABOUT THAT.** `askFind`'s catch cleared
+   * `foundAt`, so `foundStops()` was empty, so the stepper drew *"No turn here
+   * holds what you typed"* over a query that holds forty — and every press of
+   * Next answered *"There is nothing to step to."* The reproduction is in the
+   * report, line for line, and it is his symptom exactly: the first use
+   * correct, and nothing after it.
+   *
+   * `nothing-to-do-and-could-not-look-are-different-answers` is the rule that
+   * was broken, and it was broken by a state that did not exist rather than by
+   * a wrong branch: the page could tell "the scan answered no" from "the scan
+   * has not answered yet" (`findBody === null`) and could not tell either from
+   * "the scan REFUSED". This is that third state, and the three sentences it
+   * now draws are the whole fix.
+   */
+  let findFailed = false;
+  /**
    * Turns the server found that this document cannot reach.
    *
    * Real, and only on one kind of document: one whose walk stopped at
@@ -6652,6 +6873,34 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * not an error.
    */
   let drawFindNotes = () => {};
+  /**
+   * **THE COPY PANEL'S "WHY ARE THESE GREY" LINE** — `semantic/13`.
+   *
+   * A no-op until that panel is built, by the same device and for the same
+   * reason as `drawFindNotes` above it: `armCopy(false)` runs at the mount,
+   * fifteen hundred lines before the panel exists, and a `const` down there
+   * would be in its temporal dead zone at that moment — which on this screen
+   * does not throw somewhere a reader can see it, it stops the document
+   * opening at all.
+   */
+  let showCopyNeed = () => {};
+  /**
+   * **TAKE EVERY "YOU ARE ON n OF m" DOWN** — `semantic/12`, and it is a defect
+   * found by driving it rather than a precaution.
+   *
+   * `endWalk` throws the walk away on any wheel, key or pointer in the well,
+   * and it already cleared the cursors and the emphasis. The POSITION went on
+   * standing: scrolled away by hand, the strip still read *"You are on 2 of
+   * the 636 marked points here"* about a place the reader had left, which is
+   * the same defect `foundNow`'s own note refuses one control along — a second
+   * thing on the screen contradicting the stepper.
+   *
+   * A no-op until `drawPlace` exists, by the same device and for the same
+   * reason as `drawFindNotes` and `showCopyNeed` above it: `endWalk` is
+   * reachable from a callback that can run before the panels are built, and a
+   * `const` down there would be in its temporal dead zone at that moment.
+   */
+  let clearPlaces = () => {};
   /** Rows in the DOM right now, keyed by node index. */
   const live = new Map();
   /**
@@ -7504,6 +7753,10 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // moved or evicted rows. Painting earlier would range into nodes this
     // pass is about to remove.
     paintFinds();
+    // The walk's own emphasis, for the same reason and at the same moment —
+    // `semantic/12`. A row that scrolled out of the window and back is a NEW
+    // element, and an outline written once would have gone with the old one.
+    paintStanding();
   }
 
   /**
@@ -7621,52 +7874,15 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       if (needle === '' || matchesNode(nodes[i], needle, holds) || foundAt.has(i)) view.push(i);
     }
     rebuild();
-    count.replaceChildren();
-    if (needle === '') {
-      count.append(...ctx.t('conv.doc.whole', {
-        turns: outline.said, records: outline.records,
-      }));
-    } else if (view.length === 0) {
-      count.append(...ctx.t('conv.doc.noMatch'));
-    } else if (findBody === null) {
-      // The answer has not come back yet. The sentence says only what this
-      // side actually knows, because the fuller one below names numbers that
-      // do not exist until the scan does.
-      count.append(...ctx.t('conv.doc.matched', {
-        shown: view.length, total: nodes.length, peek: outline.peekChars,
-      }));
-    } else {
-      /*
-       * **THE SENTENCE NAMES WHAT THE NUMBER IS A NUMBER OF**, and that is the
-       * half of this task the owner emphasised second: *"a count that silently
-       * means 'in the rows I have drawn' is worse than no count at all"*.
-       *
-       *   — `turns` is turns OF WORDS that hold the query, over the whole
-       *     transcript. It is the server's, from a scan of every prose span.
-       *   — `scanned` against `records` is the scope, and the gap is enormous
-       *     and invisible without it: **47,910 of one session's 52,292
-       *     records are machinery**, in no index, findable here only by the
-       *     tools they ran. Lane AI's report closes on exactly this.
-       *   — `shown` is rows on the screen, which is the two readings joined.
-       */
-      count.append(...ctx.t('conv.doc.matchedFull', {
-        shown: view.length,
-        total: nodes.length,
-        turns: findBody.turns.length,
-        matches: findBody.matches,
-        scanned: findBody.scanned,
-        records: findBody.records,
-      }));
-      // Drawn only when real — `STD-a-measured-zero-is-drawn-and-named` binds a
-      // measurement a reader asked for, and these are qualifications on one.
-      if (findBody.capped === true) {
-        count.append(' ', ...ctx.t('conv.doc.findCapped', { cap: findBody.scanCap }));
-      }
-      if (findUnreached > 0) {
-        count.append(' ', ...ctx.t('conv.doc.findUnreached', { n: findUnreached }));
-      }
-      if (!CAN_HIGHLIGHT) count.append(' ', ...ctx.t('conv.doc.findNoPaint'));
-    }
+    /*
+     * **THE SENTENCE IS COMPOSED AT THE END OF `navRefresh` AND NOT HERE** —
+     * `semantic/15` §3. It now carries what the two WALKS are hiding as well
+     * as what the view is, and those two numbers do not exist until
+     * `markStops()` and `youStops()` have run. `navRefresh` is the one place
+     * that has all four facts at once, and it is called from here on the very
+     * next line — so the line a reader sees is composed once, from one state,
+     * however the state changed.
+     */
     navRefresh();
   };
 
@@ -7795,6 +8011,9 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       findBody = null;
       findUnreached = 0;
       foundNow = -1;
+      // Nothing was asked, so nothing refused: an empty box must not go on
+      // wearing the last request's failure.
+      findFailed = false;
       drawFindNotes();
       return;
     }
@@ -7840,6 +8059,11 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       findBody = null;
       findUnreached = 0;
       foundNow = -1;
+      // **AND IT IS SAID** — `semantic/14`. Set BEFORE `reView`, because
+      // `reView` runs `navRefresh` and `navRefresh` is what draws the
+      // stepper's sentence: set after it, the strip would claim a measured
+      // zero for one paint and correct itself on the next.
+      findFailed = true;
       reView();
       paint();
       drawFindNotes();
@@ -7861,6 +8085,9 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       foundAt.set(at, (foundAt.get(at) ?? 0) + turn.matches);
     }
     findBody = body;
+    // An answer arrived, so the refusal sentence comes DOWN — before `reView`,
+    // for the same reason it goes up before it.
+    findFailed = false;
     reView();
     paint();
     // AFTER `reView`, which runs `navRefresh` and therefore `endWalk`.
@@ -7915,6 +8142,39 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     stickUntil = 0;
     scroll.scrollTop = scroller.top(viewFrom(nodeIndex));
     paint();
+    /*
+     * **AND THEN OUT FROM UNDER WHATEVER IS FLOATING OVER IT** —
+     * `semantic/12`, the owner's addition of 2026-09-17, third clause.
+     *
+     * The line above puts the row at the TOP of the well, which is exactly
+     * where a panel opened under the bar sits: measured with the navigation
+     * panel at its own first-open place, a mark stepped to landed at the top
+     * of the well and the panel covered it. The reader pressed Next, the
+     * document moved, and nothing he could see changed.
+     *
+     * `revealBox` is `semantic/14`'s, already proven for the match walk, and
+     * it is the SAME function rather than a second one — the whole of what
+     * "one standard behaviour" means here. It is aimed at the row's FIRST
+     * LINE and not at the row, for the reason its own argument list gives: a
+     * turn can be taller than the well, and a tall thing aimed at its middle
+     * lands with its opening off the top.
+     *
+     * **Declared after this function and called from inside it**, which is
+     * legal and is NOT the temporal-dead-zone hazard this file warns about
+     * twice: nothing calls `landOn` during the mount. `step` is a button, and
+     * the anchor landing is inside an `await`ed load.
+     */
+    const row = live.get(nodeIndex);
+    if (row !== undefined) {
+      const whole = row.getBoundingClientRect();
+      const head = {
+        top: whole.top,
+        bottom: Math.min(whole.bottom, whole.top + MATCH_BAND_MIN_PX),
+        left: whole.left,
+        right: whole.right,
+      };
+      if (head.bottom > head.top) revealBox(head, whole);
+    }
     return true;
   };
 
@@ -8106,11 +8366,52 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * reader who scrolled to the middle and pressed Next means the middle.
    */
   const cursor = { mark: -1, you: -1, found: -1 };
+  /**
+   * **THE TURN THE WALK IS STANDING ON, OR `-1`** — `semantic/12`.
+   *
+   * One variable for all three walks, and that is a decision rather than a
+   * shortcut: a reader is standing in ONE place, and three of these could
+   * disagree about where. Stepping a mark and then stepping a message moves
+   * the reader, so the emphasis moves with them.
+   */
+  let standingAt = -1;
+  /**
+   * Put the emphasis on the row the walk is standing on, and take it off
+   * every other row that is drawn.
+   *
+   * **Run at the end of every rebuild, beside `paintFinds`, and for the same
+   * reason its own note gives**: rows are evicted the moment they leave the
+   * window, so an emphasis written once would last exactly until the reader
+   * scrolled past it and back.
+   *
+   * `aria-current` and not colour alone: the outline is what a sighted reader
+   * sees, and `location` is the value for "the one in a set you are at". This
+   * app's standing rule is that a state has two carriers, and a row cannot
+   * carry a glyph without reflowing the document it is in.
+   */
+  const paintStanding = () => {
+    for (const [nodeIndex, row] of live) {
+      const now = nodeIndex === standingAt;
+      row.classList.toggle('tvrownow', now);
+      if (now) row.setAttribute('aria-current', 'location');
+      else row.removeAttribute('aria-current');
+    }
+  };
   endWalk = () => {
     cursor.mark = -1;
     cursor.you = -1;
     cursor.found = -1;
     findFresh = false;
+    /*
+     * **AND THE EMPHASIS GOES WITH THE WALK**, which is `foundNow`'s own rule
+     * below applied to the other two: a reader who has scrolled away is not
+     * standing on that turn any more, and an outline that went on saying they
+     * were would be a second thing on the screen contradicting the stepper.
+     * The places go too, so *"You are on 3 of 12"* cannot outlive the 3.
+     */
+    standingAt = -1;
+    paintStanding();
+    clearPlaces();
     // **AND THE DISTINGUISHED HIGHLIGHT GOES WITH THE WALK** — `semantic/9`.
     // A reader who has scrolled away is not standing on that match any more,
     // and a colour that went on saying they were would be a second thing on
@@ -8119,9 +8420,47 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // registry, because there is exactly one writer of it.
     foundNow = -1;
   };
-  for (const event of ['wheel', 'keydown', 'pointerdown']) {
+  for (const event of ['wheel', 'pointerdown']) {
     scroll.addEventListener(event, endWalk, { passive: true });
   }
+  /*
+   * ══ A KEY THIS SCREEN BINDS IS A STEP, NOT A SCROLL ══════════════════════
+   *
+   * **`semantic/15`, AND IT IS A DEFECT THIS ITEM FOUND RATHER THAN ONE IT
+   * CAUSED.** `keydown` was in the list above, beside `wheel` and
+   * `pointerdown`, on the stated ground that those three are "the two inputs
+   * that are unambiguously theirs" — the reader taking the scroll back. That
+   * is true of PageDown, Home and the arrows. It is exactly false of `N`,
+   * `Shift+N`, `U`, `Shift+U`, `K` and `Shift+K`, which are how the reader
+   * DRIVES the walk: the well's listener runs on the way up, before
+   * `onDocKey` on `document`, so every step began by throwing away the walk it
+   * was about to continue — and `clearPlaces()` took the OTHER two walks'
+   * positions down with it.
+   *
+   * **MEASURED, in `e2e/conversations-panels.spec.ts`:** step to mark 1, then
+   * press `U`. The message walk lands correctly and *"You are on 1 of the 12
+   * marked points here."* becomes *"Press Next mark to walk them."* — a
+   * position destroyed by a keystroke about a different walk, with nothing on
+   * the screen saying why.
+   *
+   * It was invisible until now because the caret was almost never IN the well:
+   * the controls were in a strip, so a reader pressing a key had the caret on
+   * a button or on the body. `semantic/15` deleted the strip, and every panel
+   * now hands the caret back to the document itself — so this became the
+   * ordinary case on the same day the strip went.
+   *
+   * **THE TEST IS `DOC_SHORTCUTS` AND THE MODIFIER GUARDS, WHICH IS
+   * `onDocKey`'S OWN TEST.** A key this screen will act on is not the reader
+   * leaving the walk; anything else — arrows, Page keys, a letter typed into
+   * the rename box — still is, exactly as before. Written here rather than
+   * read off `defaultPrevented`, because this listener runs FIRST and the flag
+   * has not been set yet.
+   */
+  scroll.addEventListener('keydown', (event) => {
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && !inField(event.target)
+      && DOC_SHORTCUTS.some((k) => k.code === event.code && k.shift === event.shiftKey)) return;
+    endWalk();
+  }, { passive: true });
 
   /**
    * Where the reader is: the node the top of the viewport sits in.
@@ -8158,6 +8497,155 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * still the right turn and the head of it is still the right landing, so
    * this returns and says nothing rather than inventing a position.
    */
+  /**
+   * **SCROLL SO THAT `box` LANDS SOMEWHERE THE READER CAN ACTUALLY SEE IT.**
+   *
+   * `semantic/14` wrote this for the MATCH walk. The owner's addition to
+   * `semantic/12` on 2026-09-17 makes it the standard for all three: *"apply
+   * the same behaviour … as navigation standard behaviour"*, and the third
+   * thing he asked for is that a stepped-to target is genuinely visible —
+   * *"when you highlite the current match, verify it is in focus so the user
+   * could see it"*. **Landing is not the same as being seen.**
+   *
+   * It is LIFTED OUT of `showMatch` unchanged rather than copied. Marks and
+   * messages land through `landOn`, which scrolled a row to the top of the
+   * well and knew nothing about the panels floating over it — so a mark
+   * stepped to with a panel parked over the top of the well landed perfectly
+   * underneath it, highlighted where nobody could see it, which is the exact
+   * defect this reasoning was written for one walk along. Two implementations
+   * of "make this visible" is what the owner's addition exists to remove, so
+   * there is one.
+   *
+   *   — `box`  what to aim into a band, and it must be SLIM: the match's own
+   *            first line, or a row's. A tall thing aimed at its own middle
+   *            lands with its opening off the top.
+   *   — `span` the full rectangle, used only to ask whether a panel is over
+   *            this thing's COLUMN. A panel on the other side of a 1280 px
+   *            window hides nothing of it and must not move the reader.
+   *
+   * Everything below this line is `semantic/14`'s, with its own argument
+   * intact; nothing about it changed in the move.
+   */
+  const revealBox = (box, span) => {
+    const rect = scroll.getBoundingClientRect();
+    /*
+     * **THE WELL IS NOT THE SAME THING AS THE PART OF IT YOU CAN SEE**, and
+     * measuring it was what found this: on a 1280x800 window `.tvscroll`'s own
+     * box runs to y=1040, past the bottom of the viewport, because the page
+     * scrolls as well as the well does. Tested against the well alone, a match
+     * at y=795 is "visible" and the reader is looking at 800 pixels of screen
+     * that does not contain it. So the test is against the INTERSECTION, which
+     * is the only rectangle a reader actually has.
+     */
+    const seen = Math.max(rect.top, 0);
+    const under = Math.min(rect.bottom, window.innerHeight || rect.bottom);
+    // A collapsed range in a row that is drawn but positioned outside the
+    // window answers with an empty box. Nothing to aim at, so nothing moves.
+    if (box.top === 0 && box.bottom === 0) return;
+    /*
+     * ── AND A FLOATING PANEL IS PART OF WHAT "VISIBLE" MEANS — `semantic/14`
+     *
+     * The owner, 2026-09-17: *"when you highlite the current match, verify it
+     * is in focus so the user could see it"*. Stepping already scrolls — the
+     * measurement is 0 → 996 → 1603 on two presses — so the defect is not
+     * that nothing moves. It is that **landing is not the same as being
+     * visible**: these panels are non-modal, draggable and remembered, so one
+     * of them sits OVER the well wherever the reader last left it, and a
+     * match scrolled to underneath one is perfectly highlighted where he
+     * cannot see it.
+     *
+     * `.tvscroll` ∩ the viewport was already the band this aims into — the
+     * note just above records why the well's raw box is the wrong rectangle.
+     * A panel is the same kind of error one layer up, so it is subtracted
+     * from the same band, and only where it genuinely covers THIS match: a
+     * panel dragged to the other side of a 1280 px window hides nothing, and
+     * shrinking the band for it would move the reader for no reason.
+     *
+     * **THE LARGER REMAINING SLICE WINS**, which is what makes this a
+     * decision rather than a rule with a favourite direction: a panel near
+     * the top of the well pushes the landing BELOW it, one near the bottom
+     * pushes it above, and the reader gets whichever side has room.
+     *
+     * **AND A SLIVER IS REFUSED.** With three panels open and stacked, or one
+     * dragged across the middle of a short window, the free slice can be
+     * smaller than a line. Scrolling a match into an eight-pixel gap is worse
+     * than leaving it where the old rule put it, so below `MATCH_BAND_MIN_PX`
+     * this falls back to the whole band — the landing is then no worse than
+     * before this existed, and the reader can drag the panel aside, which is
+     * the affordance it has.
+     */
+    /*
+     * **THE BANDS THE PANELS LEAVE, AND ONLY THE ONES THE SCROLL CAN REACH.**
+     *
+     * A first draft took the LARGER remaining slice and scrolled into it. It
+     * passed in English and reddened in Hebrew on the same build, which is
+     * what a rule that cannot be satisfied looks like from the outside: the
+     * match was 147 px down a well running 117-621, the panel covered
+     * 150-573, the larger slice was the 48 px BELOW it — and reaching that
+     * slice meant scrolling UP from `scrollTop` 0. The write was clamped to
+     * 0, nothing moved, and the match stayed under the close button.
+     *
+     * So the candidates are ordered by size and the FIRST ONE THE SCROLL CAN
+     * ACTUALLY REACH wins. In that same case the 33 px above the panel is the
+     * smaller slice and the only reachable one, and the match lands in it.
+     */
+    const bands = [[seen, under]];
+    for (const dialog of host.querySelectorAll('dialog.mcpanel[open]')) {
+      const over = dialog.getBoundingClientRect();
+      // Not over this match's own column, so it hides nothing of it. `span`
+      // and not `box`: the collapsed caret has no width, and a match that
+      // STARTS beside a panel and runs UNDER it was read as clear of it.
+      if (span.right < over.left || span.left > over.right) continue;
+      if (over.bottom <= seen || over.top >= under) continue;
+      const left = bands.splice(0, bands.length);
+      for (const [lo, hi] of left) {
+        if (over.top > lo) bands.push([lo, Math.min(hi, over.top)]);
+        if (over.bottom < hi) bands.push([Math.max(lo, over.bottom), hi]);
+      }
+    }
+    /*
+     * **WHAT A BAND HAS TO BE BIG ENOUGH FOR IS THE MATCH ITSELF**, measured
+     * from the match rather than guessed: `MATCH_BAND_MIN_PX` is the floor
+     * for a collapsed box that answers with no height at all.
+     */
+    const need = Math.max(MATCH_BAND_MIN_PX, box.bottom - box.top);
+    const roomy = bands.filter(([lo, hi]) => hi - lo >= need)
+      .sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]));
+    // Already somewhere the reader can see it: nothing moves. Checked across
+    // every band, because "visible" is now more than one rectangle.
+    for (const [lo, hi] of roomy) if (box.top >= lo && box.bottom <= hi) return;
+    /*
+     * **AND THE MARGIN IS CLAMPED TO THE BAND IT IS INSIDE.** 80 px below the
+     * top of a 600 px well is a third of the way down; 80 px below the top of
+     * a 48 px slice left by a panel is past the bottom of it, and the match
+     * would land outside the only space it has. Half of what the band has to
+     * spare keeps the *"room around it"* the margin exists for in a band the
+     * margin was never sized against.
+     */
+    const aim = (lo, hi) => scroll.scrollTop + box.top - lo
+      - Math.min(MATCH_MARGIN_PX, Math.max(0, (hi - lo - need) / 2));
+    const reach = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+    let want = null;
+    for (const [lo, hi] of roomy) {
+      const at = aim(lo, hi);
+      if (at >= 0 && at <= reach) { want = at; break; }
+    }
+    if (want === null) {
+      /*
+       * **NOTHING THE PANELS LEAVE CAN BE REACHED**, which is a real state
+       * and not a bug: a panel taller than the well, or three of them
+       * stacked, covers every line at this match's column. The old rule is
+       * what is left, and the landing is then no worse than it was before any
+       * of this existed — the reader drags the panel aside, which is the
+       * affordance a floating panel has.
+       */
+      if (box.top >= seen && box.bottom <= under) return;
+      want = aim(seen, under);
+    }
+    scroll.scrollTop = want;
+    paint();
+  };
+
   const showMatch = (nodeIndex) => {
     const needle = find.value.trim();
     if (needle === '') return;
@@ -8181,24 +8669,39 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     range.setStart(parts[lo].node, Math.min(hit.from - parts[lo].at, parts[lo].node.data.length));
     range.collapse(true);
     const box = range.getBoundingClientRect();
-    const rect = scroll.getBoundingClientRect();
     /*
-     * **THE WELL IS NOT THE SAME THING AS THE PART OF IT YOU CAN SEE**, and
-     * measuring it was what found this: on a 1280x800 window `.tvscroll`'s own
-     * box runs to y=1040, past the bottom of the viewport, because the page
-     * scrolls as well as the well does. Tested against the well alone, a match
-     * at y=795 is "visible" and the reader is looking at 800 pixels of screen
-     * that does not contain it. So the test is against the INTERSECTION, which
-     * is the only rectangle a reader actually has.
+     * **AND THE MATCH'S REAL WIDTH, WHICH THE COLLAPSED RANGE ABOVE DOES NOT
+     * HAVE** — `semantic/14`, and it was a measurement that found it.
+     *
+     * `range` is collapsed to the match's START, which is the right thing to
+     * aim the SCROLL at: it is the first line of the match, and a multi-line
+     * match aimed at its own middle would land with its opening off the top.
+     * But a collapsed range is a point, and the panel test below asks
+     * "is this match in the column this panel covers" — of a thing with no
+     * width. Driven with the panel dragged over the middle of the well, two
+     * landings in five put the match at x 419-490 under a panel at 444-892
+     * and the point test said the panel was not over it, because the point
+     * was the 419.
+     *
+     * So the same two offsets `paintFinds` paints the match with are used
+     * again here, and the answer is the rectangle the reader actually sees.
+     * A match that wraps gives a box spanning both lines, which is correct:
+     * it IS on both, and a panel over either one covers part of it.
      */
-    const top = Math.max(rect.top, 0);
-    const bottom = Math.min(rect.bottom, window.innerHeight || rect.bottom);
-    // A collapsed range in a row that is drawn but positioned outside the
-    // window answers with an empty box. Nothing to aim at, so nothing moves.
-    if (box.top === 0 && box.bottom === 0) return;
-    if (box.top >= top && box.bottom <= bottom) return;
-    scroll.scrollTop += box.top - top - MATCH_MARGIN_PX;
-    paint();
+    let elo = lo;
+    let ehi = parts.length - 1;
+    while (elo < ehi) {
+      const mid = (elo + ehi + 1) >> 1;
+      if (parts[mid].at <= hit.to) elo = mid; else ehi = mid - 1;
+    }
+    const wide = document.createRange();
+    wide.setStart(parts[lo].node, Math.min(hit.from - parts[lo].at, parts[lo].node.data.length));
+    // Clamped for `range`'s own recorded reason: a separator this walk
+    // inserted is in no text node, so an offset can land one past its part,
+    // and `setEnd` raises on an out-of-range offset.
+    wide.setEnd(parts[elo].node, Math.min(hit.to - parts[elo].at, parts[elo].node.data.length));
+    const span = wide.getBoundingClientRect();
+    revealBox(box, span);
   };
 
   const sayNav = (key, subs = {}, tail = null) => {
@@ -8247,7 +8750,15 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
      * variable is a key that gate cannot see.
      */
     if (positions.length === 0) {
-      if (which === 'found') sayNav('conv.nav.noFounds');
+      // **AND THE STEP SAYS IT TOO** — `semantic/14`. *"There is nothing to
+      // step to. Type in the find box first."* was what the owner's every
+      // press answered while forty turns held his words and the scan had been
+      // refused. Spelled as its own key rather than composed, for the reason
+      // written just above: `test/ui/viewmodel.test.ts` reads these keys by
+      // parsing this file, and a key arriving as a variable is one that gate
+      // cannot see.
+      if (which === 'found' && findFailed) sayNav('conv.nav.noFoundsFailed');
+      else if (which === 'found') sayNav('conv.nav.noFounds');
       else if (which === 'you') sayNav('conv.nav.noYous');
       else if (markKind === null) sayNav('conv.nav.noMarks');
       else sayNav('conv.nav.noMarksKind', { kind: kindWord(markKind) });
@@ -8303,6 +8814,29 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // control along: *"`scroll` itself is not [the reader's], because `paint`
     // fires it."*
     cursor[which] = target;
+    /*
+     * **THE PLACE IS REDRAWN HERE AND NOT LEFT TO THE PAINT** — `semantic/14`
+     * for the match walk, and now for all three. `showMatch` above has already
+     * painted, and the cursor is written on the line above this one, so a
+     * counter refreshed only by `navRefresh` would be one press behind for
+     * ever.
+     */
+    drawPlace(which, positions.length);
+    /*
+     * **AND THE ONE YOU ARE STANDING ON IS MARKED ON THE DOCUMENT** —
+     * `semantic/12`, owner 2026-09-17: *"apply the same behaviour of
+     * highliting the current"*. The match walk paints its current MATCH
+     * (`foundNow`, `mycontextfindnow`); every walk now also marks the TURN,
+     * which is the only emphasis marks and messages can have — their stop is
+     * a whole turn and there is no narrower range in it to paint.
+     *
+     * Set before nothing and read by `paintStanding`, which runs at the end of
+     * every rebuild for the same reason `paintFinds` does: a row is evicted
+     * and rebuilt by scrolling, and an emphasis written once would survive
+     * exactly until the reader scrolled past it and back.
+     */
+    standingAt = positions[target];
+    paintStanding();
     if (which === 'found') {
       sayNav('conv.nav.atFound', { n: target + 1, total: positions.length });
       return;
@@ -8579,6 +9113,14 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     foundCount.replaceChildren();
     if (find.value.trim() === '') {
       foundCount.append(...ctx.t('conv.nav.foundsIdle'));
+    } else if (findFailed) {
+      /*
+       * **A SCAN THAT REFUSED IS NOT A SCAN THAT FOUND NOTHING** — the owner's
+       * own report of 2026-09-17, reproduced and answered here. This branch is
+       * ABOVE the zero branch on purpose: `foundStops()` is empty in both
+       * cases, and the empty list is exactly what cannot tell them apart.
+       */
+      foundCount.append(...ctx.t('conv.nav.foundsUnknown'));
     } else if (founds.stops.length === 0) {
       foundCount.append(...ctx.t('conv.nav.foundsNone'));
     } else {
@@ -8587,6 +9129,245 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     if (findUnreached > 0) {
       foundCount.append(' ', ...ctx.t('conv.nav.foundsUnreached', { n: findUnreached }));
     }
+    /*
+     * **ALL THREE PLACES, FROM ONE FUNCTION** — `semantic/12`, the owner's
+     * addition of 2026-09-17. `semantic/14` added the match place here; the
+     * other two are the same call with a different first argument, which is
+     * what "one standard behaviour" has to mean in code if it is to stay one.
+     */
+    drawPlace('mark', marks.stops.length);
+    drawPlace('you', yous.stops.length);
+    drawPlace('found', founds.stops.length);
+    drawDisclosure(marks, yous);
+  };
+
+  /**
+   * ══ THE ONE LINE UNDER "Back to all sessions", AND WHEN IT IS THERE ══════
+   *
+   * `semantic/15` §3, owner ruling 2026-09-17: *"bring the text under the
+   * \"Back to all sessions\" button, then under it open the viewer"*, and,
+   * choosing between three shapes for WHEN: **only when it has something to
+   * disclose.**
+   *
+   * ── THE CONDITION IS "IS SOMETHING HIDDEN", NEVER "IS A PANEL OPEN" ─────
+   *
+   * That is the item's own sentence and it is the whole design. `semantic/12`
+   * LENT `p.tvcount` to the search panel so that the disclosure was never
+   * nowhere; this replaces that protection with a stronger one, and the
+   * failure it must not reproduce is a count that disappears because a panel
+   * happens to be open. So every input below is a fact about the DOCUMENT and
+   * the FILTERS — the needle, the view, the two walks' hidden counts, the kind
+   * — and `findPanel.isOpen()` is not consulted anywhere in this function.
+   *
+   * ── WHICH SENTENCES ARE DISCLOSURES AND WHICH ARE NOT ───────────────────
+   *
+   * DISCLOSURES, drawn here:
+   *   — `conv.doc.noMatch`, `conv.doc.matched`, `conv.doc.matchedFull` and
+   *     their three qualifications. Each is only reachable with a needle
+   *     typed, and each says what the view is NOT showing.
+   *   — `conv.doc.hidingMarks` / `conv.doc.hidingYous`: how many marks and how
+   *     many of his own messages the search is holding back. `semantic/12`
+   *     carried these inside `markCount`/`youCount` as `conv.nav.marksHidden`
+   *     and `conv.nav.yousHidden`; those two stay in the panel beside the
+   *     walks they qualify, and these say the same fact where a reader with
+   *     every panel shut can see it. They are DIFFERENT SENTENCES rather than
+   *     the same key drawn twice, because the panel's version leans on the
+   *     count above it (*"{n} more…"*) and a line standing alone on the card
+   *     has to name what it is counting.
+   *   — `conv.doc.hidingKind`: the mark walk narrowed to one kind. `markStops`
+   *     deliberately does NOT count a filtered-out kind as `hidden` — the
+   *     reader chose that narrowing and the panel's count names it — but with
+   *     the panel shut nothing at all would say the walk is narrowed, and `K`
+   *     narrows it from the keyboard without opening anything.
+   *
+   * NOT DISCLOSURES, and therefore in the step panel only:
+   *   — `conv.doc.whole` — *"1044 turns across 52027 records"*. The size of
+   *     the document. Hides nothing.
+   *   — `conv.nav.marks` — *"641 marked point(s) here."* — and
+   *     `conv.nav.yous` — *"605 message(s) of yours here."* The item names
+   *     both of these by hand as plain totals.
+   *   — `conv.nav.marksDoubled`. It qualifies a total, and the total is in the
+   *     panel.
+   */
+  function drawDisclosure(marks, yous) {
+    const needle = find.value.trim().toLowerCase();
+    count.replaceChildren();
+    /*
+     * **NOTHING AT ALL WITH AN EMPTY BOX.** What stood here was
+     * `conv.doc.whole` — *"1044 turns across 52027 records"* — and it is a
+     * plain total, so by the ruling it has no claim on the card. It is drawn
+     * once, in the step panel, and nowhere else.
+     */
+    if (needle !== '' && view.length === 0) {
+      count.append(...ctx.t('conv.doc.noMatch'));
+    } else if (needle !== '' && findBody === null) {
+      // The answer has not come back yet. The sentence says only what this
+      // side actually knows, because the fuller one below names numbers that
+      // do not exist until the scan does.
+      count.append(...ctx.t('conv.doc.matched', {
+        shown: view.length, total: nodes.length, peek: outline.peekChars,
+      }));
+    } else if (needle !== '') {
+      /*
+       * **THE SENTENCE NAMES WHAT THE NUMBER IS A NUMBER OF**, and that is the
+       * half of this task the owner emphasised second: *"a count that silently
+       * means 'in the rows I have drawn' is worse than no count at all"*.
+       *
+       *   — `turns` is turns OF WORDS that hold the query, over the whole
+       *     transcript. It is the server's, from a scan of every prose span.
+       *   — `scanned` against `records` is the scope, and the gap is enormous
+       *     and invisible without it: **47,910 of one session's 52,292
+       *     records are machinery**, in no index, findable here only by the
+       *     tools they ran. Lane AI's report closes on exactly this.
+       *   — `shown` is rows on the screen, which is the two readings joined.
+       */
+      count.append(...ctx.t('conv.doc.matchedFull', {
+        shown: view.length,
+        total: nodes.length,
+        turns: findBody.turns.length,
+        matches: findBody.matches,
+        scanned: findBody.scanned,
+        records: findBody.records,
+      }));
+      // Drawn only when real — `STD-a-measured-zero-is-drawn-and-named` binds a
+      // measurement a reader asked for, and these are qualifications on one.
+      if (findBody.capped === true) {
+        count.append(' ', ...ctx.t('conv.doc.findCapped', { cap: findBody.scanCap }));
+      }
+      if (findUnreached > 0) {
+        count.append(' ', ...ctx.t('conv.doc.findUnreached', { n: findUnreached }));
+      }
+      if (!CAN_HIGHLIGHT) count.append(' ', ...ctx.t('conv.doc.findNoPaint'));
+    }
+    if (marks.hidden > 0) {
+      count.append(' ', ...ctx.t('conv.doc.hidingMarks', { n: marks.hidden }));
+    }
+    if (yous.hidden > 0) {
+      count.append(' ', ...ctx.t('conv.doc.hidingYous', { n: yous.hidden }));
+    }
+    if (markKind !== null) {
+      count.append(' ', ...ctx.t('conv.doc.hidingKind', { kind: kindWord(markKind) }));
+    }
+    /*
+     * **AND THE LINE IS TAKEN DOWN WHEN IT SAYS NOTHING.** `hidden` and not
+     * an empty paragraph: the reset's `[hidden]{display:none}` gives it zero
+     * height, so the ordinary card — no search, no kind filter — carries no
+     * count line at all, which is exactly what the ruling asks for. It is
+     * DERIVED from what was just written rather than from a second reading of
+     * the same four facts, so the line and its own visibility cannot disagree.
+     */
+    count.hidden = count.childNodes.length === 0;
+  }
+
+  /**
+   * **"1 of 15" — WHERE THE WALK IS UP TO** — `semantic/14`.
+   *
+   * Drawn from `cursor.found`, which is the walk's own place and the only
+   * thing that knows it: `-1` is "no walk in progress", and it is set to that
+   * by `endWalk` — which every change of query, mode, option and filter
+   * reaches through `navRefresh`, and which the reader also reaches by
+   * scrolling the well themselves. So a counter that reads it cannot be left
+   * claiming a position in an answer that has since been replaced; there is
+   * nothing here to keep in step, because there is no second state.
+   *
+   * **CALLED FROM TWO PLACES AND FOR TWO DIFFERENT REASONS.** `navRefresh`
+   * calls it because the ANSWER changed; `step` calls it because the PLACE
+   * changed, after `cursor.found` is written — and `step` writes that cursor
+   * after `showMatch`, which paints, so a redraw driven only from the paint
+   * would always be one press behind.
+   */
+  const PLACE_SLOT = { mark: markPlace, you: youPlace, found: foundPlace };
+  /**
+   * What `drawPlace` was last told each walk holds.
+   *
+   * `endWalk` runs on every wheel tick, and re-deriving `markStops()`,
+   * `youStops()` and `foundStops()` there to redraw three spans would put
+   * three list walks inside a scroll handler. The totals cannot have changed
+   * since the last `navRefresh` — nothing a wheel does adds a mark — so the
+   * number is remembered rather than recomputed.
+   */
+  const lastTotal = { mark: 0, you: 0, found: 0 };
+  /*
+   * **`howMany` AND NOT `total`, AND THAT IS A GATE RATHER THAN A STYLE.**
+   * `test/ui/viewmodel.test.ts` reads every key and every SLOT out of this
+   * file by parsing it, and it cannot see an object shorthand: written as
+   * `{ n: at + 1, total }` it reported *"conv.nav.place needs {total}, and
+   * conversations.js does not pass it"* for all three sentences. Naming the
+   * parameter something else makes the shorthand unwritable, so the slot is
+   * spelled out and the gate can see it. The same line reddened for
+   * `semantic/14`'s own `conv.nav.place`, which this function now draws.
+   */
+  const drawPlace = (which, howMany) => {
+    const total = howMany;
+    lastTotal[which] = total;
+    const slot = PLACE_SLOT[which];
+    slot.replaceChildren();
+    const at = cursor[which];
+    /*
+     * **A WALK WITH NOTHING IN IT SAYS NOTHING HERE**, because the COUNT
+     * beside it has already said it — *"Nothing is marked in this
+     * conversation"*, *"No turn here holds what you typed"*. A second element
+     * repeating that in other words is the duplication this project measures,
+     * and `STD-a-measured-zero-is-drawn-and-named` is discharged by the count,
+     * which is the element whose subject the zero is.
+     *
+     * `findFailed` is `semantic/14`'s: a scan that was REFUSED has no answer
+     * at all, so there is no place in it to be at.
+     */
+    if (total === 0) return;
+    if (which === 'found' && (find.value.trim() === '' || findFailed)) return;
+    /*
+     * **BEFORE THE FIRST STEP THERE IS NO PLACE, AND IT SAYS SO IN WORDS
+     * RATHER THAN IN A NUMBER** — the second thing the owner's addition asks
+     * to be decided rather than discovered.
+     *
+     * `0 of 15` is a lie: there is no zeroth mark, and a reader reading it as
+     * a position would be reading one that does not exist. `1 of 15` is
+     * worse — it claims the reader is standing somewhere they have not gone,
+     * and the first press of Next would then move them to `2 of 15` having
+     * skipped one. So the idle state names the BUTTON instead, which is the
+     * one thing a reader at no position can usefully be told.
+     *
+     * `cursor[which]` is `-1` for exactly this state and `endWalk` puts it
+     * back there on every wheel, key and pointer in the well — so scrolling
+     * away by hand takes the position down rather than leaving a stale one
+     * standing, which is the same rule the current-item emphasis follows.
+     */
+    if (at < 0 || at >= total) {
+      if (which === 'mark') slot.append(...ctx.t('conv.nav.placeIdleMarks'));
+      else if (which === 'you') slot.append(...ctx.t('conv.nav.placeIdleYous'));
+      else slot.append(...ctx.t('conv.nav.placeIdle'));
+      return;
+    }
+    /*
+     * **SPELLED OUT RATHER THAN COMPOSED FROM A VARIABLE KEY**, for the reason
+     * `navRefresh` and `step` both already carry: `test/ui/viewmodel.test.ts`
+     * reads every key and every slot out of this file by PARSING it, and a key
+     * arriving as a variable is a key that gate cannot see.
+     *
+     * And the three sentences are not one sentence with a noun substituted:
+     * each names what it counts, which is `confirm/3`'s rule — a count whose
+     * subject is only knowable from what is beside it is a count that changes
+     * meaning when the thing beside it moves, and these move into panels.
+     */
+    if (which === 'mark') {
+      slot.append(...ctx.t('conv.nav.placeMarks', { n: at + 1, total: howMany }));
+    } else if (which === 'you') {
+      slot.append(...ctx.t('conv.nav.placeYous', { n: at + 1, total: howMany }));
+    } else {
+      slot.append(...ctx.t('conv.nav.place', { n: at + 1, total: howMany }));
+    }
+  };
+  /*
+   * **ASSIGNED AFTER `drawPlace`, NOT BEFORE IT.** An arrow closing over a
+   * `const` declared later is legal to write and a throw to CALL, and
+   * `endWalk` — which calls this — is reachable from a callback. Same
+   * temporal-dead-zone discipline this file states twice above.
+   */
+  clearPlaces = () => {
+    drawPlace('mark', lastTotal.mark);
+    drawPlace('you', lastTotal.you);
+    drawPlace('found', lastTotal.found);
   };
 
   redraw('end');
@@ -8730,7 +9511,14 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   /** The passage the reader marked, or `null`. Node indices, ascending. */
   let marked = null;
   const copyButtons = [copyMessage, copySeen, copyRaw];
-  const armCopy = (on) => { for (const button of copyButtons) button.disabled = !on; };
+  const armCopy = (on) => {
+    for (const button of copyButtons) button.disabled = !on;
+    // **AND THE PANEL SAYS WHY THEY ARE GREY** — `semantic/13`. Three of the
+    // four are disabled until something is marked, which is honest and
+    // invisible: a reader who has selected nothing sees three dead controls
+    // and no reason. The strip has no room for the reason; the panel does.
+    showCopyNeed();
+  };
   armCopy(false);
 
   /**
@@ -8883,39 +9671,63 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * live, so that NAVIGATION and COPY are a second and third caller rather
    * than two more boxes to reverse-engineer.
    *
-   * ── IT BORROWS CONTROLS RATHER THAN GROWING ITS OWN ────────────────────
+   * ── IT OWNS THE FIND BOX NOW, AND `semantic/15` IS WHY ────────────────
    *
-   * The find box, the match stepper and the count line are MOVED into the
-   * panel while it is open and put back where they came from when it closes.
-   * Two reasons, and the second is the load-bearing one:
+   * It BORROWED them until 2026-09-17: the find box, the match stepper and the
+   * count line were moved in while the panel was open and put back in `.tvbar`
+   * when it closed, so that there was no state of the screen in which a
+   * control was nowhere. The owner looked at the result and asked for the
+   * other half — *"the card itself is still big and contains all the buttons
+   * and controls that should be removed because the functions now works from
+   * the floating dialogs"* — so the strip is gone and these controls live
+   * HERE, appended once at mount.
    *
-   *   — **The bar must shrink as the panel fills.** Measured on this
-   *     repository's own 139 MB session at 1280x1000 before any of this
-   *     existed: `.tvnav` is 60.8 px idle and **162.8 px with a query**, and
-   *     372.7 px of chrome stands between the top of the bar and the top of
-   *     the well. That crowding is what he is complaining about, and a panel
-   *     that added a fourth surface while leaving the strip alone would have
-   *     made it worse.
-   *   — **One control, one mechanism.** A second query field inside the panel
-   *     would be two inputs, two listeners and two states for one query —
-   *     and the day they disagreed, nothing on the screen would say which was
-   *     right. `.tvfind` is the same element in both places, so there is
-   *     nothing to keep in step.
+   * **One control, one mechanism, unchanged.** A second query field inside the
+   * panel would be two inputs, two listeners and two states for one query, and
+   * the day they disagreed nothing on the screen would say which was right.
+   * `.tvfind` is still ONE element; it simply has one home instead of two.
+   *
+   * **The count line did NOT come with them, and that is `semantic/15` §3.**
+   * `p.tvcount` is a DISCLOSURE — it says what a search is holding back — and
+   * a disclosure that is only legible while a panel happens to be open is the
+   * defect the lend existed to prevent, arriving by the other door. It is on
+   * the card, under *"Back to all sessions"*, drawn only when something is
+   * actually hidden. What the panel keeps is the match stepper, which is a
+   * CONTROL and not a disclosure.
    */
+
   /**
-   * Where each borrowed control lives when the panel is shut.
+   * **WHERE A PANEL OPENS THE FIRST TIME, AND ONLY THE FIRST TIME** — after a
+   * drag the stored place wins, which is the frame's own rule.
    *
-   * Recorded as (parent, nextSibling) rather than as an index: `.tvbar` and
-   * `.tvnav` both gain and lose children — the copy buttons enable, the kind
-   * `<select>` is rebuilt — and an index would put a control back in the
-   * wrong place the first time one of those moved. `insertBefore(node, null)`
-   * is an append, which is the honest answer when the control was last.
+   * Just inside the top of the WELL and inset from the start edge — a panel
+   * that opened in the middle of the transcript would cover the turns the
+   * reader is about to work on, and one that opened above it would cover the
+   * card the whole of `semantic/15` §4 exists to keep on screen.
+   *
+   * **IT WAS `bar.bottom + 8` UNTIL 2026-09-17 AND THE ANCHOR HAD TO MOVE
+   * WITH THE STRIP**, not because `.tvbar` was a nicer number but because it
+   * no longer exists: `getBoundingClientRect()` on a detached element answers
+   * zeros, and three panels would have cascaded from the top of the window.
+   * The well's own top is within a few pixels of where the bar's bottom used
+   * to be, for the arithmetic reason this whole item is about — the ~199 px of
+   * chrome that stood between them has gone.
+   *
+   * **AND IT IS A CASCADE, WHICH IS A DEFECT FOUND BY LOOKING AT THREE OPEN
+   * PANELS.** `semantic/9` shipped one caller and one constant, `start: 24`.
+   * With three callers and one constant, a reader who opens all three on a
+   * fresh browser gets three panels at exactly the same point — the top two
+   * completely hidden behind the third, with nothing on the screen saying
+   * they are open, and no way to reach their headers to drag them apart.
+   * Every assertion stayed green, because "the panel is open" is true of all
+   * three. `STEP` is a window manager's answer and it is the smallest one:
+   * every header stays grabbable, so the reader can put them where they like
+   * and the store remembers it from then on.
    */
-  const lent = [find, foundGroup, count].map((node) => ({
-    node, parent: node.parentNode, next: node.nextSibling,
-  }));
-  const giveBack = () => {
-    for (const { node, parent, next } of lent) parent.insertBefore(node, next);
+  const CASCADE_STEP = 32;
+  const panelPlace = (at) => {
+    const box = scroll.getBoundingClientRect();
+    return { start: 24 + (at * CASCADE_STEP), top: Math.round(box.top + 8 + (at * CASCADE_STEP)) };
   };
 
   /** The sentences that say what each ticked option changed. */
@@ -8947,6 +9759,8 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   const noteReUnits = findNote('mcnotereunits');
   const noteReSlow = findNote('tvwarn mcnotereslow');
   const noteReRefused = findNote('tvwarn mcnoterefused');
+  // `semantic/14`. The request itself did not come back — see `findFailed`.
+  const noteFailed = findNote('tvwarn mcnotefailed');
 
   /**
    * A refusal code from the matcher, as a string key — `semantic/11`.
@@ -9025,6 +9839,16 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     // escapes, or `byte AND` with nothing after it, read no span either, and a
     // cost sentence under "nothing was searched for" would be a measurement of
     // something that did not happen.
+    /*
+     * **THE REQUEST DID NOT COME BACK, AND THAT IS ITS OWN SENTENCE** —
+     * `semantic/14`, and it is the owner's 2026-09-17 report answered where a
+     * reader is actually looking. It names the cause that produced it,
+     * because that cause is one this product creates for itself: the browser
+     * assets reload on every request and the server's modules do not, so a
+     * page updated under a running server is a real and recurring state, and
+     * the repair is one command.
+     */
+    sayNote(noteFailed, findFailed, () => ctx.t('conv.find.scanFailed'));
     const scanned = body !== null && body.refused !== true
       && (body.error === null || body.error === undefined)
       && (body.why === null || body.why === undefined);
@@ -9209,18 +10033,45 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       ['*.ts', 'conv.find.egW1'],
       ['semantic/?', 'conv.find.egW2'],
       ['reports/2026-09-16-*.md', 'conv.find.egW3'],
+      ['e2e/*.spec.ts', 'conv.find.egW5'],
       ['b*t...', 'conv.find.egW4'],
     ],
     logical: [
       ['budget AND ms', 'conv.find.egL1'],
       ['"byte offset" OR "prose span"', 'conv.find.egL2'],
       ['regex NOT wildcard', 'conv.find.egL3'],
+      ['(carry OR gold) AND contrast', 'conv.find.egL5'],
       ['budget NEAR ms', 'conv.find.egL4'],
     ],
+    /*
+     * **NINE, AND EACH ONE IS A ROW OF THE REFERENCE PUT TO WORK** —
+     * `semantic/14`, and the owner's *"add more examples"*. Four shipped in
+     * `semantic/11`; the five added here were chosen so that between them the
+     * list demonstrates a look-ahead, a group that does not remember, `^`
+     * meaning the start of a TURN, a range written by code point, and a
+     * back-reference — the five constructs of the table below that a reader
+     * is least likely to get right from memory.
+     *
+     * **EVERY ONE OF THEM WAS RUN AGAINST HIS OWN ARCHIVE BEFORE IT WAS
+     * WRITTEN DOWN**, which is the standing rule for this list and the reason
+     * one of `semantic/11`'s was replaced: an example that finds nothing
+     * teaches nothing. What each returned on the live 139 MB session on
+     * 2026-09-17 is in `reports/2026-09-17-the-find-panel-counts-and-
+     * reference.md`, and the smallest of the five is 41 turns.
+     *
+     * **THE REFUSED SHAPE STAYS LAST**, because it is the one a reader should
+     * meet after the eight that work, and because the browser suite reaches it
+     * as `.mcpanelegq` `.last()`.
+     */
     regex: [
       ['\\d+ ms', 'conv.find.egR1'],
+      ['\\d+(?= ms)', 'conv.find.egR5'],
+      ['\\b\\d+(?:,\\d{3})+\\b', 'conv.find.egR6'],
       ['[\\w.-]+@[\\w.-]+', 'conv.find.egR2'],
       ['(\\d{4})-(\\d{2})-(\\d{2})', 'conv.find.egR3'],
+      ['^#{1,3} .+', 'conv.find.egR7'],
+      ['[\\u0590-\\u05ff]+', 'conv.find.egR8'],
+      ['\\b(\\w+) \\1\\b', 'conv.find.egR9'],
       ['^(\\w+\\s?)+$', 'conv.find.egR4'],
     ],
   };
@@ -9240,6 +10091,165 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   helpHead.append(...ctx.t('conv.find.help'));
   const helpBody = el('div', 'mcpanelhelpbody');
   help.append(helpHead, helpBody);
+
+  /*
+   * ── THE REGULAR-EXPRESSION REFERENCE — `semantic/14` ─────────────────────
+   *
+   * The owner, 2026-09-17, having used the help `semantic/11` shipped:
+   * *"about regex - add more examples and also add a full syntax help because
+   * it is complicated and hard to remember"*.
+   *
+   * **FIFTEEN WORKED EXAMPLES ALREADY SHIPPED AND HE STILL ASKED**, so the
+   * gap this closes is not another example — it is a LOOKUP TABLE. An example
+   * teaches the first use of a construct; a reference serves the fiftieth,
+   * when the reader knows exactly what they want and cannot remember how it
+   * is spelt. The two are different instruments and this panel now has both.
+   *
+   * ── WHAT THE LEFT COLUMN IS, AND WHY IT IS NOT A STRING KEY ──────────────
+   *
+   * The construct itself — `\d`, `a{2,}`, `(?:ab)`. It is SYNTAX, identical in
+   * every language, so it lives in this table as a literal and is drawn into
+   * a `span.m` (monospace, `direction:ltr`, `unicode-bidi:isolate`) — the same
+   * run every identifier on this screen already wears, which is what keeps a
+   * Latin pattern from landing at the wrong end of a Hebrew row. Only the
+   * SENTENCE beside it is a string key, so this is 33 keys per table and not
+   * 66, and `test/ui/strings-parity.test.ts` has nothing to keep in step that
+   * a copy could get wrong.
+   *
+   * ── AND `}` NEVER APPEARS INSIDE A `{m:…}` RUN IN THOSE SENTENCES ────────
+   *
+   * `lib/i18n.js` ends an `{m:…}` run at the FIRST `}`, so `{m:a{2,}}` would
+   * render as `a{2,` with a stray brace after it. Every construct that
+   * carries a brace is therefore in the left column, where the limitation
+   * does not exist. `conv.find.helpReRefuse` already carries one of these
+   * (`{m:(\w+){1,3}}`) and renders it clipped; it is left alone because
+   * repairing another lane's sentence is not this one's, and it is on the
+   * report instead.
+   *
+   * ── THE LAST SECTION IS THE ONE THAT MAKES THIS HONEST ───────────────────
+   *
+   * A reference that lists a construct the scan refuses is worse than no
+   * reference, so the refusal is IN the table — a row of its own, with the
+   * 108,785 ms beside it — rather than only in the prose above it. So are the
+   * four other things this engine does that a general regular-expression
+   * reference would get wrong here: the unit is a TURN, `^` and `$` are that
+   * turn's ends, `Match case` is the `i` flag, and there are no flag letters
+   * to type at all.
+   */
+  const REGEX_REF = [
+    ['conv.find.refChars', [
+      ['abc', 'conv.find.refLit'],
+      ['.', 'conv.find.refDot'],
+      ['\\.', 'conv.find.refEsc'],
+      /*
+       * **THE LIST OF CHARACTERS THAT NEED AN ESCAPE IS A CONSTRUCT AND NOT A
+       * SENTENCE**, and that is a Hebrew screenshot's finding — `semantic/14`.
+       *
+       * The first draft carried it inside `conv.find.refEsc` as one long
+       * `{m:…}` run. A monospace run is `unicode-bidi:isolate`, which orders
+       * it correctly — until it WRAPS, and then the reader of an RTL page
+       * meets the second half of the run above the first. Fourteen bidi-
+       * neutral characters in the middle of a Hebrew sentence is the widest
+       * possible version of that hazard.
+       *
+       * In the left column it cannot wrap at all (`white-space:nowrap`), the
+       * row scrolls if it must, and the sentence beside it has no run in it.
+       * Two braces and a backslash are in the list, which is the other reason
+       * it could not stay in a string: `lib/i18n.js` ends an `{m:…}` run at
+       * the first `}`.
+       */
+      // **NO SPACES BETWEEN THEM, AND THAT IS A MEASUREMENT.** The left column
+      // is `white-space:nowrap`, so the widest row in it sets the width of the
+      // column and therefore how little is left for the sentences. Spaced out,
+      // this row was 210 px of a 448 px panel and every description beside it
+      // wrapped to five lines. Closed up it is 110 px, which is what
+      // `(?<=ab)  (?<!ab)` two sections down already costs — so this row is no
+      // longer the one paying for the whole table.
+      ['.*+?^$|()[]{}\\', 'conv.find.refEscList'],
+      ['\\t  \\n', 'conv.find.refWhite'],
+      ['\\u05d0', 'conv.find.refUni'],
+    ]],
+    ['conv.find.refClasses', [
+      ['[abc]', 'conv.find.refSet'],
+      ['[^abc]', 'conv.find.refNotSet'],
+      ['[a-z]', 'conv.find.refRange'],
+      ['\\d  \\D', 'conv.find.refDigit'],
+      ['\\w  \\W', 'conv.find.refWord'],
+      ['\\s  \\S', 'conv.find.refSpace'],
+      ['\\p{L}  \\p{N}', 'conv.find.refProp'],
+    ]],
+    ['conv.find.refCount', [
+      ['a*', 'conv.find.refStar'],
+      ['a+', 'conv.find.refPlus'],
+      ['a?', 'conv.find.refOpt'],
+      ['a{3}', 'conv.find.refExactly'],
+      ['a{2,4}', 'conv.find.refBetween'],
+      ['a{2,}', 'conv.find.refOrMore'],
+      ['a+?', 'conv.find.refLazy'],
+    ]],
+    ['conv.find.refWhere', [
+      ['^', 'conv.find.refCaret'],
+      ['$', 'conv.find.refDollar'],
+      ['\\b  \\B', 'conv.find.refBound'],
+    ]],
+    ['conv.find.refGroups', [
+      ['(a|b)', 'conv.find.refAlt'],
+      ['(?:ab)', 'conv.find.refNonCap'],
+      ['\\1', 'conv.find.refBack'],
+      ['(?=ab)  (?!ab)', 'conv.find.refAhead'],
+      ['(?<=ab)  (?<!ab)', 'conv.find.refBehind'],
+    ]],
+    ['conv.find.refHere', [
+      ['Match case', 'conv.find.refCase'],
+      ['Whole word only', 'conv.find.refWhole'],
+      ['^  $  .', 'conv.find.refTurn'],
+      ['\\u{1f600}', 'conv.find.refUnits'],
+      ['m  s', 'conv.find.refNoFlags'],
+      ['(X+)+', 'conv.find.refRefused'],
+    ]],
+  ];
+  const reference = el('details', 'mcpanelref');
+  const referenceHead = el('summary');
+  referenceHead.append(...ctx.t('conv.find.ref'));
+  const referenceBody = el('div', 'mcpanelrefbody');
+  reference.append(referenceHead, referenceBody);
+  /*
+   * Built ONCE, at mount, and not on every mode change.
+   *
+   * `drawHelp` rebuilds because its content DEPENDS on the mode; this table
+   * is the regular-expression language and does not change, so rebuilding it
+   * would throw away a reader's scroll position inside a 33-row table for no
+   * answer that moved. What the mode decides is whether it is DRAWN at all,
+   * which is one `hidden` below.
+   */
+  const buildReference = () => {
+    const table = el('table', 'mcpanelreftab');
+    const body = el('tbody');
+    for (const [head, rows] of REGEX_REF) {
+      const headRow = el('tr', 'mcpanelrefh');
+      const headCell = el('th');
+      headCell.colSpan = 2;
+      headCell.scope = 'colgroup';
+      headCell.append(...ctx.t(head));
+      headRow.append(headCell);
+      body.append(headRow);
+      for (const [syntax, key] of rows) {
+        const row = el('tr');
+        const what = el('td', 'mcpanelrefwhat');
+        // `span.m` and not a bare cell: a pattern is an identifier, and a
+        // Latin identifier inside a Hebrew table lands at the wrong end of
+        // its own cell unless it is isolated. Same run `{m:…}` builds.
+        what.append(el('span', 'm', syntax));
+        const says = el('td', 'mcpanelrefsays');
+        says.append(...ctx.t(key));
+        row.append(what, says);
+        body.append(row);
+      }
+    }
+    table.append(body);
+    referenceBody.replaceChildren(table);
+  };
+  buildReference();
 
   /**
    * Redraw the help for the mode that is in force. Whole, and from one state,
@@ -9285,61 +10295,434 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     click.append(...ctx.t('conv.find.helpClick'));
     kids.push(click);
     helpBody.replaceChildren(...kids);
+    /*
+     * **THE REFERENCE IS DRAWN FOR ONE MODE ONLY** — `semantic/14`.
+     *
+     * It is the regular-expression language and nothing else. Three of the
+     * four modes cannot read any of it: `*` is a wildcard's own star, `AND`
+     * is an operator, and in the plain mode every character in that table is
+     * a character to look for. A syntax reference standing open beside a mode
+     * that reads none of it would be the panel teaching a reader a grammar
+     * their query is not being read with, which is worse than not offering
+     * one.
+     *
+     * `hidden` rather than removed from the tree, so a reader who opened it,
+     * went to check something in another mode and came back finds it open
+     * where they left it — the same promise `drawHelp` keeps about its own
+     * `<details>` above.
+     */
+    reference.hidden = mode !== 'regex';
   };
 
-  const panelHint = el('p', 'small tvnote mcpanelhint');
-  panelHint.append(...ctx.t('conv.find.hint'));
+  /**
+   * **ONE SENTENCE, THREE PANELS, THREE ELEMENTS** — `semantic/12`, `13`.
+   *
+   * *"Drag this panel by its title… it closes on its own button or on
+   * Escape"* says nothing about searching: it is the FRAME's own contract,
+   * and the frame now has three callers. So the key is `conv.panel.hint` and
+   * not `conv.find.hint`, which is a rename rather than a second string —
+   * a copy of a sentence is the one defect this repository spent 2026-09-07
+   * measuring.
+   *
+   * A FACTORY and not a shared node, because a node is in one place at a
+   * time: three panels open at once is a thing `lib/panel.js` allows by
+   * design, and one hint element would be drawn in whichever opened last and
+   * silently missing from the other two.
+   */
+  const dragHint = () => {
+    const line = el('p', 'small tvnote mcpanelhint');
+    line.append(...ctx.t('conv.panel.hint'));
+    return line;
+  };
+  const panelHint = dragHint();
+
+  /*
+   * ── THE COUNTS GET ONE PLACE, AND IT IS DIRECTLY UNDER THE BOX ───────────
+   *
+   * The owner, 2026-09-17: *"pleaes put the counts it a statis place up under
+   * the edit search expression and it would be nice to see them in blue so
+   * they would be more observable"*.
+   *
+   * **WHAT WAS WRONG, SAID AS A MEASUREMENT RATHER THAN AS A PREFERENCE.**
+   * The stepper and the count line were the LAST two things in this panel,
+   * under the mode radios, the option boxes, the help and the notes — and
+   * every one of those changes height as the reader works. Choosing a mode
+   * draws two or three sentences; ticking an option draws another; a Hebrew
+   * query draws a fourth; opening the help draws nine examples. So the two
+   * numbers he was watching slid down the panel as he typed, and his eye had
+   * to hunt for them again after every keystroke that changed the panel.
+   *
+   * Here they are between the find box, whose height is fixed, and everything
+   * that moves. Their top is the same pixel in every state of this panel,
+   * which is the whole of *"a statis place"*.
+   *
+   * **THE STEPPER IS ABOVE THE SENTENCE, AND THAT IS THE ORDER THAT MATTERS.**
+   * `p.tvcount` wraps to between one and four lines depending on the query
+   * and the width; `.tvnavfounds` is one row whatever it says. Putting the
+   * fixed-height one first means BOTH numbers keep a fixed top — the other
+   * order pins the sentence and lets "N turn(s) here hold what you typed"
+   * slide about under it, which is the defect wearing different clothes.
+   *
+   * **A WRAPPER AND NOT TWO SIBLINGS**, for two reasons that are both real:
+   * it is the one place the blue is scoped through (`styles.css`), and a
+   * reader asked to glance at one spot should find one block with a rule
+   * under it rather than two lines that happen to be adjacent.
+   */
+  const counts = el('div', 'mcpanelcounts');
+
+  /*
+   * ── A BUTTON THAT EMPTIES THE BOX — `semantic/14` ────────────────────────
+   *
+   * The owner asked for it plainly, and the archive search one screen along
+   * has had one since it shipped: `button.convclear` carrying
+   * `conv.filter.clear`. So this is the house pattern arriving where it was
+   * missed rather than a control invented here — same class, same key, same
+   * `type="button"` — and `.mcpanelclear` only to place it beside the field.
+   *
+   * **IT DOES WHAT A KEYSTROKE WOULD DO, WITHOUT THE SETTLE.** `applyFilter`
+   * re-derives the view from an empty needle, which takes the highlights down
+   * with it; `askFind` on an empty query clears `foundAt`, `findBody`,
+   * `findUnreached`, `foundNow` and `findFailed`, so the counts go back to the
+   * whole-document sentence and the position counter empties; `drawFindNotes`
+   * takes every option and mode note down. There is nothing to wait 250 ms
+   * for — a click is not a stream of characters — which is the same trio, in
+   * the same order, that the help examples already use.
+   *
+   * **AND THE CARET GOES BACK IN THE FIELD.** A reader who cleared the box is
+   * about to type in it, and focus left on the button is one more Tab between
+   * them and the thing they came for. This is not the frame's
+   * `fallbackFocus`, which is about a CLOSED panel and is solved in
+   * `lib/panel.js`; nothing here re-solves it.
+   */
+  const clearFind = el('button', 'convclear mcpanelclear');
+  clearFind.type = 'button';
+  clearFind.append(...ctx.t('conv.filter.clear'));
+  clearFind.addEventListener('click', () => {
+    find.value = '';
+    applyFilter();
+    void askFind();
+    drawFindNotes();
+    find.focus();
+  });
+  /*
+   * The field and its button are one row, so the button is beside what it
+   * empties rather than under it. Since `semantic/15` the field simply LIVES
+   * in this row — it was borrowed out of `.tvbar` until then, and `.tvbar` is
+   * gone.
+   */
+  const findRow = el('div', 'mcpanelfindrow');
 
   const findPanel = createPanel({
     name: 'search',
     title: ctx.t('conv.find.h'),
     closeLabel: ctx.tFlat('conv.find.close'),
     /*
-     * **ONE RESTORE PATH FOR THREE ROUTES OUT.** The close button, Escape and
-     * anything that later calls `close()` all arrive here, so the borrowed
-     * controls cannot be left inside a closed dialog by whichever route the
-     * reader happened to take.
+     * **THERE IS NO `onClose` ANY MORE, AND THAT IS THE POINT OF `semantic/15`
+     * RATHER THAN AN OMISSION.** It existed to be the ONE restore path for the
+     * three routes out — close button, Escape, any later `close()` — so that
+     * borrowed controls could not be stranded in a closed dialog. Nothing is
+     * borrowed, so nothing can be stranded, so there is nothing to restore.
+     *
+     * **WHERE THE CARET STANDS AFTER IT SHUTS** is the well, which is the
+     * document the reader is standing in and is focusable for that reason
+     * (`scroll.tabIndex = 0`). It was the find box while the find box was back
+     * in the strip by this moment; the box is now inside this dialog, and
+     * focus inside a closed dialog is focus nowhere — the 47-tab-stop defect
+     * this screen has already been repaired for once, by a new route.
      */
-    onClose: () => { giveBack(); },
-    /*
-     * **WHERE THE CARET STANDS AFTER IT SHUTS**, and it is the find box
-     * because the find box is what the panel borrowed: a reader who closes
-     * the search is standing on the search. Measured before this was passed:
-     * closing left `document.activeElement` on `BODY`, which is the
-     * 47-tab-stop defect this screen has already been repaired for once.
-     */
-    fallbackFocus: () => find,
+    fallbackFocus: () => scroll,
   });
   host.append(findPanel.dialog);
 
   /**
    * Open it, and put the caret where the reader expects it.
    *
-   * The controls are moved in EVERY time rather than once at mount: they are
-   * only in the panel while it is open, so a reader who never opens it has
-   * the bar exactly as it shipped.
+   * **THE BODY IS BUILT ONCE, AT MOUNT.** It used to be filled on every open
+   * because the controls were only in here while the panel was open;
+   * `semantic/15` gave them one home, so re-filling on every open would be a
+   * `replaceChildren` that can only ever put back what is already there —
+   * and one more place for the panel's own order to be stated.
    */
+  // `semantic/14`. The counts are the SECOND thing in the panel, directly
+  // under the box, and everything that changes height is below them. The count
+  // SENTENCE is no longer among them — see this panel's header, and §3 of
+  // `semantic/15`: it is a disclosure and it belongs on the card.
+  counts.replaceChildren(foundGroup);
+  findRow.replaceChildren(find, clearFind);
+  findPanel.body.replaceChildren(
+    findRow, counts, modeRow, optionsHead, optionsRow, help, reference, findNotes,
+    panelHint,
+  );
+
   const openFindPanel = () => {
     const already = findPanel.isOpen();
-    findPanel.body.replaceChildren(
-      find, modeRow, optionsHead, optionsRow, help, findNotes,
-      foundGroup, count, panelHint,
-    );
     if (!already) {
       /*
        * **WHERE IT OPENS THE FIRST TIME**, and only the first time: after a
-       * drag the stored place wins. Under the bar and inset from the start
-       * edge, which is near where the box it borrows was — a panel that
-       * opened in the middle of the well would cover the turns the reader is
-       * about to search.
+       * drag the stored place wins. Just inside the top of the well, so it
+       * covers neither the card above it nor the middle of the transcript.
        */
-      const box = bar.getBoundingClientRect();
-      findPanel.open({ start: 24, top: Math.round(box.bottom + 8) });
+      findPanel.open(panelPlace(0));
     }
     drawHelp();
     drawFindNotes();
     find.focus();
     find.select();
+  };
+
+  /* ── THE NAVIGATION PANEL — `semantic/12` ────────────────────────────────
+   *
+   * **`TASK-the-navigation-controls-still-crowd-the-strip-and-they-are`**,
+   * the SECOND of the three the owner specified on 2026-09-16 and the one
+   * that collects the measurement `reports/2026-09-16-the-find-panel.md` §2.3
+   * left waiting: *"the strip is 128.36 px and not 60.78 px with the panel
+   * open in English, and that residue has a cause worth his eye… those two
+   * counts belong to NAVIGATION."*
+   *
+   * **A SECOND CALLER OF `lib/panel.js` AND NOT A SECOND PANEL.** Everything
+   * that is dialog mechanics — `show()` over `showModal()`, the hand-wired
+   * Escape, the drag with pointer capture, the RTL-reflected place, the
+   * guarded store, the clamp, bring-to-front, the focus hand-back — is in the
+   * frame and is not written again here. What is below is a lend, a restore
+   * and a place to open at.
+   *
+   * ── THE DISCLOSURE QUESTION, ANSWERED TWICE ───────────────────────────
+   *
+   * The item is right that it is real: *"599 more are in this conversation
+   * and the search is hiding them"* is `INV-nothing-is-dropped-silently`
+   * spent on a screen, and **a count nobody can see is a count that was
+   * dropped.**
+   *
+   * `semantic/12`'s answer was that the count was LENT and not moved, so
+   * there was no state of the screen in which the disclosure was nowhere.
+   * **The owner replaced that protection with a better one on 2026-09-17 and
+   * `semantic/15` carries it**: the DISCLOSURE — how many a filter is holding
+   * back — is drawn on the card under *"Back to all sessions"*, and it is
+   * drawn exactly when there is something to disclose. The PLAIN TOTALS —
+   * *"641 marked point(s) here."*, *"605 message(s) of yours here."*,
+   * `conv.doc.whole` — hide nothing from anybody and are in here only.
+   *
+   * So `markCount` and `youCount` are this panel's, for good. What the card
+   * says is not a copy of them: `drawDisclosure` composes its own sentence
+   * from the same two numbers, which is the only shape that could be true in
+   * both places at once.
+   *
+   * **And one word was false and is fixed.** `conv.nav.marksHidden` said
+   * *"the search ABOVE is hiding them"*. The find box has not been above
+   * anything since `semantic/9` — it is in a panel the reader drags where he
+   * likes — so the word was already wrong for the search panel and would
+   * have become wrong twice here. `conv.nav.yousHidden`, `conv.nav.noFounds`
+   * and `conv.menu.noRow` carried it too and are fixed with it.
+   *
+   * ── WHAT DOES NOT MOVE, AND IT IS THE HALF THAT MATTERS ───────────────
+   *
+   * `runShortcut` calls `step('mark', …)` and `cycleKind(…)` DIRECTLY and has
+   * never gone through these buttons, so `N`, `Shift+N`, `U`, `Shift+U`, `K`
+   * and `Shift+K` work identically with the panel shut, open, or dragged off
+   * the bottom of the screen. The `aria-keyshortcuts` and the drawn chips
+   * travel on the controls themselves. THAT IS WHY THIS ITEM COULD DELETE THE
+   * STRIP AND THE FOUR MENU ROWS AT ALL.
+   *
+   * ── AND `Top` / `End` JOINED IT — `semantic/15` ───────────────────────
+   *
+   * They were the last two `.tvjump`s in `.tvbar` and they are movement
+   * through the document, which is this panel's whole subject. They act on
+   * the DOCUMENT and not on the turn under the pointer, so by the item's own
+   * deciding principle they belong in a panel rather than in the menu.
+   */
+  const navHint = dragHint();
+  const navPanel = createPanel({
+    name: 'navigate',
+    title: ctx.t('conv.nav.region'),
+    closeLabel: ctx.tFlat('conv.nav.close'),
+    /*
+     * **WHERE THE CARET STANDS AFTER IT SHUTS.** There is no strip to hand it
+     * back to any more, so it goes to the well — the document itself, which
+     * is what a reader who has finished stepping is looking at, and which is
+     * focusable (`scroll.tabIndex = 0`) precisely so a keyboard reader can
+     * scroll it. Handing it to `markNext` would now be handing it to a
+     * control inside a closed dialog, which is focus nowhere.
+     */
+    fallbackFocus: () => scroll,
+  });
+  host.append(navPanel.dialog);
+
+  /*
+   * **THE TWO ENDS, IN THE PANEL THAT OWNS MOVEMENT** — `semantic/15`. A row
+   * of their own rather than loose among the steppers, so that "go to an end"
+   * and "step to the next thing" do not read as one row of five buttons.
+   */
+  const moveRow = el('div', 'tvnavgroup tvnavends');
+  moveRow.append(toTop, toEnd);
+
+  /**
+   * **THE PLAIN TOTAL, AND THIS IS THE ONLY PLACE IT IS DRAWN** —
+   * `semantic/15` §3.
+   *
+   * *"1044 turns across 52027 records. Scroll the whole session — there is no
+   * page to leave."* It hides nothing from anybody, so by the owner's ruling
+   * it is not a disclosure and has no claim on the card. It says what this
+   * document IS, which is what a reader opening the panel about moving
+   * through it wants to know first.
+   *
+   * Filled ONCE: `outline.said` and `outline.records` are facts about the
+   * file, and the two things that can change them — a silent rebuild, an
+   * append — are `fillHead`'s business and are said in the head.
+   */
+  const whole = el('p', 'small tvnote tvwhole');
+  whole.append(...ctx.t('conv.doc.whole', {
+    turns: outline.said, records: outline.records,
+  }));
+
+  /**
+   * **THE BODY IS BUILT ONCE, AT MOUNT** — nothing is lent, so there is
+   * nothing to move in on each open.
+   *
+   * `navSaid` is NOT in here, and that is `semantic/15`'s one deliberate
+   * reversal of `semantic/12`: see the element's own note. A landing
+   * announced into a closed `<dialog>` would make `N`, `Shift+N`, `U` and
+   * `Shift+U` — which must act with every panel shut — look like keys that do
+   * nothing. It is on the card, above the well, legible in both states.
+   */
+  navPanel.body.replaceChildren(navHead, markGroup, youGroup, moveRow, whole, navHint);
+
+  /** Open it, and put the caret on the walk. */
+  const openNavPanel = () => {
+    const already = navPanel.isOpen();
+    if (!already) {
+      navPanel.open(panelPlace(1));
+    }
+    markNext.focus();
+  };
+
+  /* ── THE COPY PANEL — `semantic/13` ──────────────────────────────────────
+   *
+   * **`TASK-the-copy-controls-are-four-buttons-and-a-sentence-and-they`**,
+   * the third of the three. The item names the subject exactly: **the
+   * sentence is the subject, not the buttons.**
+   *
+   * `conv.copy.hint` used to carry the whole explanation as one run of grey
+   * prose in a strip a reader skims — *"The first is the one to reach for: it
+   * is the text as the record holds it…"* — describing three controls by
+   * their ORDER. Here each control carries its own sentence, under itself,
+   * which is what that prose was always trying to be. The strip line is
+   * rewritten to POINT AT this panel rather than to repeat it: a second copy
+   * of a sentence cannot be superseded, only the original can.
+   *
+   * ── AND THE THIRD THING THE ITEM ASKED ABOUT: `Reconstruct a subject` ──
+   *
+   * **It stays, and it is drawn under a heading that says it is not a copy.**
+   * The item is right that it is not one — it puts nothing on the clipboard;
+   * it fills the retrieval card at the foot of the document and scrolls to
+   * it. But it is reached at the same instant and by the same gesture as the
+   * other three (a passage marked in the well), and it reads the same `clip`
+   * payload they write. Moved elsewhere it would need a second route to a
+   * selection that already has one. So: same panel, own heading,
+   * `conv.copy.notCopy`, and a sentence that says what it actually does.
+   *
+   * ── THE ONE THING A READER MUST KNOW, AND IT IS A REAL CONSTRAINT ─────
+   *
+   * **This panel cannot be opened while a passage is marked.** The
+   * `contextmenu` handler yields to the browser's own menu over a live
+   * selection, deliberately and for a recorded reason — *"a reader who has
+   * just dragged across a turn and right-clicked means Copy"*. So the order
+   * is: open the panel, THEN mark. That is the shape the owner asked for in
+   * the first place (*"stays on screen while you can look at the viewer"*).
+   *
+   * **AND SINCE `semantic/15` THERE IS NO STRIP BEHIND IT.** Until
+   * 2026-09-17 the sentence above ended *"and the buttons are still in the
+   * strip for the reader who marked first"*. They are not: the owner asked
+   * for the controls to LEAVE the card, so a reader who marks a passage first
+   * and then right-clicks still gets the browser's own menu — deliberately —
+   * and reaches these four by opening the panel from a right-click somewhere
+   * with nothing marked, or by `Shift+F10`. That is a real narrowing of the
+   * route and it is on the lane's report rather than absorbed in silence.
+   */
+  const copyNeed = el('p', 'small tvnote mccopyneed');
+  copyNeed.append(...ctx.t('conv.copy.need'));
+  const sayMsg = el('p', 'small mccopysay');
+  sayMsg.append(...ctx.t('conv.copy.sayMsg'));
+  const saySeen = el('p', 'small mccopysay');
+  saySeen.append(...ctx.t('conv.copy.saySeen'));
+  const sayRaw = el('p', 'small mccopysay');
+  sayRaw.append(...ctx.t('conv.copy.sayRaw'));
+  const sayRecall = el('p', 'small mccopysay');
+  sayRecall.append(...ctx.t('conv.copy.sayRecall'));
+  const notCopy = el('p', 'small mccopynot');
+  notCopy.append(...ctx.t('conv.copy.notCopy'));
+  /*
+   * One wrapper per choice. They were built EMPTY until `semantic/15`,
+   * because filling them at mount would have taken the four buttons out of
+   * the strip before the panel had ever been opened. There is no strip to
+   * take them out of any more, so they are filled here, once.
+   */
+  const choiceMsg = el('div', 'mccopychoice');
+  choiceMsg.append(copyMessage, sayMsg);
+  const choiceSeen = el('div', 'mccopychoice');
+  choiceSeen.append(copySeen, saySeen);
+  const choiceRaw = el('div', 'mccopychoice');
+  choiceRaw.append(copyRaw, sayRaw);
+  const choiceRecall = el('div', 'mccopychoice');
+  choiceRecall.append(recall, sayRecall);
+  const copyHint = dragHint();
+  /*
+   * **THE REASON IS DRAWN ONLY WHILE IT IS TRUE.** The three are grey exactly
+   * when nothing is marked, so the line that explains the grey is up exactly
+   * then — the same discipline `markCount`'s hidden clause already follows.
+   * The state is READ OFF the control rather than kept beside it: a second
+   * copy of "is anything marked" is a second thing that can disagree with the
+   * buttons it describes.
+   */
+  showCopyNeed = () => { copyNeed.hidden = copyMessage.disabled === false; };
+  const copyPanel = createPanel({
+    name: 'copy',
+    title: ctx.t('conv.copy.h'),
+    closeLabel: ctx.tFlat('conv.copy.close'),
+    /*
+     * **THE WELL, AND NOT `copyMessage` ANY MORE.** The item's *"the first is
+     * the one to reach for"* chose that button while it was back in the strip
+     * by the time the frame asked. It is now inside this dialog, so handing
+     * it the caret would be handing the caret to a control that is not drawn
+     * — the 47-tab-stop defect by a new route. The well is focusable
+     * (`scroll.tabIndex = 0`) and is what the reader is looking at.
+     */
+    fallbackFocus: () => scroll,
+  });
+  host.append(copyPanel.dialog);
+
+  /**
+   * Open it.
+   *
+   * **AND THE CARET IS NOT PUT ON A CONTROL, WHICH IS THIS PANEL'S OWN RULE
+   * RATHER THAN THE FRAME'S.** The search panel lands the caret in the find
+   * box; three of the four here are DISABLED whenever the panel is opened the
+   * ordinary way — the menu refuses to open over a live selection, so nothing
+   * is marked at that moment — and `.focus()` on a disabled button lands on
+   * nothing at all, which is the 47-tab-stop defect arriving by a new route.
+   * `dialog.show()` has already run the focusing steps and left the caret on
+   * the close button, the one control in here that always answers, so this
+   * does not fight it.
+   */
+  /*
+   * **AND THE TWO THAT USED TO BE LENT HERE AND DELIBERATELY NOT DRAWN ARE
+   * GONE FROM THE FILE.** `copyLabel` was *"Copy what you have marked"*, this
+   * panel's own header word for word, because both read `conv.copy.h`;
+   * `copyHintLine` was the strip's pointer AT this panel, which inside the
+   * panel told a reader to open the thing they were already standing in. Both
+   * existed only to be the STRIP's copy of something this panel already says,
+   * so `semantic/15` deleted them with the strip rather than leaving two
+   * elements whose whole job was to be removed on every open.
+   */
+  copyPanel.body.replaceChildren(
+    copyNeed, choiceMsg, choiceSeen, choiceRaw, notCopy, choiceRecall, copied, copyHint,
+  );
+
+  const openCopyPanel = () => {
+    const already = copyPanel.isOpen();
+    showCopyNeed();
+    if (!already) {
+      copyPanel.open(panelPlace(2));
+    }
   };
 
   /* ── THE MENU ──────────────────────────────────────────────────────────
@@ -9448,6 +10831,49 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
    * `markControl`'s three states, read rather than re-derived. A menu that
    * listed all four would be four items of which two do nothing, which is the
    * defect this whole item is a case of.
+   *
+   * ══ `semantic/15`: TWELVE ROWS BECAME FIVE, AND ONE PRINCIPLE DECIDED IT ══
+   *
+   * The owner, 2026-09-17, looking at the three panels on his own screen:
+   * *"the right menue should be updated, remove any option that is already
+   * implemented on the dialog it will leave there almost only the open dialogs
+   * and maybe 1 or 2 more commands"*.
+   *
+   * **THE SURVIVORS ARE THE ONLY ITEMS THAT ACT ON THE TURN YOU
+   * RIGHT-CLICKED.** A floating panel has no *"this turn"* — it does not know
+   * where the pointer came from. An item acting on the DOCUMENT belongs in a
+   * panel; an item acting on the thing under the cursor belongs here. That one
+   * rule, and not a count, is what decides anything this list did not name.
+   *
+   * SO SEVEN WENT, and each was already in a dialog:
+   *   — `Previous mark` / `Next mark`                  → the step panel
+   *   — `Your previous message` / `Your next message`  → the step panel
+   *   — the three `Step only through —` radios         → the `Step to` picker
+   *     in that same panel, which is the `<select>` these rows were driving by
+   *     hand.
+   *
+   * **AND NOT ONE KEY WENT WITH THEM.** `N`, `Shift+N`, `U`, `Shift+U`, `K`,
+   * `Shift+K`, `M` and `/` are bound in `DOC_SHORTCUTS` and dispatched by
+   * `runShortcut`, which calls `step(…)` and `cycleKind(…)` directly and has
+   * never gone through a menu row or a button. Removing a MENU ROW does not
+   * remove a KEY BINDING, and `e2e/conversations-panels.spec.ts` proves each
+   * of the six named keys with EVERY PANEL SHUT rather than trusting this
+   * sentence.
+   *
+   * ── AND A RULE BETWEEN THE TWO GROUPS, WHICH HE ASKED FOR BY NAME ──────
+   *
+   * *"on the right menu put a horizontal separation line between openning the
+   * dialogs and other actions"*. Two groups: the three panel openers, then the
+   * acts on this turn. **A real `<hr role="separator">` and not a styled
+   * `div`** — the item is explicit that a rule a screen reader cannot see is
+   * not a separator — and it is drawn ONLY when there is something after it,
+   * because a trailing rule under the last row is a group boundary with one
+   * group on one side of it.
+   *
+   * The openers come FIRST, which is the order he named them in and the order
+   * the item lists the survivors in. It also puts the caret, which
+   * `openMenu` sends to the first row, on the three things this menu is now
+   * mostly for.
    */
   const openMenu = (nodeIndex, x, y) => {
     closeMenu(false);
@@ -9455,36 +10881,6 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     menuFrom = active !== null && active !== document.body ? active : null;
     menu.replaceChildren();
 
-    const row = live.get(nodeIndex);
-    const marker = row === undefined ? null : row.querySelector('.tvanchormark');
-    const renamer = row === undefined ? null : row.querySelector('.tvanchorrename');
-    const dropper = row === undefined ? null : row.querySelector('.tvanchordrop');
-    const backer = row === undefined ? null : row.querySelector('.tvanchorputback');
-    if (marker !== null) {
-      menu.append(menuItem(ctx.t('conv.doc.mark'), keyOf('write'), () => { marker.click(); }));
-    }
-    if (renamer !== null) {
-      menu.append(menuItem(ctx.t('conv.anchors.relabel'), keyOf('write'),
-        () => { renamer.click(); }));
-    }
-    if (dropper !== null) {
-      // **NO KEY, AND THAT IS DELIBERATE.** A take-back has no confirm by
-      // owner ruling, so a single letter would destroy a bookmark on a
-      // mistyped keystroke with nothing between the two. It keeps its button
-      // and gains the menu; it does not gain a bare key.
-      menu.append(menuItem(ctx.t('conv.anchors.drop'), null, () => { dropper.click(); }));
-    }
-    if (backer !== null) {
-      menu.append(menuItem(ctx.t('conv.anchors.putBack'), null, () => { backer.click(); }));
-    }
-    menu.append(menuItem(ctx.t('conv.nav.markPrev'), keyOf('markPrev'),
-      () => { step('mark', false); }));
-    menu.append(menuItem(ctx.t('conv.nav.markNext'), keyOf('markNext'),
-      () => { step('mark', true); }));
-    menu.append(menuItem(ctx.t('conv.nav.youPrev'), keyOf('youPrev'),
-      () => { step('you', false); }));
-    menu.append(menuItem(ctx.t('conv.nav.youNext'), keyOf('youNext'),
-      () => { step('you', true); }));
     /*
      * **THE SEARCH PANEL IS OPENED FROM HERE** — `semantic/9`, and from here
      * is the owner's own instruction: *"three different subjects on three
@@ -9494,67 +10890,64 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
      * second one beside it.
      */
     menu.append(menuItem(ctx.t('conv.find.open'), keyOf('find'), () => { openFindPanel(); }));
-
-    /**
-     * **THE MARK FILTER, IN THE MENU, AND IT IS A STATE RATHER THAN AN ACT.**
+    /*
+     * **AND THE OTHER TWO PANELS HE SPECIFIED, FROM THE SAME PLACE** —
+     * `semantic/12` and `semantic/13`, completing *"three different subjects
+     * on three different dialogs opend from the right mouse button menu"*.
      *
-     * The owner asked for it here because the `<select>` lives on the nav bar
-     * and the menu opens where he is reading — so from the menu he could step
-     * through marks without being able to see, or change, WHICH KIND he was
-     * stepping through. Every other row in this menu answers "what can I do
-     * to this turn"; these answer "what am I walking", which is why they are
-     * `menuitemradio` and carry a checked state.
+     * **NO KEY ON EITHER, AND THAT IS A DECISION.** `/` opens Search because
+     * `/` was already bound to the find box and the panel simply became where
+     * that box lives — the key did not gain a meaning, it kept one. There is
+     * no such key for these. Binding two fresh letters would spend two of the
+     * few this screen has left, against `N`, `Shift+N`, `U`, `Shift+U`, `M`,
+     * `K`, `Shift+K` and `/` which all still act with every panel shut. The
+     * menu itself is reachable without a mouse — `ContextMenu` and
+     * `Shift+F10`, wired above — so this is not a mouse-only capability,
+     * which is the thing that would be refused.
      *
-     * **They set the real `<select>` and dispatch its own `change`**, so the
-     * filter still has exactly one code path, one `markKind`, one walk and
-     * one cursor — `anchors/6` put the filter inside `markStops` for that
-     * reason and a second route must not become a second mechanism. It is
-     * the same discipline as every other row ending in `.click()` on the
-     * control it names.
-     *
-     * Drawn only when there is a choice to make: a document whose marks are
-     * all one kind gets one option and no rows, because a radio group of one
-     * is a statement, not a choice.
+     * The rows are named by `conv.nav.region` and `conv.copy.h`, which are
+     * the SAME two keys the panels' own headers use. One name per subject,
+     * in both places it appears.
      */
-    const kindOptions = [...kindPick.options];
-    if (kindOptions.length > 1) {
-      const head = el('p', 'small tvmenuhead');
-      head.append(...ctx.t('conv.menu.kinds'));
-      // **AND THE HEADING TEACHES THE KEY**, which is the `.tvkey` chip's whole
-      // stated job one section along: *"the discovery path teaches the fast
-      // path."* It goes on the HEADING and not on each radio, because `K` does
-      // not select the row it would sit beside — it steps to the NEXT kind,
-      // which is a fact about the group rather than about any member of it.
-      // `aria-hidden`, so the heading's own words are what is announced, and
-      // the `<select>` on the bar carries the `aria-keyshortcuts` that a screen
-      // reader announces AS a shortcut.
-      const headKey = el('span', 'm tvkey', keyOf('kindNext').show);
-      headKey.setAttribute('aria-hidden', 'true');
-      head.append(' ', headKey);
-      menu.append(head);
-      for (const option of kindOptions) {
-        const chosen = option.value === kindPick.value;
-        const pick = el('button', 'tvmenuitem');
-        pick.type = 'button';
-        pick.setAttribute('role', 'menuitemradio');
-        pick.setAttribute('aria-checked', chosen ? 'true' : 'false');
-        pick.append(option.textContent);
-        if (chosen) {
-          // Colour is never the only carrier, and neither is `aria-checked`:
-          // the tick is what a reader SEES, and it is `aria-hidden` so the
-          // accessible name stays the kind's own word.
-          const tick = el('span', 'm tvmenutick', '\u2713');
-          tick.setAttribute('aria-hidden', 'true');
-          pick.append(' ', tick);
-        }
-        pick.addEventListener('click', () => {
-          const back = closeMenu(false);
-          kindPick.value = option.value;
-          kindPick.dispatchEvent(new Event('change'));
-          caretHome(back);
-        });
-        menu.append(pick);
-      }
+    menu.append(menuItem(ctx.t('conv.nav.region'), null, () => { openNavPanel(); }));
+    menu.append(menuItem(ctx.t('conv.copy.h'), null, () => { openCopyPanel(); }));
+
+    const row = live.get(nodeIndex);
+    const marker = row === undefined ? null : row.querySelector('.tvanchormark');
+    const renamer = row === undefined ? null : row.querySelector('.tvanchorrename');
+    const dropper = row === undefined ? null : row.querySelector('.tvanchordrop');
+    const backer = row === undefined ? null : row.querySelector('.tvanchorputback');
+    const acts = [];
+    if (marker !== null) {
+      acts.push(menuItem(ctx.t('conv.doc.mark'), keyOf('write'), () => { marker.click(); }));
+    }
+    if (renamer !== null) {
+      acts.push(menuItem(ctx.t('conv.anchors.relabel'), keyOf('write'),
+        () => { renamer.click(); }));
+    }
+    if (dropper !== null) {
+      // **NO KEY, AND THAT IS DELIBERATE.** A take-back has no confirm by
+      // owner ruling, so a single letter would destroy a bookmark on a
+      // mistyped keystroke with nothing between the two. It keeps its button
+      // and gains the menu; it does not gain a bare key.
+      acts.push(menuItem(ctx.t('conv.anchors.drop'), null, () => { dropper.click(); }));
+    }
+    if (backer !== null) {
+      acts.push(menuItem(ctx.t('conv.anchors.putBack'), null, () => { backer.click(); }));
+    }
+    if (acts.length > 0) {
+      /*
+       * **A REAL RULE WITH A REAL ROLE.** An `<hr>` inside `role="menu"` is
+       * not automatically announced as a group boundary by every engine, so
+       * the role is written rather than inferred; `aria-orientation` says
+       * which way it runs, which is the one thing a separator's role leaves
+       * open. It carries no accessible name because it names nothing — it
+       * marks the seam between two groups a reader can already read.
+       */
+      const rule = el('hr', 'tvmenurule');
+      rule.setAttribute('role', 'separator');
+      rule.setAttribute('aria-orientation', 'horizontal');
+      menu.append(rule, ...acts);
     }
 
     menu.hidden = false;
@@ -9726,21 +11119,27 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
   shortcutOn(ctx, youNext, 'youNext');
 
   /**
-   * **AND THE ROUTE NO BUTTON CAN TEACH GETS ONE SENTENCE.**
+   * **AND THE ROUTE NO BUTTON CAN TEACH IS NOW ON THE WELL ITSELF.**
    *
    * The key on a button teaches the key. Nothing on the screen can teach a
    * gesture that has no control — which is the item's own argument for why a
    * right-click-only action is `D58` from the other side — so the right-click
-   * and its keyboard equivalent are said once, in a line under the bar, where
-   * a reader is already looking for what this document can do.
+   * and its keyboard equivalent are said once.
    *
-   * Placed before `navSaid` so it sits under the stepper rather than after the
-   * region a step announces into: a static instruction between a reader and a
-   * live sentence is a line they learn to skip.
+   * **`semantic/15` TOOK `p.tvmenuhint` OFF THE CARD** (18.6 px of a card the
+   * owner asked to shrink, *"a line read once"* in his own words), and this is
+   * where the sentence went rather than where it was deleted:
+   * `STD-the-fact-on-the-line-the-explanation-on-hover-the` names hover as the
+   * approved home for an explanation a line stopped carrying, and the thing a
+   * reader hovers to ask *"what can I do here"* is the document itself. It
+   * costs the card nothing, and the gesture it teaches is performed on this
+   * very element.
+   *
+   * **AND IT IS ONLY HALF A ROUTE FOR A READER WHO NEVER HOVERS.** That is a
+   * real cost of the ruling rather than a defect of this line, and it is on
+   * the lane's report for the owner's eye rather than quietly absorbed here.
    */
-  const menuHint = el('p', 'small tvnote tvmenuhint');
-  menuHint.append(...ctx.t('conv.menu.hint'));
-  host.insertBefore(menuHint, navSaid);
+  scroll.title = ctx.tFlat('conv.menu.hint');
 
   const say = (key, subs = {}) => {
     copied.replaceChildren();
@@ -11086,6 +12485,26 @@ export function sessionFromHash(hash) {
 
 export async function render(root, ctx) {
   root.replaceChildren();
+  /*
+   * **THE EXPANDED VIEWER IS A MODE AND A MODE IS NOT REMEMBERED** —
+   * `semantic/15` §5, and it is `closePane()`'s own line one screen along:
+   * *"The float goes with it, and this line is why `route()` needs only the
+   * one."*
+   *
+   * `button.tvwide` puts `doc-wide` on `.app`, which hides the header, the
+   * rail, the provenance line and the status strip. Left standing after the
+   * reader pressed *"Back to all sessions"*, that would be a sessions LIST
+   * with no shell around it and no control anywhere to bring the shell back —
+   * the expanded state's own toggle went with the document. So the class comes
+   * off on the way through here, whichever route is being drawn.
+   *
+   * `styles.css` gates the same rules on a VISIBLE `.tvroot` as well, for the
+   * navigation this function never sees: a reader who leaves for the Doctor
+   * screen does not come back through `render()` at all. Two guards, because
+   * the two failures are different — this one is "the class outlived the
+   * document", that one is "the class outlived the SCREEN".
+   */
+  document.getElementById('app')?.classList.remove('doc-wide');
   screenHead(ctx, root, 'conv.h', 'conv.v', 'conv.sub');
 
   // **Two paragraphs, and the second one is the one that was missing.**
@@ -11240,6 +12659,38 @@ export async function render(root, ctx) {
     return;
   }
 
+  /**
+   * ══ THE TWO BLOCKS THAT DESCRIBE THE LIST DO NOT STAND OVER A DOCUMENT ══
+   *
+   * **`semantic/15` §4, and it is arithmetic rather than taste.** The owner
+   * asked for the card to be *"fixed … static and always viewable"*, and §4's
+   * fix gives the card and the well exactly the room `.body` has. Whatever
+   * stands ABOVE the card is therefore taken straight out of the viewer.
+   *
+   * Measured at 1280x1000 on his own session: **187.7 px stood above
+   * `.tvhead`**, which is more than the 199 px of card chrome this whole item
+   * removed. Of that, `.psub` — *"Every session Claude Code has written for
+   * this project. Pick one to read it."* — and the *"Where these come from"*
+   * fold are 45 px and 25 px of prose ABOUT THE LIST, on a screen where the
+   * reader has already picked one and is reading it.
+   *
+   * **`.phd` STAYS, AND THAT IS NOT TIDINESS EITHER.** It carries the screen's
+   * own `<h2>` and it is where `app.js`' `affordanceElement()` PREPENDS
+   * `#screenstale` — the live-refresh affordance. Hiding it would take a
+   * disclosure off the screen to buy 37 px, which is the trade
+   * `INV-nothing-is-dropped-silently` refuses.
+   *
+   * **IT IS DONE IN CSS AND NOT BY SETTING `hidden` HERE**, and that is a
+   * defect this lane made and measured rather than a preference. The router
+   * keeps every visited screen inside `#screen` and merely hides it, so an
+   * attribute written on the way IN to a document is still there on the way
+   * back OUT: the sessions LIST lost its own subtitle and its own provenance
+   * fold for the rest of the session, and `e2e/conversations.spec.ts`' "the
+   * whole row still opens the session" reddened on a click aimed at
+   * coordinates that had moved 70 px. `styles.css`' `section:has(> .tvroot)`
+   * reads the state instead of remembering it, and there is nothing to
+   * restore.
+   */
   const viewer = el('section', 'tvroot');
   root.append(viewer);
 

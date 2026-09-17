@@ -238,7 +238,7 @@ for (const lang of ['en', 'he'] as const) {
       document.body.append(probe);
       const gold = getComputedStyle(probe).color;
       probe.remove();
-      const jump = document.querySelector('.tvbar button.tvjump');
+      const jump = document.querySelector('dialog.mcpanel button.tvjump.tvtop');
       return {
         family: s.fontFamily,
         decoration: s.textDecorationLine,
@@ -488,7 +488,7 @@ for (const lang of ['en', 'he'] as const) {
         cursor: getComputedStyle(summary).cursor,
         marker: getComputedStyle(summary, '::marker').color,
         outerMarker: getComputedStyle(outer.querySelector('summary')!, '::marker').color,
-        mono: getComputedStyle(document.querySelector('.tvbar button.tvjump')!).fontFamily,
+        mono: getComputedStyle(document.querySelector('dialog.mcpanel button.tvjump.tvtop')!).fontFamily,
       };
       outer.remove();
       quiet.remove();
