@@ -134,22 +134,42 @@ export const DOC_SOURCES = [
  *   39 / 21   what the sweep actually read at HEAD, before the mirror
  *   51 / 28   39 + 12 fences, 21 + 7 documents — this change's own guarantee
  *
- * **These are HEAD plus this lane's own files, deliberately, and they are lower
- * than what a sweep prints today.** A second lane is writing the Hebrew mirror
- * of `docs/capabilities/` in the same working tree; a run taken while this was
- * written read 58 fences across 32 of 39 documents, and roughly seven of those
- * fences are that lane's uncommitted work. Pinning a floor to a number that
- * includes another lane's unlanded files would record it as though it had
- * shipped — the exact error `docs/system/02-the-document-and-lane-viewer.md` §7
- * names about line counts, and the reason that chapter kept a stale figure
- * rather than a working-tree one.
+ * When that was written the capabilities half was still another lane's
+ * uncommitted work, so 51 / 28 was HEAD plus the system half alone — lower than
+ * what a sweep printed that afternoon, deliberately, rather than pinning a floor
+ * to files that had not shipped. That comment closed by naming the one command
+ * that resolves it: **whoever commits both halves re-runs
+ * `npm run check:diagrams` and raises these to what it prints.**
  *
- * So: **whoever commits both halves should re-run `npm run check:diagrams` and
- * raise these again to what it prints.** That is one command, and it is the
- * only version of this number that can be checked later.
+ * ── RAISED AGAIN 2026-09-17, THE SECOND HALF, AND THAT COMMAND WAS RUN ────
+ *
+ * The Hebrew mirror of `docs/capabilities/` landed seventeen `NN-*.he.md`
+ * chapters, twelve of which carry a fence, for **17 new fences across 12 new
+ * documents**. Translated, not redrawn: same graph, same node ids, same edge
+ * operators, Hebrew labels — so each is swept the moment it lands, for the same
+ * reason the system half was, `DOC_SOURCES` naming the directory.
+ *
+ *   38 / 21   the floors before either mirror
+ *   39 / 21   what the sweep read at HEAD, before either mirror
+ *   51 / 28   39 + 12 fences, 21 + 7 documents — the system half alone
+ *   68 / 40   51 + 17 fences, 28 + 12 documents — BOTH halves, and this is
+ *             what `npm run check:diagrams` actually printed once they were
+ *             both in the tree: `68 fence(s) across 40 of 52 document(s) …
+ *             68 parse, 0 do not`
+ *
+ * **68 / 40 is a measurement, not an estimate.** Neither half is unlanded any
+ * more, so the reason the previous pair was deliberately low no longer applies,
+ * and the floor is now the number the gate itself reports.
+ *
+ * Five of the seventeen new fences are BYTE-IDENTICAL to fences already in
+ * `docs/README.he.md` — the Hebrew copies of the five English fences `README.md`
+ * shares with `docs/capabilities/{00,01,02,09}` and `docs/system/07`. They are
+ * mirrored rather than re-translated precisely so that sharing survives the
+ * Hebrew edition; they are still five separate fences to this sweep, and they
+ * are counted in the 17.
  */
-export const FENCE_FLOOR = 51;
-export const FILE_FLOOR = 28;
+export const FENCE_FLOOR = 68;
+export const FILE_FLOOR = 40;
 
 /**
  * **The known-bad input, with provenance, and the reason this gate can be
