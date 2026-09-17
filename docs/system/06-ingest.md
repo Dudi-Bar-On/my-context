@@ -55,6 +55,41 @@ candidate itself claims. Nothing is written at all if validation fails; the call
 of named issues instead. Re-extracting an anchor whose draft is still current supersedes it rather
 than duplicating it. `mycontext ingest-status [--summary]` reports session and anchor progress.
 
+**What actually refuses a candidate, and in what order.** `validateCandidates` (`src/ingest/schema.ts`)
+is a chain, not a single check, and the order is the order the source reads it in — a shape refusal
+before a content refusal, because a message about a missing quote is useless on an entry that is not
+even an object yet. Each `reject()` on the way is durable, not a thrown error that takes the batch
+down with it: `INV-a-validator-that-gates-writes-must-be-a-complete-precondition-for-the-write` is
+what makes this a *complete* precondition rather than a first pass — nothing `createItem` would
+refuse gets past this chain, checked by generating and round-tripping tens of thousands of candidates
+against it.
+
+```mermaid
+flowchart TD
+  RAW["the returned JSON"] --> ARR{"a JSON array?"}
+  ARR -->|no| REJ["rejected, named —<br/>NOT written; lands in the<br/>session's .rejected.jsonl"]
+  ARR -->|yes| EACH["for each entry, in order:"]
+  EACH --> SHAPE{"an object,<br/>only known fields?"}
+  SHAPE -->|no| REJ
+  SHAPE -->|yes| TYPE{"type: a real,<br/>ENABLED category?"}
+  TYPE -->|no| REJ
+  TYPE -->|yes| FIELDS{"title · body · summary:<br/>present, same validators<br/>mutate.ts's own writes use"}
+  FIELDS -->|no| REJ
+  FIELDS -->|yes| QUOTE{"quote: verbatim in the<br/>source chunk, whitespace<br/>collapsed — the grounding check"}
+  QUOTE -->|"no — paraphrased,<br/>summarised, or absent"| REJ
+  QUOTE -->|yes| SEV{"severity: hard, but this<br/>category can't carry one?"}
+  SEV -->|yes| REJ
+  SEV -->|no| SCOPE{"scope: required by the<br/>category but omitted, or a<br/>glob matching everything?"}
+  SCOPE -->|yes| REJ
+  SCOPE -->|no| OK["a valid candidate —<br/>continues into applyCandidates'<br/>dedupe / write logic above"]
+```
+
+(Further per-field checks — tags, observations — continue past the last gate shown here; this
+diagram stops at the decisions this chapter's own prose calls out, not at every field `schema.ts`
+touches. `docs/capabilities/03-creation-and-gates.md` is the general item-creation gate this one
+specialises for an ingest candidate specifically — `mycontext add` and `create_item` gate a
+hand-written item through a related but separately-coded path.)
+
 **Locking.** Both the CLI's `ingest-apply` and the MCP tool's equivalent phase share one lock
 (`src/ingest/lock.ts`), scoped to the whole workspace rather than to one session or anchor — because
 the actual hazard is two concurrent applies against the same workspace, not two applies against the

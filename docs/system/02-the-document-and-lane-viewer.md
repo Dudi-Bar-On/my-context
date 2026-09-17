@@ -80,6 +80,37 @@ a week before anyone measured it. That is the pattern worth generalising from th
 itself: **a docstring asserting completeness is a claim, and this project's own failure history says
 it should be checked, not trusted.**
 
+**What that write actually reaches, and the ownership boundary that keeps it safe.** The bug was in
+a *control* — the anchor mechanism it controls has a shape worth drawing on its own, because it is
+two writers sharing one file with a rule about who may touch what. `anchor-pass.ts` is a grammar
+that proposes: a background sweep over the archive's tables, rulings and reports, writing rows with
+`origin: 'automatic'`. The viewer's own write controls (`src/ui/anchor-write.ts` — the routes the
+bug above was in) are how a person disposes: `mark`, `relabel`, `drop`, always `origin: 'owner'`.
+Both paths converge on the same function, `markAnchor` (`src/core/anchors.ts`), which publishes
+`.my_context/.anchors.jsonl` — **the file, not the SQLite table, is the truth** — inside the write
+transaction, and the table is rebuilt from the file afterward, never the reverse.
+
+```mermaid
+flowchart LR
+  subgraph G["a grammar proposes"]
+    SWEEP["anchor-pass.ts sweep<br/>tables · rulings · reports"]
+  end
+  subgraph P["a person disposes"]
+    CTRL["viewer's own write controls<br/>mark · relabel · drop"]
+  end
+  SWEEP -->|"markAutomaticAnchors()<br/>origin: 'automatic'"| MA["markAnchor()"]
+  CTRL -->|"origin: 'owner',<br/>always — never chosen<br/>by the request body"| MA
+  MA -->|"published inside<br/>the write transaction"| FILE[(".my_context/.anchors.jsonl<br/>the row that is the truth")]
+  FILE -->|"rebuilt from the file,<br/>never the reverse"| TABLE[("SQLite anchors table<br/>derived · disposable")]
+  SWEEP -.->|"never reads or rewrites<br/>a row already origin: 'owner'"| FILE
+  linkStyle 4 stroke:#c62828,stroke-dasharray:4
+```
+
+The dashed edge is the boundary: the moment a person relabels an automatic finding, its `origin`
+flips to `'owner'` permanently and the sweep stops touching it on every later run — a label someone
+typed is never silently overwritten by tomorrow's grammar. `docs/capabilities/05-anchors.md` is the
+full reference for every route and CLI verb this diagram compresses.
+
 ## 4. The read model — turning 27,752 records into something a person can read
 
 `read-model-conversation-document.ts` (2,883 lines) exists because of one very concrete failed
@@ -123,6 +154,35 @@ half of this project's own archive is Hebrew from very early in most transcripts
 offset lands silently mid-record the first time it crosses a multi-byte character. Measured on a
 61 MB transcript: the one-time outline walk costs about 157 ms; every scroll after that costs only
 the window being read, not the file.
+
+**The interesting part of this data flow is what never enters memory whole.** A 63.9 MB transcript
+is not an in-memory document with a viewport clipped over it — the only thing held for the file's
+full length is the outline, one small record per node (a byte offset and a span), and the only thing
+held for the screen's height is a `Float64Array` of measured row heights. The file itself is read
+only in the windows the scroll actually asks for:
+
+```mermaid
+flowchart TB
+  subgraph DISK["on disk — never loaded whole"]
+    FILE["transcript.jsonl<br/>63,871,429 bytes · 27,752 records"]
+  end
+  FILE -->|"one streaming walk, ~157 ms<br/>buildOutline()"| OUT
+  subgraph MEM["in memory — small, independent of file size"]
+    OUT["the outline<br/>one entry per said/work node ·<br/>BYTE offset + span, no content"]
+    HEIGHTS["transcript-scroll.js<br/>Float64Array prefix-sum of<br/>measured row heights"]
+    WINDOW["the rendered window only —<br/>a few thousand rows at most"]
+  end
+  OUT --> HEIGHTS
+  READER(["reader scrolls"]) --> HEIGHTS
+  HEIGHTS -->|"binary search:<br/>which nodes are visible now"| SEEK["readNodes() —<br/>seek to byte offset,<br/>read just that window"]
+  FILE -.->|"windowed read only —<br/>the rest of the file is<br/>never touched"| SEEK
+  SEEK --> WINDOW
+  WINDOW -->|"a recycled row gets new<br/>content, old highlights don't move"| HL["CSS Custom Highlight API —<br/>both registries rebuilt from<br/>scratch on every paint"]
+```
+
+That last edge is why the highlighter has to rebuild rather than update incrementally (§6): a `Range`
+computed against a row before it was recycled for different content points at byte offsets that no
+longer mean what they meant when the `Range` was made.
 
 ## 5. `lib/fold.js` — the shared reading grammar
 

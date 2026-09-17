@@ -28,6 +28,37 @@ confuse it with:
 own comment calls this a deliberate limit — "the axes a person already thinks in" — because every
 additional axis costs the disclosure sharpness described below.
 
+Focus sits downstream of a mechanism it never replaces: which items are even candidates for a
+session's context window in the first place, before any filter narrows them further. `README.md`
+§4 names five such routes; the diagram below, reproduced from there unchanged, draws four of
+them — pinned, index, just in time, restored — because that is what README itself draws. The fifth,
+**continuity**, is missing from the picture for the same reason it is missing there, and it is the
+one this chapter cannot afford to leave out of the *prose*: it is one of the three axes focus must
+never hide, named again below. A reader of this chapter needs to know it exists even where the
+diagram does not show it. Only just-in-time's branch is the one focus can narrow at all — the other four
+fire on their own trigger regardless of what focus is set:
+
+```mermaid
+flowchart LR
+  S(["A session starts"]) --> Q{"always: true?"}
+  Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
+  Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
+  F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
+  G -->|"no — unrestricted"| JIT["<b>just in time</b><br/>injected in full, once per context window"]
+  G -->|"yes, and it matches"| JIT
+  G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
+  C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
+  C --> PIN
+  C --> IDX
+```
+
+*(Reused from `README.md` §4, which owns this diagram — every route here also competes against a
+byte budget per tier, and what does not fit spills rather than silently dropping; that packing
+mechanism, and every number in it, belongs to `docs/capabilities/02-injection.md`, not to this
+chapter.)* Focus is a predicate `select.ts` applies **inside** this map, not a sixth route beside it
+— it can hide something these five routes would otherwise have offered, and, as the three
+exemptions below show, three kinds of item it is not allowed to hide even then.
+
 `select.ts` applies the filter: an item is hidden only if it fails **every** non-empty axis. But
 three classes of item are never hidden regardless of match, and this is the part that cannot be
 explained by focus alone — it is a fact about the injection budget (`docs/capabilities/02-injection.md`)

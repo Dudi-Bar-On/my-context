@@ -1,3 +1,56 @@
+## ⏭ 2026-09-17 — THE DOCUMENTATION LOOP RAN TWICE AND HELD. FOUR LANES LIVE. TWO DECISIONS ARE HIS.
+
+### DO THIS FIRST
+
+1. **FOUR LANES ARE LIVE AND EACH NEEDS AN EXPLICIT PATHSPEC AT COMMIT.**
+   `semantic/12` and `semantic/13` — the navigation and copy floating panels, ONE lane doing both
+   because they touch the same three files. `semantic/14` — the find panel's counts pinned under the
+   query field, in blue, plus a regex syntax reference. `rulings/99` — explanatory Mermaid diagrams,
+   one agent in `docs/system/` and one in `docs/capabilities/`.
+   They share `src/ui/public/screens/conversations.js` and `styles.css`. **Never `git add` a
+   directory while they run**; split by hunk if two land together.
+
+2. **`rulings/97` AND `rulings/98` ARE DONE, AND THE REFERENCE IS TRUE AGAIN.**
+   `docs/capabilities/` was audited and repaired across TWO verification passes — **214 claims / 38
+   false**, then **282 / 21 false** — with three new chapters added: 14 (search over the archive),
+   15 (the document and lane viewer), 16 (the board). `docs/system/` is new: eight documents, 1,174
+   lines, answering *how does this work* where capabilities answers *what can it do*.
+
+3. **THE LESSON IS NOW WRITTEN INTO CHAPTER 5 ITSELF: A VOLATILE COUNT IS STATED ONCE AND DATED.**
+   The anchor count moved **1,342 → 1,345 → 1,348 → 1,355 during the single repair of the paragraph
+   that cited it**. Chapter 5 now states it in exactly one place, checked by its own arithmetic, and
+   every other section points back or uses magnitude language. Do not reintroduce a bare figure for
+   anchors, `ready`, servable docs or the ellipsis count — all four move within the hour.
+
+4. **AND THE LESSON ABOUT REPAIR: FIX NEIGHBOURHOODS, NOT LINE ITEMS.**
+   Every one of the second round's 21 sat beside something already repaired — *a verified claim makes
+   its neighbours look verified*. Chapter 10 had a stale block under the words "Verified exactly, by
+   grep" because the prose below it was fixed and the paste above it was not. **Grep the whole file
+   for every other spelling of a changed fact before moving on.**
+
+5. **TWO DECISIONS WAIT ON THE OWNER AND NO LANE MAY TAKE EITHER.**
+   `semantic/10`'s `tool_result` cap — the lane measured the options and recommends **512 bytes**
+   against the 2,048 the main session had guessed; nothing ships until he rules, and a test pins the
+   absence. And the `(a|a)+` regex that can still hang the find scan: the real fixes are a killable
+   child process or a linear-time engine, and the second is a dependency he would have to allow.
+
+6. **HIS NEXT STEP, AFTER HE REVIEWS: HEBREW EDITIONS** in the register of `docs/the-store.he.md`
+   — the document he praised and named as the standard. Every diagram in both sets is deliberately
+   **Mermaid TEXT and there are zero images**, so that pass translates LABELS rather than redrawing
+   pictures. Screenshots are the opposite and must be re-shot: an English screen and a Hebrew RTL
+   screen are different images.
+
+7. **LANDED AND PUSHED ON 2026-09-16/17**: `anchors/13` (backfill with consent), `anchors/14` (marks
+   reach an open page in 267 ms), `anchors/15` (a turn that is both a table and a lane report carries
+   BOTH marks — 241 rows added, zero rewritten, zero new stops), `semantic/4`, `/7`, `/8`, `/9`,
+   `/11`, and the mid-turn refresh that ended the wait-for-end-of-turn delay.
+
+8. **STANDING HAZARD, AND `rules verify` CANNOT SEE IT.**
+   `KNOWN-running-the-test-suite-can-leave-the-shipped-rule-store`: after any full `npm test`, run
+   `git status src/rules/entries/` and restore from HEAD if it is dirty. The test damages a shipped
+   entry to prove the damage detector fires, then **re-seals both halves**, so the checksum agrees
+   with itself while differing from history. Git is the only witness.
+
 ## ⏭ 2026-09-16 (later) — `semantic/2` LANDED. A PHANTOM ID IS PROPAGATING AND IS OWED. TWO LANES STILL LIVE.
 
 ### DO THIS FIRST

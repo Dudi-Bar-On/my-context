@@ -34,6 +34,46 @@ Three things a newcomer conflates with the board, worth separating up front:
   and outlives the items inside it; new work can be added to a subject without renumbering it. See
   §5.
 
+`task` carries two fields that both look like status and are not the same mechanism. `needs` is
+*computed over* — nothing moves it, `readyReport` just reads it (§3-§4). `state` is the other one,
+and it is the opposite kind of thing: a plain hand-set value, `todo | doing | blocked | done`
+(`src/core/needs.ts`, the comment at the `readyReport` loop that enumerates all four), and nothing
+in this codebase transitions it automatically. A person or an agent moves a task to `blocked`; the
+board never infers "blocked" from an unmet `needs` reference — that is `held`, a *read-time*
+classification, not a write to `state` (§4 below is the read; this is the field it reads).
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> todo
+  todo --> doing
+  doing --> blocked
+  blocked --> doing
+  doing --> done
+  todo --> done
+  done --> [*]
+  note right of blocked
+    readyReport HOLDS this only
+    when needs is also empty —
+    a blocked task that names
+    what it is blocked on is
+    read exactly like todo/doing
+  end note
+  note right of done
+    excluded from readyReport
+    entirely — not "ready",
+    not "held", not counted
+    in "open" at all
+  end note
+```
+
+**`status: deprecated` is a different field again, and it is the exit none of the four states can
+express.** A task abandoned before it shipped has nowhere to go in the diagram above — `done` would
+claim it landed, and it never did — so cancellation is recorded on `status`, checked first and
+independently by `readyReport` (`item.status === 'deprecated'` short-circuits before `state` is even
+read). A task can sit at `state: todo` and `status: deprecated` at once; the diagram shows what
+`state` alone means, not the whole lifecycle of the item it lives on.
+
 ## 2. The problem this replaced, told as a story rather than a table
 
 Before any of this existed, `reports/EXECUTION-BOARD.md` was a hand-maintained progress table — a
