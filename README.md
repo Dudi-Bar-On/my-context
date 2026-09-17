@@ -83,7 +83,7 @@ Do not trust a sentence here to have been updated. Run `mycontext help` for the 
 list, `claude plugin details mycontext@mycontext` for the real component inventory, and
 `mycontext help categories` for the categories actually enabled.
 
-**12 test files under `test/docs/` hold these two documents to the program.** Between them
+**13 test files under `test/docs/` hold these two documents to the program.** Between them
 they check that every CLI command, slash command and MCP tool is named in `README.md` and
 that nothing is named that does not exist; that every worked example is re-executed against a
 committed fixture and diffed, whole, against what the command prints; that the injected

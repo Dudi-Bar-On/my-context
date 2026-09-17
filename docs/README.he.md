@@ -120,7 +120,7 @@ mycontext add invariant "Prices are integer cents" --scope "src/billing/**" --su
 <span dir="ltr">`claude plugin details mycontext@mycontext`</span> למצאי הרכיבים האמיתי,
 ו-`mycontext help categories` לקטגוריות שמופעלות בפועל.
 
-**12 קובצי בדיקה תחת <span dir="ltr">`test/docs/`</span> מחזיקים את שני המסמכים האלה מול
+**13 קובצי בדיקה תחת <span dir="ltr">`test/docs/`</span> מחזיקים את שני המסמכים האלה מול
 התוכנית.** יחד הם בודקים שכל פקודת שורת פקודה, פקודת סלאש וכלי MCP נקובים ב-`README.md`
 ושום דבר שאינו קיים אינו נקוב שם; שכל דוגמה מעובדת מורצת מחדש מול fixture ששמור ב-git
 ומושווית, בשלמותה, למה שהפקודה מדפיסה; שהפלט המוזרק המצוטט בפרקים 3, 4 ו-6 הוא מה

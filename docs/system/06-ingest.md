@@ -133,10 +133,12 @@ draft is.
 
 ## 5. What is known wrong or unfinished here
 
-No item under `.my_context/items/known_issue/` mentioned ingest by name until 2026-09-17, when this
-very pass filed one — which falsified the sentence 68 seconds after it was written, and is left here
-as the record of it. Re-checked 2026-09-17 with
-a case-insensitive grep over the whole directory, which returned nothing.
+No item under `.my_context/items/known_issue/` mentioned ingest by name for most of this project’s
+life: a case-insensitive grep over the whole directory returned nothing as late as 2026-09-17.
+**That stopped being true the same day**, when the `schema.ts:340` defect below was filed as
+`KNOWN-a-source-file-cites-an-item-id-that-does-not-resolve-and-no` — 68 seconds after a pass had
+re-asserted the sentence. Both halves are kept because the sequence is the point: a claim about an
+absence is true until someone acts, and nothing warns the document when they do.
 
 **`src/ingest/schema.ts:340` cites an item id that resolves to nothing**, and it is the origin of a
 defect this chapter carried until the previous pass. The comment reads

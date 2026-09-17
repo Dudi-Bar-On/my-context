@@ -121,9 +121,35 @@ export const DOC_SOURCES = [
  * change and lowering the number is the deliberate act that goes with it. What
  * they refuse is the silent collapse: a renamed directory, a fence marker that
  * stopped being recognised, an extractor that started returning nothing.
+ *
+ * ── RAISED 2026-09-17 BY `rulings/109`, AND THE ARITHMETIC IS STATED ──────
+ *
+ * The Hebrew mirror of `docs/system/` landed eight `NN-*.he.md` chapters, seven
+ * of which carry a fence, for **12 new fences across 7 new documents**. The
+ * fences are translated, not redrawn — same graph, Hebrew labels — so every one
+ * of them is swept here the moment it lands, `DOC_SOURCES` naming the directory
+ * rather than the files.
+ *
+ *   38 / 21   the floors before this change
+ *   39 / 21   what the sweep actually read at HEAD, before the mirror
+ *   51 / 28   39 + 12 fences, 21 + 7 documents — this change's own guarantee
+ *
+ * **These are HEAD plus this lane's own files, deliberately, and they are lower
+ * than what a sweep prints today.** A second lane is writing the Hebrew mirror
+ * of `docs/capabilities/` in the same working tree; a run taken while this was
+ * written read 58 fences across 32 of 39 documents, and roughly seven of those
+ * fences are that lane's uncommitted work. Pinning a floor to a number that
+ * includes another lane's unlanded files would record it as though it had
+ * shipped — the exact error `docs/system/02-the-document-and-lane-viewer.md` §7
+ * names about line counts, and the reason that chapter kept a stale figure
+ * rather than a working-tree one.
+ *
+ * So: **whoever commits both halves should re-run `npm run check:diagrams` and
+ * raise these again to what it prints.** That is one command, and it is the
+ * only version of this number that can be checked later.
  */
-export const FENCE_FLOOR = 38;
-export const FILE_FLOOR = 21;
+export const FENCE_FLOOR = 51;
+export const FILE_FLOOR = 28;
 
 /**
  * **The known-bad input, with provenance, and the reason this gate can be

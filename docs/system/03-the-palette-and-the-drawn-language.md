@@ -126,7 +126,8 @@ while this chapter was checked, the true pairs are `--ok` 7.84/7.35, `--gold` 9.
 --warn at 5.92:1"* — and on the shipped palette the worst is `--crit` at **4.45:1, which does not
 clear AA at all**, a fact `styles.css:129–133` states correctly eleven hundred lines above it. This
 is in `styles.css` and not in this directory, so it is reported here rather than repaired; it is
-filed nowhere else that this pass could find.
+filed nowhere else when this pass looked. It is filed now, as
+`KNOWN-the-stylesheet-asserts-aa-compliance-under-a-heading-saying`, on the same day.
 
 ## 5. Diagrams: generated, never hand-drawn, and never shipped as a dependency
 
