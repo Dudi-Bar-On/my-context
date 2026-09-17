@@ -91,6 +91,35 @@ jobs:
       - run: npm test
       - run: npm run test:perf
 
+      # ── The one gate here that needs a browser, and the reason it is worth
+      # a download on a tag cut. ───────────────────────────────────────────
+      #
+      # `check:diagrams` parses every mermaid fence in the documents and draws
+      # nothing (owner ruling 2026-09-17, "the parse-only gate"). A fence that
+      # does not parse renders as an error box, and A TAG IS WHEN THE DOCUMENTS
+      # SHIP — so of all the gates, this is the one whose subject is exactly
+      # what a release page points at. The superset rule above applies to it
+      # like the rest: `ci.yml` runs it, so this runs it.
+      #
+      # `test:e2e` is the admitted exception to that rule and this is NOT a
+      # second one: the browser suite is twelve minutes and Chromium is
+      # Chromium, while this is about two seconds on a definition set that a
+      # tag can change. The cache is keyed and the shell is the 275 MB
+      # `--only-shell` download, exactly as in `ci.yml`; ubuntu-only for the
+      # same reason.
+      - name: cache the playwright browser
+        if: matrix.name == 'ubuntu'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: install the headless shell
+        if: matrix.name == 'ubuntu'
+        run: npx playwright install --only-shell --with-deps chromium
+      - name: every mermaid fence in the documents parses
+        if: matrix.name == 'ubuntu'
+        run: npm run check:diagrams
+
   release:
     needs: verify
     runs-on: ubuntu-latest

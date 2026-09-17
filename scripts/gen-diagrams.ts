@@ -57,7 +57,15 @@ import { isMainEntry } from '../src/core/paths.ts';
 /** The repository root, from this file. */
 const REPO = path.join(import.meta.dirname, '..');
 
-/** The two documents the requirement calls the base of the documentation system. */
+/**
+ * The two documents the requirement calls the base of the documentation system.
+ *
+ * **This list is SHORT, and what covers the rest is `check:diagrams`.** A fence
+ * outside these two is not drawn — owner ruling 2026-09-17, against widening
+ * this constant — but `scripts/check-diagrams-parse.ts` PARSES every fence in
+ * the documents on its own, wider list, and refuses one mermaid cannot read.
+ * The two lists are deliberately not coupled; do not derive one from the other.
+ */
 export const DIAGRAM_SOURCES = ['README.md', 'docs/README.he.md'];
 
 /** Where the drawings live, repo-relative, and how the browser addresses them. */

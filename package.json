@@ -40,6 +40,7 @@
     "check:cited-items": "node scripts/check-cited-items.ts",
     "check:basis": "node scripts/check-basis.ts",
     "check:board": "node scripts/check-board.ts",
+    "check:diagrams": "node scripts/check-diagrams-parse.ts",
     "hooks:install": "git config core.hooksPath .githooks"
   },
   "devDependencies": {

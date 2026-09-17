@@ -1,4 +1,4 @@
-// @basis TASK-five-gates-are-wired-to-nothing-one-of-them-exits-1-today, CONST-zero-runtime-dependencies, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
+// @basis TASK-five-gates-are-wired-to-nothing-one-of-them-exits-1-today, TASK-a-fence-that-does-not-parse-ships-to-readers-because-the, CONST-zero-runtime-dependencies, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
 /**
  * **The gates are wired, and this is what keeps them wired.**
  *
@@ -108,8 +108,8 @@ test('the reader finds the steps release.yml already had', () => {
  * act that goes with it.
  */
 test('the reader matches step lines ONLY — not the comments that name the same scripts', () => {
-  assert.equal(CI_STEPS.length, 14, `ci.yml step scripts: ${CI_STEPS.join(', ')}`);
-  assert.equal(RELEASE_STEPS.length, 13, `release.yml step scripts: ${RELEASE_STEPS.join(', ')}`);
+  assert.equal(CI_STEPS.length, 15, `ci.yml step scripts: ${CI_STEPS.join(', ')}`);
+  assert.equal(RELEASE_STEPS.length, 14, `release.yml step scripts: ${RELEASE_STEPS.join(', ')}`);
 });
 
 test('a comment naming a script is not read as a step', () => {
@@ -178,6 +178,42 @@ test('check:board runs in both workflows', () => {
     SCRIPTS['check:board'], 'node scripts/check-board.ts',
     'the step runs a different script from the one whose gating tier admits it to a workflow',
   );
+});
+
+/**
+ * **The seventh gate, and the one whose absence had already shipped.**
+ *
+ * `check:diagrams` parses every mermaid fence in the documents and draws
+ * nothing — owner ruling 2026-09-17, "the parse-only gate". It is here because
+ * the defect it closes is precisely a gate that did not exist:
+ * `docs/capabilities/07-restore-and-handover.md:78` carried `&lt;key&gt;` and
+ * drew an error box for as long as it existed, because `DIAGRAM_SOURCES` lists
+ * two READMEs and nothing under `docs/` was ever parsed.
+ *
+ * It is the only gate in either workflow that needs a browser, so it is
+ * ubuntu-only and sits after the Chromium install in both files — and the
+ * superset rule still binds it, which is why it is asserted in BOTH and is not
+ * a second `RELEASE_MAY_SKIP` entry. A tag is when the documents ship.
+ */
+test('check:diagrams runs in both workflows', () => {
+  assert.ok(CI_STEPS.includes('check:diagrams'), 'check:diagrams is not a step in ci.yml');
+  assert.ok(RELEASE_STEPS.includes('check:diagrams'), 'check:diagrams is not a step in release.yml');
+  assert.equal(
+    SCRIPTS['check:diagrams'], 'node scripts/check-diagrams-parse.ts',
+    'the step runs a different script from the parse-only gate the ruling admits',
+  );
+  // It cannot run where there is no Chromium, and `npm test`'s matrix is both
+  // OSes. A step that lost its `if:` would fail every Windows run.
+  for (const [name, file] of [['ci.yml', CI], ['release.yml', RELEASE]] as const) {
+    const block = readFileSync(file, 'utf8');
+    const at = block.indexOf('npm run check:diagrams');
+    assert.ok(at !== -1, `${name}: no check:diagrams step`);
+    assert.match(
+      block.slice(Math.max(0, at - 220), at),
+      /if:\s*matrix\.name == 'ubuntu'/,
+      `${name}: check:diagrams lost its ubuntu-only guard, so it would run where no Chromium is installed`,
+    );
+  }
 });
 
 // ── 2. The one that is absent on purpose ───────────────────────────────────

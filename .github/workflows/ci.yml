@@ -192,6 +192,26 @@ jobs:
       - name: install the headless shell
         if: matrix.name == 'ubuntu'
         run: npx playwright install --only-shell --with-deps chromium
+      # A mermaid fence that does not PARSE ships to readers as an error box,
+      # and until this line nothing looked: `gen-diagrams.ts`'s
+      # `DIAGRAM_SOURCES` lists the two READMEs, so no fence under `docs/` was
+      # generated, committed or gated. `docs/capabilities/07-restore-and-handover.md:78`
+      # carried `&lt;key&gt;` — whose `&` ends mermaid's lexer — for as long as
+      # it existed, and its author reported "every fence parses" having checked
+      # BRACKET BALANCE. Balance is not parsing.
+      #
+      # It DRAWS NOTHING: owner ruling 2026-09-17, "the parse-only gate",
+      # against widening `DIAGRAM_SOURCES` — drawing the undrawn fences was
+      # measured at ~1.5-1.8 MiB and is past a size budget already rejected.
+      #
+      # It is HERE, in the browser block, for one reason: mermaid is a browser
+      # library, so this needs the Chromium the step above installs. That is
+      # also why it is ubuntu-only. It costs ~2 seconds against that suite's
+      # twelve minutes, so it runs FIRST within the block — the same cheap-fails-
+      # first trade every ordering in this file argues for.
+      - name: every mermaid fence in the documents parses
+        if: matrix.name == 'ubuntu'
+        run: npm run check:diagrams
       - name: browser suite against the mockup
         if: matrix.name == 'ubuntu'
         run: npm run test:e2e
