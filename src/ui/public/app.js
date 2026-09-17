@@ -164,6 +164,30 @@ import { applyLanguage, pickLanguage, t as translate, tFlat as flat } from '/lib
 // widths, what a keystroke does) is testable without a browser, and only the
 // wiring below is not.
 import { installPaneResize } from '/lib/pane-resize.js';
+// THE FLOATING PANEL FRAME — `semantic/9`'s, and this is its FOURTH caller.
+// Everything that is panel mechanics lives THERE and is not written again
+// here: the non-modal open, the hand-wired Escape, the pointer-capture drag,
+// the RTL-reflected place, the guarded store, the clamp, bring-to-front and
+// the focus hand-back.
+//
+// **AND THE MECHANICS ARE NAMED WITHOUT BEING SPELT**, which is not fussiness:
+// `test/ui/pane-float.test.ts` asserts that THIS FILE's bytes contain no
+// `show`-modal call, no inert flag and no dialog tag, because the item pane
+// must never become a modal — *"a modal would take the screen hostage to solve
+// a reading-width problem"*. It is a text match over the source, so a COMMENT
+// quoting the method trips it exactly as a call would. `styles.css` carries
+// the same note for the same gate one file along, and it was written there
+// after the same lesson.
+import { createPanel } from '/lib/panel.js';
+// WHAT IS ON THE BAR, AND WHEN A HIDDEN FIELD IS ENTITLED TO COME BACK —
+// `semantic/17`. Its own module for spec §6's reason and `lib/pane-resize.js`'
+// precedent: the RULES (what a stored choice is, which pill answers to which
+// name, what counts as loud) are drivable without a browser and are driven in
+// `test/ui/strip-picker.test.ts`; only the wiring below is not.
+import {
+  STRIP_PICK, clearChoice, defaultStorage as stripStorage, isUrgent, neverForced,
+  pickColumns, pickKeyOf, readChoice, writeChoice,
+} from '/lib/strip-choice.js';
 // The ONE markdown renderer. It lived inside the Docs screen until 2026-09-05,
 // because Docs was the first screen that needed one; it is a library now, since
 // the item pane and the tutorial reader are the second and third callers and a
@@ -4845,6 +4869,10 @@ function renderChrome() {
   stripPlan = { identity, state, tail };
   fitStrip();
   watchStripFit(strip);
+  // ── AND THE BAR IS CONFIGURABLE FROM THE BAR — `semantic/17`. Once per
+  //    element, for the reason `watchStripFit` is: this function runs a second
+  //    time when a pasted nonce redeems in place.
+  installStripMenu();
 
   showLiveState();
 }
@@ -4934,7 +4962,12 @@ function layoutStrip(strip, splits) {
     rows.push(row);
   };
   for (const subject of ['identity', 'state']) {
-    const groups = stripPlan[subject];
+    // **THE GROUPS THE READER STILL WANTS, AND NOT ALL OF THEM** —
+    // `semantic/17`. A group every one of whose pills is switched off is not
+    // dealt a place, so its heading and the separators either side of it go
+    // with it: a `.sep` is a fact about two ADJACENT groups, and filtering
+    // here rather than hiding later is what keeps that true.
+    const groups = stripGroupsOf(subject);
     let at = 0;
     for (const take of splits[subject]) {
       push(subject, groups.slice(at, at + take));
@@ -5044,9 +5077,17 @@ const STRIP_MAX_ROWS = 4;
 function fitStrip() {
   const strip = document.getElementById('strip');
   if (strip === null || stripPlan === null) return;
+  // **THE CHOICE IS APPLIED BEFORE ANYTHING IS MEASURED** — `semantic/17`. A
+  // hidden pill has no width, so every measurement below is of the bar the
+  // reader asked for rather than of the bar as built; and a loud pill he
+  // switched off has already been let back in by this point, so it is measured
+  // too. Class changes only, which is why the observer above (`childList`,
+  // `subtree`, `characterData` — never `attributes`) cannot see this and
+  // cannot loop on it.
+  applyStripChoice();
   const splits = {
-    identity: [stripPlan.identity.length],
-    state: [stripPlan.state.length],
+    identity: [stripGroupsOf('identity').length],
+    state: [stripGroupsOf('state').length],
   };
   layoutStrip(strip, splits);
 
@@ -5055,7 +5096,14 @@ function fitStrip() {
   // can go on serving the OTHER one instead of stopping at the worse of the two.
   const stuck = new Set();
   let rows = 2;
-  while (rows < STRIP_MAX_ROWS && stuck.size < 2) {
+  // **THE CEILING IS A FALLBACK AGAIN** — `semantic/17`. `STRIP_MAX_ROWS`
+  // governs a reader who has never opened the picker, which is what its own
+  // docblock has always said it is for. Once he has chosen, what he ticked
+  // wins: five rows' worth means five rows, because a cap that silently
+  // overrides a selection is the same defect as a count that vanishes. Still
+  // bounded — a subject stops when it has one group per row.
+  const cap = stripRowCap();
+  while (rows < cap && stuck.size < 2) {
     const cut = { identity: stripDeficit('identity'), state: stripDeficit('state') };
     const open = ['identity', 'state'].filter((s) => !stuck.has(s) && cut[s] > STRIP_SLACK);
     if (open.length === 0) break;
@@ -5063,7 +5111,7 @@ function fitStrip() {
     const worst = open.reduce((a, b) => (cut[b] > cut[a] ? b : a));
     // One group per row already: there is no further arrangement to try.
     const want = splits[worst].length + 1;
-    if (want > stripPlan[worst].length) { stuck.add(worst); continue; }
+    if (want > stripGroupsOf(worst).length) { stuck.add(worst); continue; }
 
     let best = null;
     let bestCut = cut[worst];
@@ -5090,7 +5138,7 @@ function fitStrip() {
       return aMax !== bMax ? aMax < bMax : aSpread < bSpread;
     };
     const was = splits[worst];
-    for (const comp of stripCompositions(stripPlan[worst].length, want)) {
+    for (const comp of stripCompositions(stripGroupsOf(worst).length, want)) {
       splits[worst] = comp;
       layoutStrip(strip, splits);
       const now = stripDeficit(worst);
@@ -5190,6 +5238,564 @@ function watchStripFit(strip) {
   }
   if (typeof ResizeObserver === 'function') new ResizeObserver(queue).observe(strip);
 }
+
+/* ══ THE BAR'S CONTENT IS THE READER'S — `semantic/17` ═════════════════════
+ *
+ * `TASK-the-status-bar-takes-a-ninth-of-the-window-and-the-only`. The owner,
+ * 2026-09-17, having declined a flat `STRIP_MAX_ROWS` change: *"a status bar
+ * customization dialog that would allow the user to check which elements to
+ * show … the viewer will dynamically extend it size down according to the
+ * status bar occupied lines but not by defining MAX ROWS — by setting up the
+ * status bar structure and content"*.
+ *
+ * ── WHAT THIS IS NOT, BECAUSE MOST OF IT WAS ALREADY BUILT ────────────────
+ *
+ * It is not a new sizing model. `fitStrip` has sized the bar from its content
+ * since 2026-09-01 — two rows, and a third only when a subject is MEASURABLY
+ * being cut — and `.app` is a CSS grid whose body is the one elastic track, so
+ * a shorter bar hands the viewer the difference with no code at all. Measured
+ * on this corpus at 1280 and 1920 in both languages: four rows is a 111px bar
+ * and a 717px viewer; three is 74 and 754.
+ *
+ * **The height already follows the content. What was missing is that the
+ * reader could not choose the content.** That is all this adds, and `fitStrip`
+ * keeps deciding the ARRANGEMENT — owner ruling 2026-09-01, *"it also should
+ * layout more balanced and evenly located in the rows"*. What changes is WHICH
+ * GROUPS it is handed, never how it deals them.
+ *
+ * ── HOW A CHOICE REACHES THE BAR ──────────────────────────────────────────
+ *
+ * A hidden pill is `display:none`d IN PLACE and never removed, which is the
+ * choice that makes the rest simple: it keeps its `data-f`, so every refill,
+ * every parity census and every `title` sweep goes on finding it, and the
+ * moment it turns loud it is one class away from being back. A group all of
+ * whose pills are hidden is dropped from the list `layoutStrip` deals, so its
+ * heading and its separators go with it rather than leaving a labelled gap.
+ *
+ * ── AND THE CEILING IS A FALLBACK AGAIN ───────────────────────────────────
+ *
+ * `STRIP_MAX_ROWS` governs a reader who has never opened the dialog, which is
+ * what its own docblock always said it was for. Once he has chosen, what he
+ * ticked wins: a selection that needs five rows gets five, because a cap that
+ * silently overrides what he ticked is the same defect as a count that
+ * vanishes. The loop still terminates — a subject stops when it has one group
+ * per row — so "no cap" is bounded by the group count and not by nothing.
+ */
+
+/** The panel's name, its storage key in `lib/panel.js`, and its test handle. */
+const STRIP_PANEL = 'stripfields';
+
+/** Built once, on the first right-click. `null` until then. */
+let stripPicker = null;
+
+/** The keys currently switched off, or `null` for "he has never chosen". */
+let stripOff = readChoice(stripStorage());
+
+/**
+ * **EVERY PILL THE BAR OWNS, ATTACHED OR NOT — AND THE "OR NOT" IS THE WHOLE
+ * POINT.**
+ *
+ * ── THE DEADLOCK THIS SHAPE EXISTS TO PREVENT, FOUND BY THE OWNER ─────────
+ *
+ * 2026-09-17, driving the first build: *"when you deselect a category after
+ * reselction the fields does not come back and are not displayable again"*.
+ *
+ * This walked `#strip`'s LIVE DOM, and that is a cycle with no way out:
+ *
+ *   1. untick a whole group → every pill in it takes `.stripoff`
+ *   2. `stripGroupsOf` drops the group, so `layoutStrip` never appends it and
+ *      the group element is now DETACHED from `#strip`
+ *   3. re-tick → `applyStripChoice` scans the live DOM, which no longer holds
+ *      those pills, so their `.stripoff` is never removed
+ *   4. `stripGroupsOf` still sees every field off → the group stays dropped
+ *
+ * **The DOM is a VIEW; `stripPlan` is the SOURCE OF TRUTH.** A function that
+ * reads the view to decide what the view should be cannot reach anything the
+ * view has already dropped. `stripPlan` holds a reference to every group
+ * whether it is attached or not — a reference survives detachment — so walking
+ * the plan reaches the pills the DOM has lost and `layoutStrip` puts the group
+ * back on the very next pass.
+ *
+ * **AND IT IS WORSE THAN A SESSION BUG, WHICH IS WHY IT IS WRITTEN UP HERE.**
+ * The choice is persisted, so the loss survived a reload with no route back
+ * but the reset link — and `applyStripChoice` is also the function that adds
+ * `.stripback`, so a detached `91 doctor notices` could never force itself
+ * back either. That is `INV-nothing-is-dropped-silently` failing inside the
+ * one feature built to honour it.
+ *
+ * The header's repo group is reached separately and for a different reason: it
+ * lives in `#topbar` since `plan:walk seq:114`, is never re-laid-out, and so
+ * can never be detached — but it is identity all the same, and a dialog that
+ * could hide CWD and not BRANCH would be configuring the bar's footer rather
+ * than the bar.
+ *
+ * Nested fields are skipped for the reason `e2e/strip-fields.spec.ts` skips
+ * them — a `[data-f]` inside another is a part of that field, not a field.
+ */
+function stripPills() {
+  const out = [];
+  const roots = [];
+  if (stripPlan !== null) {
+    roots.push(...stripPlan.identity, ...stripPlan.state, ...stripPlan.tail);
+  }
+  const header = document.getElementById('hdrrepo');
+  if (header !== null) roots.push(header);
+  for (const root of roots) {
+    if (typeof root.querySelectorAll !== 'function') continue;
+    if (root.matches?.('[data-f]') === true) { out.push(root); continue; }
+    for (const el of root.querySelectorAll('[data-f]')) {
+      // `closest` walks a detached subtree exactly as it walks an attached
+      // one, so this guard means the same thing in both cases.
+      if (el.parentElement?.closest('[data-f]') !== null) continue;
+      out.push(el);
+    }
+  }
+  return out;
+}
+
+/** The urgency rule for one key, out of the one table that declares it. */
+const STRIP_URGENCY = new Map(STRIP_PICK.map((e) => [e.key, e.urgency]));
+
+/**
+ * **APPLY THE CHOICE, AND LET A LOUD FIELD BACK IN.**
+ *
+ * Three states per pill and the third is the one the whole item is about:
+ *
+ *   — ticked            nothing set, drawn as it always was.
+ *   — unticked, quiet   `.stripoff`, which is `display:none`.
+ *   — unticked, LOUD    `.stripback`, drawn AND marked, because a field
+ *                       returning unannounced reads as a field the reader
+ *                       thought he had switched off misbehaving.
+ *
+ * Returns the set of keys currently forced back, so the dialog can say which
+ * rows it is overriding and why — a disclosure that is invisible from the bar
+ * alone, since a returned field looks like a field that was never hidden.
+ */
+function applyStripChoice() {
+  const forced = new Set();
+  const off = stripOff === null ? null : new Set(stripOff);
+  for (const el of stripPills()) {
+    const key = pickKeyOf(el);
+    if (key === null) continue;
+    if (off === null || !off.has(key)) {
+      el.classList.remove('stripoff');
+      el.classList.remove('stripback');
+      continue;
+    }
+    if (isUrgent(el, STRIP_URGENCY.get(key) ?? null)) {
+      el.classList.remove('stripoff');
+      el.classList.add('stripback');
+      forced.add(key);
+      continue;
+    }
+    el.classList.remove('stripback');
+    el.classList.add('stripoff');
+  }
+  // ── AND THE HEADER'S REPO GROUP, WHICH `layoutStrip` NEVER DEALS.
+  //
+  // The strip's own groups leave the bar by not being dealt a row; this one is
+  // appended to `#topbar` once and stays there, so a reader who unticks all
+  // three of its fields would be left with the word REPO over nothing —
+  // exactly the labelled gap `stripGroupsOf` removes downstairs. Hidden and
+  // unhidden in place, which is why it cannot reach the detachment deadlock
+  // this function's own header describes.
+  const header = document.getElementById('hdrrepo');
+  if (header !== null) {
+    const fields = header.querySelectorAll('[data-f]');
+    const empty = fields.length > 0
+      && [...fields].every((el) => el.classList.contains('stripoff'));
+    // **`add`/`remove` AND NEVER `classList.toggle(name, force)`.** The forcing
+    // second argument is the part `test/ui/pane-route.test.ts`' document
+    // stand-in does not implement, and a `TypeError` raised HERE aborts
+    // `renderChrome()` — which is to say it takes the whole shell down, and
+    // takes it down in a harness whose failure reads as "the pane never
+    // opened". Seventeen tests about the item pane went red for it. Same rule
+    // for the two-argument `remove()` above.
+    if (empty) header.classList.add('stripoff');
+    else header.classList.remove('stripoff');
+  }
+  return forced;
+}
+
+/**
+ * **A GROUP WITH NOTHING LEFT IN IT IS NOT DEALT A PLACE IN A ROW.**
+ *
+ * `HAD fields and all of them are off` and not `has no visible fields`: a
+ * group whose pills have not arrived yet — the audit group before
+ * `/api/watch/context` answers — has no fields at all and must keep its place,
+ * or the bar would re-deal itself the instant the first payload landed. That
+ * is the jump `STRIP_SLACK` exists to prevent, arriving from the other side.
+ */
+function stripGroupsOf(subject) {
+  return stripPlan[subject].filter((group) => {
+    const fields = group.querySelectorAll('[data-f]');
+    if (fields.length === 0) return true;
+    return [...fields].some((el) => !el.classList.contains('stripoff'));
+  });
+}
+
+/**
+ * The row ceiling. `STRIP_MAX_ROWS` while nothing has been chosen — its own
+ * docblock calls it a ceiling and not a target — and the group count once
+ * something has, because then the rows are what the reader asked for.
+ */
+function stripRowCap() {
+  if (stripOff === null) return STRIP_MAX_ROWS;
+  return Math.max(2, stripPlan.identity.length + stripPlan.state.length);
+}
+
+/**
+ * **WHAT THE BAR IS COSTING RIGHT NOW, MEASURED RATHER THAN PREDICTED.**
+ *
+ * The dialog's readout is the reason this feature is worth building: it puts
+ * the trade in front of the reader AT THE MOMENT HE MAKES IT instead of
+ * leaving him to discover it afterwards by looking at a smaller viewer. So a
+ * tick APPLIES, the bar refits, and this reads the answer off the page — there
+ * is no second arithmetic here that could disagree with the layout, which is
+ * the defect a predicted cost would have been.
+ *
+ * `clipped` is the other half of the disclosure: a selection that still does
+ * not fit says so, rather than ellipsising quietly at the end of a row.
+ */
+function stripCost() {
+  const strip = document.getElementById('strip');
+  const body = document.getElementById('screen') ?? document.querySelector('.body');
+  const rows = strip === null ? 0 : strip.querySelectorAll('.striprow').length;
+  const px = (el) => (el === null ? 0 : Math.round(el.getBoundingClientRect().height));
+  return {
+    rows,
+    strip: px(strip),
+    viewer: px(body),
+    clipped: stripDeficit('identity') > STRIP_SLACK || stripDeficit('state') > STRIP_SLACK,
+  };
+}
+
+/**
+ * **THE PICKER.**
+ *
+ * `lib/panel.js`'s fourth caller, and it needed no change to it — which is the
+ * claim `semantic/9` made for the frame when it shipped with one caller and is
+ * worth recording as having held.
+ */
+function buildStripPicker() {
+  const panel = createPanel({
+    name: STRIP_PANEL,
+    title: translate(table.strings, 'strip.pick.h'),
+    closeLabel: flat(table.strings, 'strip.pick.close'),
+    /*
+     * **WHERE THE CARET STANDS AFTER IT SHUTS.** The bar itself: it is what
+     * the reader right-clicked, it is what he has just been changing, and
+     * focus left inside a closed dialog is focus nowhere — the 47-tab-stop
+     * defect `TASK-every-write-on-conversations-throws-focus-to-the-document`
+     * measured, which `lib/panel.js` handles only if a caller names a spare.
+     * `tabIndex` is set on the strip when the panel is built, once.
+     */
+    fallbackFocus: () => document.getElementById('strip'),
+  });
+  document.body.append(panel.dialog);
+
+  const say = document.createElement('p');
+  say.className = 'small tvnote mcpanelnote stripicksay';
+  const forcedLine = document.createElement('p');
+  forcedLine.className = 'small tvnote mcpanelnote stripickforced';
+  forcedLine.hidden = true;
+
+  const boxes = new Map();
+
+  /**
+   * **THE READOUT, AND IT IS THE MOST IMPORTANT CONTROL IN THIS DIALOG.**
+   *
+   * Redrawn after every tick, from a measurement of the bar the tick has
+   * already changed. `requestAnimationFrame` because `fitStrip` lays out
+   * synchronously but the grid's own track sizing lands on the next frame, and
+   * a number read one frame early is a number that is wrong exactly when the
+   * row count moves — which is the only moment anybody reads it.
+   */
+  const redraw = () => {
+    const forced = applyStripChoice();
+    fitStrip();
+    requestAnimationFrame(() => {
+      const cost = stripCost();
+      say.replaceChildren(...translate(table.strings, 'strip.pick.cost', {
+        rows: String(cost.rows), strip: String(cost.strip), viewer: String(cost.viewer),
+      }));
+      // The verdict as an ATTRIBUTE beside the sentence that says it, so a gate
+      // can read it without parsing prose in one of two languages — and so no
+      // test has to re-derive `stripDeficit`, which would be a second
+      // arithmetic disagreeing with the first.
+      say.dataset.clipped = cost.clipped ? '1' : '0';
+      if (cost.clipped) {
+        say.append(document.createTextNode(' '));
+        say.append(...translate(table.strings, 'strip.pick.clipped'));
+      }
+      forcedLine.hidden = forced.size === 0;
+      if (forced.size > 0) {
+        forcedLine.replaceChildren(...translate(table.strings, 'strip.pick.forced', {
+          names: [...forced].map((k) => flat(table.strings, labelOf(k))).join(', '),
+        }));
+      }
+      for (const [key, box] of boxes) {
+        const row = box.parentElement;
+        if (row === null) continue;
+        if (forced.has(key)) row.classList.add('stripickback');
+        else row.classList.remove('stripickback');
+      }
+    });
+  };
+
+  const labelOf = (key) => STRIP_PICK.find((e) => e.key === key)?.label ?? key;
+
+  /**
+   * One provenance group: its heading, which is a check-all, and its fields
+   * under it. A factory rather than a loop body because the two columns each
+   * call it and a node is in one place at a time.
+   */
+  const groupBlock = (group) => {
+    const head = document.createElement('div');
+    head.className = 'stripickgrp';
+    const all = document.createElement('input');
+    all.type = 'checkbox';
+    all.className = 'stripickall';
+    all.dataset.g = group.key;
+    const name = document.createElement('b');
+    name.className = 'stripickgrpn';
+    name.dataset.k = group.label;
+    name.append(...translate(table.strings, group.label));
+    const wrap = document.createElement('label');
+    wrap.className = 'mcpanelopt stripickgrph';
+    wrap.append(all, name);
+    all.addEventListener('change', () => {
+      // **THE HEADING IS A CHECK-ALL AND NOT A GROUP OF ITS OWN.** The owner's
+      // list names both group headings and field labels — WHERE and CWD, COST
+      // and CACHE — and they overlap, because they are the same seventeen
+      // names read off one bar at two levels. One checkbox per NAME with the
+      // heading ticking its own children is that list without the overlap.
+      const off = new Set(stripOff ?? []);
+      for (const entry of group.entries) {
+        if (all.checked) off.delete(entry.key); else off.add(entry.key);
+      }
+      stripOff = [...off];
+      writeChoice(stripStorage(), stripOff);
+      for (const entry of group.entries) {
+        const box = boxes.get(entry.key);
+        if (box !== undefined) box.checked = all.checked;
+      }
+      redraw();
+    });
+    head.append(wrap);
+    const list = document.createElement('div');
+    list.className = 'stripickopts';
+    for (const entry of group.entries) {
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.dataset.f = entry.key;
+      box.checked = !(stripOff ?? []).includes(entry.key);
+      const text = document.createElement('span');
+      text.className = 'stripickname';
+      text.dataset.k = entry.label;
+      text.append(...translate(table.strings, entry.label));
+      const row = document.createElement('label');
+      row.className = 'mcpanelopt stripickopt';
+      row.append(box, text);
+      // **A FIELD THAT CAN COME BACK SAYS SO WHERE IT IS TICKED**, because the
+      // dialog is the only surface on which that promise is visible: a
+      // returned field on the bar looks exactly like one that was never
+      // hidden. The mark is a WORD and not only a colour — `06-a11y.html`'s
+      // rule, and the reason no sixth hue is spent here.
+      if (entry.urgency !== null) {
+        const mark = document.createElement('span');
+        mark.className = 'stripickurg';
+        mark.dataset.k = 'strip.pick.canReturn';
+        mark.title = flat(table.strings, 'title.stripCanReturn');
+        mark.append(...translate(table.strings, 'strip.pick.canReturn'));
+        row.append(mark);
+      }
+      box.addEventListener('change', () => {
+        toggle(entry.key, box.checked);
+        all.checked = group.entries.every((e) => !(stripOff ?? []).includes(e.key));
+      });
+      boxes.set(entry.key, box);
+      list.append(row);
+    }
+    all.checked = group.entries.every((e) => !(stripOff ?? []).includes(e.key));
+    return [head, list];
+  };
+
+  const toggle = (key, on) => {
+    const off = new Set(stripOff ?? []);
+    if (on) off.delete(key); else off.add(key);
+    stripOff = [...off];
+    writeChoice(stripStorage(), stripOff);
+    redraw();
+  };
+
+  /*
+   * ── TWO COLUMNS, AND THEY ARE THE BAR'S OWN SPLIT ───────────────────
+   *
+   * Owner, 2026-09-17, on the first draft: *"it's very long as a list you can
+   * layout the content more inteligently, use the width too"*. Thirty rows in
+   * one column was 1,006px of dialog in a 1,000px window — a floating panel
+   * taller than the screen, with its own reset link off the bottom.
+   *
+   * **NOT an arbitrary two-up flow.** IDENTITY and STATE are the two subjects
+   * the bar is built from and the two `fitStrip` allocates rows BETWEEN, so
+   * the columns tell the reader what his ticking is buying rows back from
+   * without a sentence saying so. `pickColumns` derives them from the one
+   * table; nothing here knows which group belongs where.
+   */
+  const cols = document.createElement('div');
+  cols.className = 'stripickcols';
+  for (const column of pickColumns()) {
+    const col = document.createElement('section');
+    col.className = 'stripickcol';
+    col.dataset.s = column.subject;
+    const colHead = document.createElement('h3');
+    colHead.className = 'stripickcolh';
+    colHead.dataset.k = column.label;
+    colHead.append(...translate(table.strings, column.label));
+    col.append(colHead);
+    for (const group of column.groups) col.append(...groupBlock(group));
+    cols.append(col);
+  }
+
+  // **THE HONEST OTHER HALF OF THE PROMISE, BY NAME.** A field with no notion
+  // of urgency cannot join the set that comes back, and saying which ones
+  // those are is the answer — not a gap in it. Derived from the one table, so
+  // a field whose urgency rule changes changes this sentence with it.
+  const quiet = document.createElement('p');
+  quiet.className = 'small tvnote mcpanelnote stripickquiet';
+  quiet.append(...translate(table.strings, 'strip.pick.never', {
+    names: neverForced().map((k) => flat(table.strings, labelOf(k))).join(', '),
+  }));
+
+  const promise = document.createElement('p');
+  promise.className = 'small tvnote mcpanelnote';
+  promise.append(...translate(table.strings, 'strip.pick.promise'));
+
+  // **WHERE THE CHOICE LIVES, SAID IN THE DIALOG AND NOT ONLY IN A COMMENT.**
+  // The UI is read-only by construction — `test/ui/no-writes.test.ts` holds
+  // the symbols the server may bind to an exact set — so this cannot be
+  // written to `config.json`. It is per-browser and it does not follow the
+  // reader to another machine. That is a constraint to state plainly, not a
+  // defect to hide. And it is not a contradiction of `#panefloat`, which
+  // deliberately does NOT survive a reload: that is a transient VIEW MODE and
+  // this is a PREFERENCE. Different category, opposite correct answer.
+  const where = document.createElement('p');
+  where.className = 'small tvnote mcpanelhint';
+  where.append(...translate(table.strings, 'strip.pick.stored'));
+
+  const reset = document.createElement('button');
+  reset.type = 'button';
+  reset.className = 'linkid stripickreset';
+  reset.append(...translate(table.strings, 'strip.pick.reset'));
+  reset.addEventListener('click', () => {
+    // **`null`, NOT `[]`** — see `clearChoice`. An empty selection is still a
+    // selection, so it would leave the ceiling lifted and hand the reader a
+    // TALLER bar than the one he had before he opened this dialog, from a
+    // control that says "show everything again". Measured at 1280px: 4 rows
+    // and 99px before, 5 rows and 124px after, with the same fields on it.
+    stripOff = null;
+    clearChoice(stripStorage());
+    for (const box of boxes.values()) box.checked = true;
+    for (const all of panel.body.querySelectorAll('.stripickall')) all.checked = true;
+    redraw();
+  });
+
+  /*
+   * **THE READOUT KEEPS A PLACE OF ITS OWN**, at the top and boxed, because a
+   * wide two-column layout is exactly where the one line that changes as the
+   * reader works gets lost among thirty checkboxes. It is the most important
+   * control in this dialog and the reason the feature is worth building.
+   */
+  const head = document.createElement('div');
+  head.className = 'stripickhead';
+  head.append(say, forcedLine);
+
+  /*
+   * And the four standing sentences share ONE row across the full width. Four
+   * full-width lines stacked was most of the residual height once the options
+   * became two columns — measured, like the rest of this item.
+   */
+  const foot = document.createElement('div');
+  foot.className = 'stripickfoot';
+  foot.append(promise, quiet, where, reset);
+
+  panel.body.replaceChildren(head, cols, foot);
+  stripPicker = { panel, redraw };
+  return stripPicker;
+}
+
+/**
+ * **HOW TALL THIS PANEL WANTS TO BE, MEASURED.**
+ *
+ * 700px: 667px of body content at 1280 and at 900, in both languages, plus the
+ * 33px header. It is a constant here for one reason and it is not laziness —
+ * `lib/panel.js` places the panel from a fallback point and bounds its height
+ * against THAT point (`max-block-size: calc(100vh - top - 1rem)`, which exists
+ * because CSS cannot read a fixed element's own top), so the top has to be
+ * chosen BEFORE the box exists. A top chosen from the pointer put this panel
+ * 481px down a 1000px window and clamped it to 495px — its own LIMITS group
+ * and its reset link below the fold, which is the same defect
+ * `reports/2026-09-16-the-find-panel.md` §5.5 records for the find panel and
+ * which was found here the same way, by looking at a screenshot.
+ *
+ * Being an estimate is safe in both directions: too small and the panel opens
+ * lower and scrolls inside itself, which is the honest degradation; too large
+ * and it opens at 8px from the top with room to spare.
+ */
+const STRIP_PICKER_H = 700;
+
+/** Open it clear of the bar, and measure what is already there. */
+function openStripPicker(x, y) {
+  const picker = stripPicker ?? buildStripPicker();
+  if (!picker.panel.isOpen()) {
+    // ABOVE the gesture, which is the one placement a strip panel needs that a
+    // viewer panel does not: the strip is the LAST row of the shell, so a
+    // panel opened at the pointer would open off the bottom of the window.
+    // `lib/panel.js` clamps it onto the screen and reflects the start edge in
+    // Hebrew; neither is re-derived here.
+    const view = document.documentElement?.clientHeight ?? 0;
+    const top = Math.max(8, Math.min(y - STRIP_PICKER_H, view - STRIP_PICKER_H - 8));
+    picker.panel.open({ start: Math.max(8, x - 24), top });
+  }
+  picker.redraw();
+}
+
+/**
+ * **IT OPENS BY RIGHT-CLICKING THE BAR ITSELF.**
+ *
+ * The owner said *"the right menu"* and meant the conversation viewer's — but
+ * the strip is APP-WIDE and every one of the twenty screens has it. Putting an
+ * app-wide setting inside one screen's context menu misplaces it and hides it
+ * from the other nineteen. Right-clicking the thing you are configuring is
+ * also the more discoverable gesture, and it is the only one that is the same
+ * on every screen.
+ *
+ * **The browser's own menu is left alone everywhere else** — the rule
+ * `screens/conversations.js` already states: a reader right-clicking a LINK
+ * means open-in-new-tab, and one right-clicking a live SELECTION means copy.
+ * The two doors in the corpus group are links and are exempted for exactly
+ * that reason.
+ */
+function installStripMenu() {
+  for (const id of ['strip', 'hdrrepo']) {
+    const host = document.getElementById(id);
+    if (host === null || STRIP_MENUED.has(host)) continue;
+    STRIP_MENUED.add(host);
+    if (id === 'strip') host.tabIndex = -1;
+    host.addEventListener('contextmenu', (event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('a') !== null) return;
+      const selection = document.getSelection();
+      if (selection !== null && selection.rangeCount > 0 && !selection.isCollapsed) return;
+      event.preventDefault();
+      openStripPicker(event.clientX, event.clientY);
+    });
+  }
+}
+
+/** Once per element. `renderChrome()` runs again when a pasted nonce redeems. */
+const STRIP_MENUED = new WeakSet();
 
 /** The id of the app's one live region. Written once, read by `announce()`. */
 const ANNOUNCE_ID = 'announce';
@@ -5831,10 +6437,21 @@ function corpusNoteButtons(status) {
     btn.onclick = () => { location.hash = `#/${route}`; };
     return btn;
   };
-  out.push(open({
-    key: 'strip.doc', titleKey: 'title.doc', count: doctorNoticeCount(status),
+  const notices = doctorNoticeCount(status);
+  const door = open({
+    key: 'strip.doc', titleKey: 'title.doc', count: notices,
     route: 'doctor', field: 'doctor-notices',
-  }));
+  });
+  // ── AND WHETHER IT IS URGENT, DECIDED HERE BECAUSE THIS IS WHERE THE
+  //    NUMBER IS — `semantic/17`. A reader may switch this count off; he may
+  //    not switch off being TOLD when there are findings. The threshold is
+  //    not invented for the picker: it is the ruling this field already
+  //    follows one clause down, *show it only when it has something to
+  //    disclose*, applied to the field that is drawn at zero on purpose.
+  //    `data-u` rather than a band, because a band is a HUE and a count of
+  //    findings is not a level — no sixth meaning is spent to carry this.
+  if (notices > 0) door.dataset.u = '1';
+  out.push(door);
   const queue = reviewQueueCount(status);
   // ── §10's INDICATOR: THE COUNT IS THE TEXT AND THE AGE IS THE COLOUR ──────
   //
@@ -6112,6 +6729,13 @@ function drawContext() {
     // "myctx unavailable" the same way.
     tail.dataset.f = 'myctx';
     if (view.myctx === null) {
+      // ── AND THIS STATE IS URGENT — `semantic/17`. The share carries a band
+      //    at every value it HAS; the one state with no band to carry it is
+      //    the one where the share could not be computed at all, and that is
+      //    a sentence naming the corpus and the command that would fix it.
+      //    A reader who hid a percentage did not ask to stop being told the
+      //    percentage has gone away.
+      tail.dataset.u = '1';
       tail.dataset.k = 'strip.myctxUnavailable';
       tail.append(...translate(table.strings, 'strip.myctxUnavailable', {
         // The endpoint sets `mycontextError` on every branch that leaves
@@ -7165,6 +7789,20 @@ function injectionParts(view) {
     const dash = document.createElement('span');
     dash.className = 'm';
     dash.textContent = '—';
+    // ── AND AN UNCOUNTED INJECTION FIGURE IS URGENT — `semantic/17`.
+    //
+    // This field is *"the at-a-glance proof the one feature this product
+    // exists for is firing at all"*, and every branch that reaches `dashed()`
+    // is a branch where nobody could count. A reader may switch a boring
+    // number off; he may not switch off learning that the number stopped being
+    // measurable.
+    //
+    // **A count of ZERO is NOT marked, and that was considered.** Zero is the
+    // honest state of every session before its first injection, so forcing the
+    // field back there would make the preference worthless for the first
+    // minutes of every window — an alarm that is always on at the start is one
+    // nobody reads. The unmeasured states are unambiguous; zero is not.
+    label.dataset.u = '1';
     return [...before, dash, document.createTextNode(' '), label];
   };
 

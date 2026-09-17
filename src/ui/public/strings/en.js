@@ -2414,6 +2414,44 @@ export const strings = {
   'strip.grp.corpus': 'corpus',
   'strip.grp.session': 'session',
   'strip.grp.audit': 'audit',
+
+  /* ── THE STATUS BAR PICKER — `semantic/17`, `TASK-the-status-bar-takes-a-
+     ninth-of-the-window-and-the-only`.
+
+     The owner, 2026-09-17: *"a status bar customization dialog that would
+     allow the user to check which elements to show"*. Every name below is a
+     name the BAR itself already prints, so the dialog reads like the thing it
+     configures; only the pills that print no name of their own — a chip, a
+     verdict, a door — spend a `strip.pick.*` key here. */
+  'strip.pick.h': 'Status bar fields',
+  /* The two columns ARE the bar's two rows: the owner's own 2026-09-01
+     split, in his own terms, so the dialog says what it configures. */
+  'strip.pick.identity': 'identity — what does not change',
+  'strip.pick.state': 'state — everything that moves',
+  'strip.pick.close': 'Close the status bar fields panel',
+  'strip.pick.cost': '{rows} row(s) · bar {strip} px · viewer {viewer} px',
+  'strip.pick.clipped': 'Still cut at this width — hover a field to read the whole of it.',
+  'strip.pick.forced': 'Back on the bar right now because it has something to disclose: {names}.',
+  'strip.pick.canReturn': 'returns',
+  'strip.pick.promise': 'Unticking a field marked “returns” means “not while it is quiet”, never “never tell me”. It comes back, marked, the moment its own code calls it a warning or worse.',
+  'strip.pick.never': 'These have no notion of urgency, so unticking one hides it for good: {names}.',
+  'strip.pick.stored': 'Kept in this browser only. The web UI is read-only by construction and cannot write your config file, so this choice does not follow you to another machine.',
+  'strip.pick.reset': 'Show everything again',
+  'strip.pick.project': 'project',
+  'strip.pick.branch': 'branch',
+  'strip.pick.upstream': 'upstream',
+  'strip.pick.items': 'items',
+  'strip.pick.corpusDrift': 'drift',
+  'strip.pick.configError': 'config',
+  'strip.pick.doctorNotices': 'doctor notices',
+  'strip.pick.reviewQueue': 'review queue',
+  'strip.pick.rateVerdict': 'limit verdict',
+  'strip.pick.fill': 'room left',
+  'strip.pick.askVerdict': 'ask verdict',
+  'strip.pick.handoverVerdict': 'handover',
+  'strip.pick.injections': 'injections',
+  'strip.pick.lastAudit': 'last log entry',
+  'title.stripCanReturn': 'Hidden means “do not show me this while it is quiet”. This field forces itself back onto the bar, marked, as soon as the code that computes it calls it a warning or worse — so a preference set once can never become silence later.',
   // Two states no group could say before, and neither may be a blank —
   // STD-a-measured-zero-is-drawn-and-named, clause 3. "not read" is a call
   // that did not answer and is retryable; "not measured" is a figure this

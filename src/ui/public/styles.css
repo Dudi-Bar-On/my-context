@@ -941,13 +941,86 @@ bdi{unicode-bidi:isolate}
      with them gone the 38px track was mostly air. A pill is 24px, so 28px
      leaves 2px above and below: enough that rows do not touch, without the
      gutter the rectangles used to earn. */
-  display:grid;grid-template-rows:24px 28px;grid-auto-rows:28px;padding-inline:var(--sp-3);
+  /* **AND TIGHTENED AGAIN, 2026-09-17 — `semantic/17`.** The owner: *"we can
+     also make the lines height smaller so less space will be occupied too like
+     it is on the terminal statusline"*. MEASURED rather than declared, which
+     is the rule the row COUNT already follows.
+
+     The pill is 21px now (15px line + 2x2 padding + 2x1 border), so the first
+     row hugs it exactly as 24 hugged 22 before, and the continuation rows keep
+     the same 2px above and below that the 28px track was written for.
+
+     **WHY 15 AND NOT LOWER, and the floor is one this stylesheet already
+     wrote.** Driven at 1280 and 1920 in both languages: NOTHING clips down to
+     an 11px line, because a pill carries 2px of padding and 1px of border
+     outside its line box and the row track is sized from the pill. What runs
+     out first is INK CLEARANCE INSIDE the line box, and two fields on this bar
+     are `overflow:hidden` and therefore clip at exactly that boundary —
+     `[data-f="context"]` (see `.ctxstate>span` above) and `[data-f="last-audit"]`
+     (`.sprop`). Their tallest ink measures 11px at this face, so a 15px line
+     clears them by 2.0px on each side — which is the SAME number the 1.9 rule
+     above was raised to protect, and its comment says why: it "is the margin a
+     font fallback or a Hebrew glyph eats first".
+
+     Hebrew was measured separately and is not the binding constraint, which is
+     worth writing down because it was the expected one: at 11px the Hebrew run
+     measures ascent 8 / descent 2 against Latin caps' 8 / 0, so it uses 10px
+     of the same 11 and clears identically. The binding ink is the LEVEL ICON
+     at 12px — the one thing on this bar that renders above the cap height by
+     design — which is why 12 is a hard floor and not merely an ugly one.
+
+     The FONT DID NOT MOVE. 11px is already the smallest size in this console
+     and buying height with it is buying height from the reader. */
+  display:grid;grid-template-rows:21px 25px;grid-auto-rows:25px;padding-inline:var(--sp-3);
   padding-block:0 2px;font-size:var(--fs-strip);color:var(--dim)}
-.strip .sep{inline-size:1px;block-size:18px;background:var(--rule)}
+/* 17px and not 18: the separator is a rule BETWEEN two pills and it stopped
+   short of both at 18 in a 24px pill. Same proportion in a 21px one. */
+.strip .sep{inline-size:1px;block-size:17px;background:var(--rule)}
 /* The git group shows one of six states; the rest are `hidden`. .chip sets
    `display`, and an author rule beats the UA sheet's [hidden] at equal
    specificity — the same trap .pop[hidden] and .pane[hidden] already dodge. */
 .strip [hidden]{display:none}
+/* ── A FIELD THE READER SWITCHED OFF — `semantic/17` ───────────────────────
+
+   `display:none` and not `[hidden]`, and not removal either. Removal would
+   take the pill out of every census that keeps this bar honest — the parity
+   scan, the pill/title/height gate, the `title` sweep — and `[hidden]` is
+   already spent on the state machines in here (`.gitstate` shows one of seven
+   and hides six), so a preference wearing the same attribute would be two
+   meanings on one switch. A class is a third thing, which is what it is.
+
+   FOUR selectors and not one, because `display` is declared at three different
+   specificities in this file and a hiding rule that loses to any of them is a
+   preference that silently does nothing: `.strip .sgrp [data-f]` is
+   `inline-flex` at (0,3,0), `.chip` sets its own, and the repo group's fields
+   live in the HEADER where nothing sets one at all. */
+.strip .sgrp [data-f].stripoff,
+.strip .sgrp .chip.stripoff,
+.strip .stripoff,
+/* The header group itself, and not only its fields: it is appended to
+   `#topbar` once and `layoutStrip` never deals it a row, so unticking all
+   three of its fields would otherwise leave the word REPO standing over
+   nothing. */
+#hdrrepo.stripoff,
+#hdrrepo .stripoff{display:none}
+/* ── AND ONE THAT CAME BACK BECAUSE IT HAS SOMETHING TO DISCLOSE ───────────
+
+   Hiding means *"do not show me this while it is quiet"*, never *"never tell
+   me"* — so a field with a notion of urgency forces itself back when its own
+   code calls it a warning or worse, and it must return VISIBLY or it reads as
+   a field the reader thought he had switched off misbehaving.
+
+   A DOTTED OUTLINE IN `currentColor` AND NO NEW HUE.
+   `DEC-the-meaning-hue-budget-is-five` is not spent here: the outline takes
+   whatever ink the field's own level already gave it, exactly as the solid
+   rectangle does above, so the mark says "this is back" without saying
+   anything about how bad it is — the level is still the only thing carrying
+   that. The WORD lives in the picker, which names every field it is currently
+   overriding; see `reports/2026-09-17-the-status-bar-picker.md` §4 for why the
+   word is there and not on the pill. */
+.strip .sgrp [data-f].stripback,
+.strip .sgrp .chip.stripback,
+#hdrrepo .stripback{border-style:dotted;border-color:currentColor}
 .gitstate,.ctxstate,.corpusstate,.auditstate{display:flex;align-items:center;gap:var(--sp-3)}
 /* The no-bridge state is a whole SENTENCE in a bar sized for a phrase, and the
    known state is a long one. Exactly one item in the strip is allowed to give
@@ -1488,8 +1561,10 @@ bdi{unicode-bidi:isolate}
    parity tests already count, and it is what `e2e/strip-fields.spec.ts`
    enumerates. Anything that is a field gets the pill's metrics, including a
    field added next month that nobody thought to give a class. */
-.strip .sgrp [data-f],.strip .sgrp .chip{font-size:11px;line-height:16px;font-weight:700;
-  padding:3px 5px;box-sizing:border-box;border-radius:3px;
+.strip .sgrp [data-f],.strip .sgrp .chip{font-size:11px;line-height:15px;font-weight:700;
+  /* 15px/2px SINCE 2026-09-17 — see `.strip`'s own block for the measurement
+     and for why the font did not move with them. 16px/3px until then. */
+  padding:2px 5px;box-sizing:border-box;border-radius:3px;
   /* **THE OUTLINE IS THE INK.** Owner, 2026-09-01: "every field that has text
      content that is changing color according to state or status should set
      it's rectangle color when the text color changes accordingly."
@@ -1516,8 +1591,12 @@ bdi{unicode-bidi:isolate}
   /* `inline-flex` so a field's own children cannot stack and grow it: the
      injections pill holds a label and a figure, the audit pill a word and a
      clock, and as inline boxes each brought its own line box. One row, one
-     line-height, one height — 18px of line + 6px of padding + 2px of border =
-     26px, the same for every field whether it holds one child or three.
+     line-height, one height — 15px of line + 4px of padding + 2px of border =
+     21px, the same for every field whether it holds one child or three. (The
+     arithmetic written here said 18 + 6 + 2 = 26 while the rule above declared
+     16px and 3px for a 24px pill: a comment that has to agree with a
+     declaration three lines above it, and did not. It is recomputed from the
+     declaration each time those move, which is the only way it stays true.)
      `align-items:center` keeps the emoji icons on the same optical line as the
      text rather than sitting proud of it. */
   display:inline-flex;align-items:center;gap:var(--sp-1);
@@ -4869,6 +4948,88 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .mcpanelref{margin:0;font:var(--fs-00)/1.4 var(--sans)}
 .mcpanelref>summary{cursor:pointer;color:var(--gold);padding:2px 0}
 .mcpanelref>summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+/* ── THE STATUS BAR PICKER — `semantic/17` ────────────────────────────────
+
+   `lib/panel.js`'s fourth caller, so the frame's own rules above carry the
+   box, the header, the drag cursor and the close button. What is here is the
+   LIST: a heading per provenance group with a check-all, its fields under it,
+   and the readout that is the reason this dialog exists.
+
+   The readout is FIRST and it is `--ink` rather than `--dim`, which is the
+   same choice the find panel's counts made on the owner's own instruction
+   (*"it would be nice to see them in blue so they would be more
+   observable"*): it is the one line in here that changes as he works. */
+/* ── THE PANEL IS WIDER THAN THE THREE VIEWER PANELS, AND ONLY THIS ONE IS.
+
+   `lib/panel.js` needed NO CHANGE for it — the frame writes `inset-inline-*`
+   and `max-block-size` and never an `inline-size`, so the width is the
+   stylesheet's to set, per panel, through the `data-panel` handle the frame
+   already writes. That is this file's answer to the item's *"it should need no
+   changes"*: it did not.
+
+   46rem and not more: two columns of a checkbox, a name and the word `returns`
+   measure ~21rem each at `--fs-00`, and `calc(100vw - 2rem)` is what keeps it
+   honest on a narrow window — the columns collapse to one below 44rem (see the
+   query under `.stripickcols`) rather than the panel growing past the screen. */
+.mcpanel[data-panel="stripfields"]{inline-size:min(46rem,calc(100vw - 2rem))}
+
+/* THE READOUT KEEPS A PLACE OF ITS OWN, at the top and boxed. In a wide
+   two-column dialog the one line that changes as the reader works is exactly
+   what gets lost among thirty checkboxes, and it is the most important control
+   in here: it puts the trade in front of him AT THE MOMENT HE MAKES IT. */
+.stripickhead{display:flex;flex-direction:column;gap:2px;
+  padding:var(--sp-1) var(--sp-2);border:1px solid var(--rule);
+  border-radius:var(--r-sm);background:var(--panel)}
+.stripicksay{color:var(--ink);font-weight:600;margin:0;font-size:var(--fs-0)}
+.stripickforced{margin:0;color:var(--warn)}
+
+/* ── TWO COLUMNS, AND THEY ARE THE BAR'S OWN SPLIT ────────────────────
+
+   Owner, 2026-09-17: *"it's very long as a list you can layout the content more
+   inteligently, use the width too"*. Not an arbitrary two-up flow: IDENTITY and
+   STATE are the two subjects the bar is built from and the two `fitStrip`
+   allocates rows between, so the columns carry information rather than
+   decoration.
+
+   `minmax(0,1fr)` and not `1fr`: a grid track's default minimum is `auto`, so a
+   long label — `no handover ask yet` in Hebrew — would widen its own column and
+   push the other off the panel instead of wrapping inside it.
+
+   LOGICAL PROPERTIES THROUGHOUT, so the columns reflect in Hebrew for free. */
+.stripickcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:var(--sp-1) var(--sp-3);align-items:start}
+/* One column below 44rem, which is where two stop fitting rather than where
+   they stop looking nice. The panel itself is already clamped to the viewport,
+   so this is what stops the clamp producing two 8rem columns of wrapped words. */
+@media (max-width:44rem){.stripickcols{grid-template-columns:minmax(0,1fr)}}
+.stripickcol{min-inline-size:0;display:flex;flex-direction:column;gap:2px}
+.stripickcolh{margin:0 0 2px;font:700 var(--fs-00)/1.4 var(--sans);color:var(--dim);
+  text-transform:uppercase;letter-spacing:.08em;
+  border-block-end:1px solid var(--rule);padding-block-end:2px}
+.stripickgrp{margin-block-start:var(--sp-1)}
+.stripickgrph{font-weight:700}
+.stripickgrpn{text-transform:uppercase;letter-spacing:.08em;font-size:var(--fs-00)}
+/* The fields sit UNDER their heading and indented from the START edge, which
+   in Hebrew is the right one — `padding-inline-start`, never `padding-left`. */
+.stripickopts{display:flex;flex-direction:column;gap:2px;padding-inline-start:var(--sp-3)}
+/* `align-items:flex-start` and not `center`: a name that wraps to two lines
+   would otherwise drag its own checkbox down to the middle of them. */
+.stripickopt{justify-content:flex-start;align-items:flex-start;min-inline-size:0}
+.stripickopt input{margin-block-start:2px}
+.stripickname{min-inline-size:0;overflow-wrap:anywhere}
+/* A field that can force itself back says so where it is ticked. `--dim`
+   until it is actually back, and then the warn ink the bar is using for it —
+   no sixth hue, and the WORD is there in both states. */
+.stripickurg{color:var(--dim);font-size:var(--fs-00);font-style:italic;flex:none}
+.stripickback .stripickurg{color:var(--warn);font-style:normal;font-weight:700}
+/* THE FOUR STANDING SENTENCES SHARE ONE ROW. Stacked full-width they were most
+   of the residual height once the options became two columns. */
+.stripickfoot{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:2px var(--sp-3);margin-block-start:var(--sp-1);
+  border-block-start:1px solid var(--rule);padding-block-start:var(--sp-1)}
+@media (max-width:44rem){.stripickfoot{grid-template-columns:minmax(0,1fr)}}
+.stripickreset{justify-self:start;align-self:start}
 .mcpanelrefbody{margin:var(--sp-1) 0 0;overflow-x:auto}
 .mcpanelreftab{border-collapse:collapse;inline-size:100%}
 .mcpanelreftab td,.mcpanelreftab th{vertical-align:top;text-align:start;
