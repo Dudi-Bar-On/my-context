@@ -1,3 +1,43 @@
+## ⏭ 2026-09-17 (fourth) — THE DIAGRAMS WERE WRONG 28 TIMES AND README IS THE SOURCE. THREE DOC ITEMS HELD.
+
+1. **THE DIAGRAM VERIFICATION FOUND 28 FALSE CLAIMS IN 171, AND ONE DIAGRAM THAT DOES NOT PARSE.**
+   `docs/capabilities/07-restore-and-handover.md:78` ships as an ERROR BOX — mermaid's
+   sequenceDiagram lexer rejects the `&` in `&lt;key&gt;`. The earlier "all fences parse" claim was
+   checked by bracket balance, not by rendering; that is the difference and it is worth remembering.
+   `reports/2026-09-17-capability-diagrams-verified.md` has all 28 with true values.
+
+2. **README IS THE SOURCE OF THREE OF THEM AND IS NOW `rulings/102`.** `README.md:418` draws
+   `DB --> SEL` — selection never reads the index (`inject.ts:372`). `README.md:1496` says "once per
+   context window" — the seen file is per SESSION (`seen-file.ts:11`) — **and README's own prose
+   repeats the error at line 1626.** The chapters inherited all three by reusing README faithfully.
+   Both language editions must be fixed; the Hebrew documentation is written next and would inherit
+   them.
+
+3. **SECTION 8 OF README IS BEING RETIRED ENTRY BY ENTRY, NOT DELETED.** The owner asked for it
+   gone. It is 439 lines and seven subsections and it breaks its own rule — *"Nothing stays in this
+   section once it ships"* — while still claiming a subagent receives no session-start injection,
+   which the verifier DISPROVED empirically. **A shipped entry MOVES into the chapter that owns it;
+   a still-true entry is a real limitation and is named for him rather than removed quietly.**
+   Deleting a true limitation makes the product over-promise.
+
+4. **THREE DOC ITEMS ARE HELD WITH REAL `needs:`, NOT PROMISES.** `rulings/100` (the three panels and
+   their screenshots) waits on `semantic/12`, `/13`, `/14`. `rulings/101` (screenshots everywhere
+   else) waits on `rulings/99`. `rulings/102` (README) is ready. All three exist because a promise
+   made in a reply was lost this morning; `mycontext ready --held` names them.
+
+5. **AND THE SEQUENCING WAS CORRECTED BY THE OWNER.** Screenshots come BEFORE Hebrew: the English
+   document is the SHOT LIST — same slots, same captions — so the Hebrew pass re-shoots rather than
+   deciding twice what to photograph. This session had argued the opposite and was wrong; it is the
+   same reasoning that made diagrams Mermaid text, applied to photographs.
+
+6. **STILL RUNNING:** the capabilities diagram repair plus README (`rulings/99` + `/102`, one lane),
+   the `docs/system/` verification (never yet verified at all), `semantic/12`+`/13` (navigation and
+   copy panels), and `semantic/14` (counts, regex reference, clear button, position counter).
+
+7. **WHEN THE LANE REPORTS A CLEAN TREE, PUSH AND THEN VERIFY THE REMOTE ACTUALLY HAS IT** — the
+   owner asked for "internally as well as in the github repo", and a push that was assumed rather
+   than confirmed is the shape of defect this whole day has been about.
+
 ## ⏭ 2026-09-17 (third) — BOTH DOC SETS ARE IN VERIFICATION. HEBREW IS NEXT AND IS GATED ON IT.
 
 1. **TWO VERIFICATION LANES ARE LIVE.** One over `docs/system/` — eight documents, 1,340 lines,
