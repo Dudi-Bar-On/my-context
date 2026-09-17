@@ -99,7 +99,7 @@ changed ones are reported and skipped, never silently.
 
 **A seventh step now runs before all six, and it is the strongest guarantee on
 this surface.** As of `44b3623b` (2026-09-13), `readArtefact`
-(`src/pack/reader.ts:310–337`) **refuses the whole artefact** if any item
+(`readArtefact`, `src/pack/reader.ts:262`; the refusal at `:310–337`) **refuses the whole artefact** if any item
 carries a `status`, `severity` or `origin` outside its vocabulary —
 *"Nothing was imported."* The refusal lands **before** `planImport`, so it is
 not a bucket the collision report sorts; it is the artefact not being read at
@@ -116,7 +116,7 @@ same condition on disk as `laundered_enum`, at `error` level — see
 [chapter 1](./01-items-and-corpus.md) for the read boundary and
 [chapter 3](./03-creation-and-gates.md) for the finding code.
 
-`src/pack/` splits the work by concern — **twelve files; `layout.ts` is the one
+`src/pack/` splits the work by concern — **twelve files (2026-09-17); `layout.ts` is the one
 this list omitted** and carries the pack's on-disk path layout. `reader.ts`
 reads and verifies an artefact (dir or zip) against its manifest hashes;
 `collide.ts` computes the
@@ -286,7 +286,7 @@ because there is no "finished" state for something performed again next time.
 **What it is.** Documentation is generated from, and checked against, the
 product's own surfaces rather than hand-maintained prose that can drift. The
 per-feature tutorial roster lives at the checked-in `docs/tutorials/manifest.json`
-(24 entries, confirmed by listing it live), each entry a `TutorialManifestEntry`
+(24 entries on 2026-09-17, counted by parsing `docs/tutorials/manifest.json`), each entry a `TutorialManifestEntry`
 (`src/core/tutorial-manifest.ts`) naming: a stable kebab-case `id`; a `title`
 phrased as *"a job a reader is trying to do, not a feature name"*; a `tier`
 (`basic` | `advanced`); and the concrete surface files it claims —

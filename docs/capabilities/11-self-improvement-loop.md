@@ -28,7 +28,9 @@ config value this load-bearing deserves the flag.) A fresh install still has
 all three closed — the distinction between what the product ships and what
 this repository sets is the one this whole section exists to keep separate.
 
-**Source root:** `src/review/` held **thirteen** modules at commit `870e57c5` (2026-09-13) —
+**Source root:** `src/review/` holds **sixteen** `.ts` modules today (`ls src/review/*.ts | wc -l`,
+2026-09-17). It held **thirteen** at commit `870e57c5` (2026-09-13), and those thirteen are what this
+chapter walks —
 `trigger.ts`, `pass.ts`, `input.ts`, `rubric.ts`, `propose.ts`, `dedupe.ts`,
 `claim.ts`, `decline.ts`, `declined.ts`, `prompt.ts`, **`pending.ts`**,
 **`drift.ts`** and **`model.ts`**. **Naming that count "at HEAD" was already wrong by the time an
@@ -170,15 +172,20 @@ returns `null` before it ever reads a byte of transcript, and no child is ever
 spawned. Those are the **shipped defaults**, and they are what a fresh install
 gets.
 
-**This repository no longer runs on them, and both gates are now open here.**
-`.my_context/config.json` at HEAD carries:
+**This repository no longer runs on them, and all three gates are open here.**
+The `review` block of `.my_context/config.json`, read 2026-09-17 and quoted whole:
 
 ```json
   "review": {
     "enabled": true,
-    "maxProposalsPerPass": 5
+    "maxProposalsPerPass": 5,
+    "model": "claude-opus-5"
   }
 ```
+
+The `"model"` line used to be missing from this paste, and it is the third dial — the one this
+chapter's own opening says turned *"two of three"* into *"all three"*. A paste that drops it is
+evidence for the reading the chapter had just retired, which is worse than no paste.
 
 Two commits, sixteen minutes apart on 2026-09-13: `0d683f2b` (20:17, *"the
 self-improvement loop is on — and the ration stays at 0, which is what the code
@@ -566,7 +573,7 @@ wired into the real hook path — and shipped off by two independent defaults**
   importer anywhere is `test/review/drift.test.ts`. (An earlier version of this
   bullet also named `test/core/retrieval-return.test.ts` as an importer; that file only
   *mentions* `drift.test.ts` inside two comments, it does not import the module —
-  re-verified directly against both files.) At 18.5 KB it is the larger of the two
+  re-verified directly against both files.) At 18,498 bytes (2026-09-17) it is the larger of the two
   modules this chapter used to describe as unwired, and it is now the only one.
 - **`src/review/pending.ts`, by contrast, IS wired**, and this chapter
   discusses `queueCeiling` at length without naming the module that computes

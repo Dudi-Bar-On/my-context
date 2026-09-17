@@ -26,15 +26,22 @@ Every chapter in this reference is a deeper reading of one stage of the same pip
 flowchart LR
   Y["<b>You</b><br/>mycontext add"] --> MD
   M["<b>Claude</b><br/>create_item"] --> MD["<b>.my_context/items/</b><br/>one Markdown file per item<br/><i>the source of truth</i>"]
-  MD --> SEL["<b>selection</b><br/>pure over the parsed items —<br/>no database on this path"]
+  MD --> SEL["<b>selection</b><br/>pure over the parsed items —<br/>no database when a session or<br/>subagent starts"]
   SEL --> HK["<b>hooks</b><br/>session start, incl. after a<br/>compaction · subagent start<br/>· before a file"]
   HK --> CX["Claude's context"]
-  MD -.->|"refreshed afterward,<br/>best-effort, skipped for a subagent"| DB[("<b>.index.db</b><br/>derived cache — read by<br/>search, list, query; never by injection")]
+  MD -.->|"refreshed afterward,<br/>best-effort, skipped for a subagent"| DB[("<b>.index.db</b><br/>derived cache — read by<br/>search, list, query")]
+  DB -.->|"and read FIRST before a file —<br/>Markdown is the fallback there"| SEL
 ```
 
-(Reused from the README's own §3, corrected 2026-09-17: `select` reads the parsed items directly —
-`src/core/inject.ts:372`, *"No database on the injection-critical path"* — and `.index.db` is
-refreshed only afterward, as a best-effort side task the source itself skips for a subagent.)
+(Reused from the README's own §3, corrected again 2026-09-17: the two hooks that call
+`buildInjectionResult` — `session-start.ts:69` and `subagent-start.ts:290` — select over items parsed
+from Markdown, `src/core/inject.ts:372`, *"No database on the injection-critical path"*, and the
+index is refreshed afterward as a best-effort side task the same function skips for a subagent
+(`inject.ts:883-885`). **The just-in-time hook is the other way round**: `pre-tool-use.ts:287-288`
+opens the index read-only and takes its candidates from `store.activeInjectable(...)`, reaching
+`activeInjectableFromItems(loadCorpusItems(...))` only from the `catch` — database first, Markdown as
+the disclosed fallback. An earlier revision of this node read *"never by injection"*, which is the
+inverse of that path and is the reason chapter 2's staleness story has teeth at all.)
 Chapter 1 is the leftmost box — what an item and the corpus are. Chapter 2 is `selection` and
 `hooks` — the budget and the doors. Chapters 3 through 16 are everything that sits beside this
 spine: the gates a write passes through before it reaches `.my_context/items/`, the two stores
@@ -70,7 +77,7 @@ command that produces it is shown so a reader can re-derive it rather than trust
 | 2 | [Injection](./02-injection.md) | The doors that trigger injection, the five-key budget, pinning (`always: true`), the spare band, first-fit packing and spill, and `governingSpill.titled` as the measure of what a reader loses when an item spills to a title-only line. |
 | 3 | [Creation and the gates](./03-creation-and-gates.md) | `add`, `edit`, the summary gate, the contradiction gate, `--distinct` / `--supersedes`, the two escape hatches (`--summary-omitted` at create, `--summary-unchanged` on edit), the three content hashes, supersession edges and their three refusals, `doctor` with **all 61 finding codes**, `repair`, and the `--json` failure envelope. |
 | 4 | [The conversation archive](./04-conversation-archive.md) | Indexing session and subagent transcripts, the FTS5 **trigram** tokenizer (not `unicode61` — Hebrew glues one-letter particles onto word fronts), byte offsets never character offsets, secrets detection, and persistence. |
-| 5 | [Anchors](./05-anchors.md) | `.my_context/.anchors.jsonl` as the truth with the SQLite index derived from it, `origin: automatic` vs `origin: owner`, the three creation paths, and every anchor capability reachable from the web UI. |
+| 5 | [Anchors](./05-anchors.md) | `.my_context/.anchors.jsonl` as the truth with the SQLite index derived from it, `origin: automatic` vs `origin: owner`, the four creation paths, and every anchor capability reachable from the web UI. |
 | 6 | [Retrieval](./06-retrieval.md) | Reconstructing a subject from a pasted passage without the passage's own noise ever reaching the context window, and the actual mechanisms (more than a flat "four") that assert this guarantee never breaks. |
 | 7 | [Restore and handover](./07-restore-and-handover.md) | `restore --build / --show / --approve / --discard`, the loop guard, `reports/V2-HANDOVER.md`, and `check:handover` — run for real against this repo's live report. |
 | 8 | [The web UI](./08-web-ui.md) | All 20 rail screens, the Composer that builds (never silently runs) commands, the item pane, the Hebrew RTL mirror with its parallel string table, and the no-writes guarantee — **twelve ruled write bindings across five files**, asserted by set equality, including two surfaces that write without composing a command at all. |
@@ -199,7 +206,7 @@ this reference; those chapters describe it from source instead and say so.
 
 ---
 
-*17 files, 7,376 lines, 508,660 bytes (508.7 kB decimal / 496.7 KiB) as of this correction —
+*17 files, 8,130 lines, 568,622 bytes (568.6 kB decimal / 555.3 KiB), re-measured **2026-09-17** —
 **this figure changes with every edit to this reference, including this one, so treat it as a
 lower bound rather than a constant**; `wc -l docs/capabilities/*.md` and
 `wc -c docs/capabilities/*.md` reproduce it on any later checkout. First written
@@ -226,10 +233,40 @@ that asserted work "had not landed at HEAD" when it had landed in HEAD's own par
 sentence was committed. **The fix for that pattern is structural, not another round of point
 fixes**: a changed number is now swept through its whole file rather than corrected at one site,
 volatile counts (anchor rows, `ready`'s totals, servable-document counts, ellipsis counts) are
-dated and flagged as moving within the hour rather than stated bare, and no sentence in this
-reference asserts what is or is not in a commit, a branch, or "HEAD" — a commit hash is a fixed
-point and "HEAD" is not one, and a reference that conflates the two goes stale the moment another
-lane pushes. Every number in
+dated and flagged as moving within the hour rather than stated bare, and a sentence that asserts
+what is or is not in a commit, a branch, or "HEAD" is avoided — a commit hash is a fixed point and
+"HEAD" is not one, and a reference that conflates the two goes stale the moment another lane
+pushes. **That last rule is stated as a practice and not as a fact about this text, because it was
+once written here as an absolute — "no sentence in this reference asserts …" — and four sentences
+did**: chapter 11 says it three times (its `src/review/` header note, its *"as committed at HEAD"*
+parenthesis, and *"`.my_context/config.json` at HEAD carries"*) and chapter 13 once
+(*"re-checked at HEAD on 2026-09-13"*), the first of them fifteen lines after chapter 11 names the
+problem. **The four sentences are left standing and the absolute is the thing that went**: each of
+them is a dated observation about a commit that was HEAD when it was written, which is a legitimate
+thing for a reference to say, and none of them was made safer by a sentence three chapters away
+claiming they did not exist.
+
+**Two further passes ran on 2026-09-17 and this paragraph did not mention either, which is the
+defect it exists to prevent.** The first checked the sixteen fences — **the only verification any
+diagram in this reference had ever had** — and found **28 false diagram claims**, including one
+fence in chapter 7 that had never parsed in any renderer since the day it was written
+(`reports/2026-09-17-capability-diagrams-verified.md`). Commit `471b13b3` repaired eleven chapters
+against that list and said in its own message that the repair was unverified. The second pass
+checked the repair: **574 checks, 25 of the 28 repaired at the cited point, 1 fixed into a new
+wrong value, 2 untouched — and 15 NEW false claims written by the repair itself**, every one of
+them in prose or a diagram node the repair had just added
+(`reports/2026-09-17-capabilities-verified-after-repair.md`). That is the same shape three times
+running: repairing 38 produced 21 new findings, repairing 28 produced 15, repairing 21 produced 15.
+**A repair pass is a writing pass, and writing introduces claims.** The repair of those 15 is
+`reports/2026-09-17-capabilities-repaired-again.md`, which records for every sentence it wrote
+whether that sentence was checked against the code or carried from the verifier's list.
+
+So: **five verification passes and three repairs, not three passes through.** A reader should take
+this reference as heavily checked and still not as certified — the last measured error rate on
+newly written repair text was fifteen claims per repair, and it has not fallen. There is now a gate
+for one class of it: `npm run check:diagrams` parses every fence in `README.md`,
+`docs/README.he.md`, `docs/capabilities/` and `docs/system/` in real Mermaid, proves its own red
+path first, and takes about two seconds. Nothing yet gates a sentence. Every number in
 this reference was re-read from the tree for one of these three passes rather than copied from a
 prior draft; where an older figure is still quoted, it is quoted explicitly as a historical
 comparison, never as current state — and the discipline that survived every audit best was pasting

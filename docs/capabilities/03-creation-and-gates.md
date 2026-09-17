@@ -13,7 +13,7 @@ repair the corpus's own bookkeeping: `doctor` and `repair`.
 Everything below is read from `src/core/summary-gate.ts`, `src/core/mutate.ts`
 (the contradiction gate, from `:416` through `carryVerdicts` at `:575`),
 `src/cli/index.ts` (`cmdAdd`, `:808–1299`), `src/cli/commands/edit.ts`
-(1,320 lines), `src/cli/commands/supersede.ts`,
+(1,320 lines on 2026-09-17), `src/cli/commands/supersede.ts`,
 `src/cli/commands/repair.ts`, `src/core/content-hash.ts`, `src/core/rebuild.ts`,
 and `src/doctor/checks.ts`, plus a real `mycontext doctor` run against this
 repository's own corpus on 2026-09-12.
@@ -82,8 +82,8 @@ single easiest thing to get wrong in this chapter, so both are named here:
   not to write one," and it is recorded so that "nobody wrote one" is visible in
   the audit trail rather than assumed. Passing both `--summary` and
   `--summary-omitted` is refused (`summaryOmittedRefusal`) as a contradiction of
-  its own. **It is a creation-surface flag only** — `src/cli/index.ts:509` (the
-  `add` usage line) and `:904`, plus `lesson-accept`. **`mycontext edit` does not
+  its own. **It is a creation-surface flag only** — `src/cli/index.ts:556` (the
+  `add` usage line) and `:951` (where it is read), plus `lesson-accept`. **`mycontext edit` does not
   accept it.**
 - **`--summary-unchanged`** answers the **edit** gate, and is the flag a reader
   hitting a refused edit actually needs: `src/cli/commands/edit.ts:93` (usage),
@@ -257,18 +257,39 @@ flowchart TD
   SG -->|"no — unsummarised field,<br/>or summary still matches"| CI
   CI{"createItem / updateItem<br/>— every write path, no exceptions"} --> OV{"lexical overlap above threshold<br/>against something already governing?"}
   OV -->|"no"| DONE["write lands"]
-  OV -->|"yes, already dispositioned<br/>— carryVerdicts carries a live verdict<br/>across an edit that doesn't change meaning"| DONE
+  OV -->|"yes, but a verdict recorded earlier<br/>still holds on BOTH bases —<br/>verdictHolds drops the candidate"| DONE
   OV -->|"yes, undispositioned"| D{"--distinct &lt;id&gt; or<br/>--supersedes &lt;id&gt; supplied?"}
   D -->|"neither"| R2["REFUSED — candidate pair<br/>and overlap score named"]
-  D -->|"--distinct (repeatable)"| V["verdict recorded:<br/>both stand"]
-  D -->|"--supersedes &lt;id&gt; —<br/>the id names ANY real item,<br/>not necessarily one raised<br/>on THIS call"| WRITE["the gate is answered —<br/>write lands"]
-  V --> DONE
-  WRITE --> RAISED{"was that id actually raised<br/>as a candidate on this call,<br/>in contradiction scope and governing?"}
-  RAISED -->|"yes"| S["supersedeItem:<br/>edges written, always/hard cleared,<br/>verdict recorded"]
-  RAISED -->|"no"| SILENT["nothing is retired —<br/>the write still lands"]
+  D -->|"an id that names no item in<br/>this corpus at all — a typo"| R3["REFUSED — unknownDispositionRefusal,<br/>thrown BEFORE the overlap refusal"]
+  D -->|"--distinct (repeatable) and/or<br/>--supersedes &lt;id&gt; — each may name<br/>ANY real item, not only one<br/>raised on THIS call"| ALL{"is EVERY candidate raised on this<br/>call now disposed of?"}
+  ALL -->|"no — at least one is still open"| R2
+  ALL -->|"yes — open is empty"| WRITE["write lands, then a verdict is<br/>recorded for every pair that<br/>WAS raised and disposed of"]
+  WRITE --> RAISED{"--supersedes given, and was that id<br/>among the candidates raised on this call<br/>— in contradiction scope and governing?"}
+  RAISED -->|"yes"| S["supersedeItem:<br/>edges written, always/hard cleared"]
+  RAISED -->|"no"| SILENT["nothing is retired —<br/>the write still lands,<br/>and the verdicts still stand"]
   S --> DONE
   SILENT --> DONE
 ```
+
+**The rightmost branch, corrected 2026-09-17, and the correction is the whole point of it.**
+An earlier revision of this diagram drew `--supersedes <id>` as answering the gate on its own —
+*"the gate is answered — write lands"*. It does not. `--supersedes` and each `--distinct` only add
+an id to `disposed` (`src/core/overlap.ts:491-492`); a raised candidate leaves the open set only if
+it is in `disposed` (`:497`) or already carries a verdict that holds on both bases (`:500-502`); and
+the gate returns `allowed: false` while **any** candidate is still open (`:507`). So a
+`--supersedes` that names a real item which was not among the raised candidates disposes of nothing
+that was raised, and `contradictionCheck` throws `contradictionRefusal` (`src/core/mutate.ts:531`) —
+a refusal, not a landing. Its message is written for exactly this case.
+
+Three orderings in the drawing are load-bearing and were read out of the source rather than inferred
+from it. A disposition naming an id that exists in **no** status is `stray` (`overlap.ts:506`,
+against an `eligible` set built from every project item, `:471-474`), and its refusal is thrown
+**before** the overlap refusal (`mutate.ts:529-531`) so a typo is never mistaken for an unanswered
+gate. The verdicts are recorded by `recordVerdicts` (`mutate.ts:1200`) **before** the retirement
+test and independently of it — which is why the `no` branch records the same verdicts as the `yes`
+branch, and why the earlier drawing's "verdict recorded" belonged outside `supersedeItem`, not
+inside it. And the retirement itself runs only when the superseded id is in `settled`
+(`mutate.ts:1215`), i.e. only when it was raised on this call.
 
 A write that never enters contradiction scope at all (a `draft`, a non-normative
 category) skips the rightmost branch entirely and lands once the summary gate — where it
@@ -279,7 +300,7 @@ applies — is satisfied.
 **There are three different hashes here, over three different shapes, and
 conflating them is the mistake to avoid.**
 
-**1. `computeItemChecksum` (`src/core/item.ts:802`) — the file-integrity hash**,
+**1. `computeItemChecksum` (`src/core/item.ts:851`) — the file-integrity hash**,
 the one stamped into every item's frontmatter. Its shape is **wider** than the
 content shape, and it deliberately **includes** `id`, `status` and `origin`:
 
@@ -304,10 +325,11 @@ edit to a `## Request` section leaves no stale checksum behind, so `doctor` will
 not report it.**
 
 Note also what this shape does *not* do: `scope` and `tags` are passed through
-**unsorted** here (`item.ts:806`). Sorting is `canonicalContent`'s behaviour
-(`content-hash.ts:110–111`), which is the next hash, not this one.
+**unsorted** here (`item.ts:854`). Sorting is `canonicalContent`'s behaviour
+(`content-hash.ts:112–113`, `[...v.scope].sort()` and `[...v.tags].sort()`), which is the next
+hash, not this one.
 
-**2. `itemSummaryBasis` (`content-hash.ts:539`) — the summary-staleness hash**,
+**2. `itemSummaryBasis` (`content-hash.ts:544`) — the summary-staleness hash**,
 and it is much **narrower**. It hashes only the four fields `SUMMARY_BASIS`
 (`:291–304`) marks `summarised` — **`body`, `steps`, `observations`, `extra`** —
 and two of those get a narrower cut still: `summarisedExtra` drops
@@ -395,7 +417,7 @@ command and there is nothing for it to fix right now.
 paragraph reported zero of them as though it were. The only checksum-related
 `code:` literal in `src/doctor/checks.ts` is `checksum_basis_migration`
 (`:470`). A **real** same-basis mismatch does not surface as a coded finding
-at all — it is a `LoadError` from `rebuild.ts:226`, which drives `doctor`'s
+at all — it is a `LoadError` from `rebuild.ts:269–276`, which drives `doctor`'s
 non-zero exit code, exactly as the two-outcome list above already says. A
 reader hunting for `checksum_mismatch` in `--json` output, or trying to
 `mycontext ack <id> checksum_mismatch` it, will find nothing.
@@ -421,11 +443,11 @@ implicit:
 
 1. The write must be **in contradiction scope and governing**:
    `const gated = inContradictionScope(draft.type, draft.always) &&
-   GOVERNING_STATUS[status]` (`src/core/mutate.ts:1026`). On an ungated write,
+   GOVERNING_STATUS[status]` (`src/core/mutate.ts:1028`). On an ungated write,
    `--supersedes` records nothing.
 2. The id named by `--supersedes` must actually have been **raised as a
    candidate** by the gate: `settled.some((c) => c.id === draft.supersedes)`
-   (`:1213` on create, `:2100` on edit). Naming an id the gate never surfaced
+   (`:1215` on create, `:2102` on edit). Naming an id the gate never surfaced
    records no edge at all.
 
 Both call sites carry the retirement's own message forward rather than
@@ -612,7 +634,8 @@ was never dispositioned.
   subject and is covered there.
 - **Not described here, and each is a real surface:** `repair`'s loss holdback
   (`repair.ts:81–91`); `preflightSupersede` / `supersedeQuestion`
-  (`mutate.ts:1033, 1898`), which are what put the retirement question to a
+  (`mutate.ts:713` and `:690`, called at `:1036` on create and `:1901` on edit),
+  which are what put the retirement question to a
   person before an id has been minted; and the `--json` failure envelope
   (`src/cli/json-envelope.ts`) — see below.
 
@@ -653,7 +676,7 @@ and chapter 12's.
 
 ## What I could not fully verify
 
-`edit.ts` is 1,320 lines and shares much of the same flag-parsing and gate
+`edit.ts` is 1,320 lines (2026-09-17) and shares much of the same flag-parsing and gate
 logic as `cmdAdd` in `src/cli/index.ts`; I traced the summary-gate and
 contradiction-gate call sites there but did not exhaustively trace every one
 of `edit.ts`'s ~30 flags. I did not run `add`, `edit`, or `repair` for real

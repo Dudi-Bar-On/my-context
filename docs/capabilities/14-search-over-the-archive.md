@@ -67,32 +67,51 @@ choose a mode; they get the most literal answer first and progressively looser o
 which was the explicit design goal of the report this shipped from: *"the failure mode to avoid is
 a Find dialog with nine checkboxes nobody ticks."*
 
-Worked example, real output against this repository's own archive, **re-run and re-pasted
-2026-09-17** (the previous version of this block was left undated after its own capture and, unlike
-every other live paste in this reference, silently stopped reproducing — one of the seven rows had
-been displaced by a newer hit and three totals had moved; this one carries its date for exactly
-that reason, and is expected to look different again the next time anyone runs it):
+Worked example, real output against this repository's own archive, **captured 2026-09-17 by running
+the command and redirecting it to a file** — pasted whole, wraps and all, with nothing retyped.
+
+The previous revision of this block was not a capture. It was the command's table **retyped
+narrower**: the `when` column's second line, which carries the timezone suffix `GMT+3`, had been
+removed from all seven rows and the `match` column's wraps folded back into one line. The suffix is
+not optional decoration — `zonedStamp` (`src/cli/commands/format.ts:397`) always appends it, and the table's
+width is a constant, `OUTPUT_WIDTH = 100` (`src/cli/commands/format.ts:83`), chosen precisely so
+that piped output and watched output are the same bytes. So the block as printed here previously
+was narrower than any run of the command can produce, and no reader could have reproduced it.
+
+Two things in the real capture below are worth naming rather than tidying away. The counts have all
+moved since the last capture (7 hits became 8; `both` matched 1,029 then and 1,078 now), which is
+what a live archive does between any two runs. And the `near` tier prints **two identical
+rows** — same instant, same lane, same byte offset. That is what the command printed; it is left in
+because a paste that quietly deduplicated it would be the same act this block is being repaired for.
 
 ```
-$ mycontext conversation search "index report" --limit 3     # 2026-09-17
-┌────────┬────────┬──────────────────┬──────────┬──────────┬───────────┬───────────────────────┐
-│ tier   │ kind   │ when             │ session  │ lane     │ byte      │ match                 │
-├────────┼────────┼──────────────────┼──────────┼──────────┼───────────┼───────────────────────┤
-│ phrase │ answer │ 2026-09-10 11:24 │ 595db3b1 │ agent-a2 │ 4271865   │ …ng [index report]s I…│
-│ phrase │ prompt │ 2026-09-11 03:48 │ 595db3b1 │ agent-a1 │ 0         │ …er [index report] `I…│
-│ phrase │ prompt │ 2026-09-10 12:17 │ 595db3b1 │ agent-ac │ 0         │ …ng [index report]s I…│
-│ near   │ answer │ 2026-09-09 16:26 │ 595db3b1 │ —        │ 81858157  │ … lane [report]ed 66/…│
-│ near   │ answer │ 2026-09-08 23:23 │ 595db3b1 │ —        │ 73206567  │ …ng to [report] a hal…│
-│ near   │ answer │ 2026-09-16 20:05 │ 595db3b1 │ —        │ 141684342 │ …The subjects [repor]…│
-│ both   │ answer │ 2026-09-11 05:00 │ 595db3b1 │ —        │ 93156686  │ Now the owed [index]… │
-└────────┴────────┴──────────────────┴──────────┴──────────┴───────────┴───────────────────────┘
-my_context: 7 hit(s) in what was said, over prompt and answer spans.
-my_context:   phrase: 3 shown of 3 matched — the bound cut this reading.
-my_context:   near: 3 shown of 51 matched — the bound cut this reading.
-my_context:   both: 1 shown of 1029 matched — the bound cut this reading.
-my_context: and 1177 more in what was RUN — add `--sources ran` to see them, or `--sources both`.
-my_context: tool_result and thinking blocks are NOT indexed at all, so what a command PRINTED and
-what the model thought cannot be found by any search here.
+$ mycontext conversation search "index report" --limit 3     # 2026-09-17, captured by redirection
+┌────────┬────────┬───────────────────────┬──────────┬──────────┬──────────┬───────────────────────┐
+│ tier   │ kind   │ when                  │ session  │ lane     │ byte     │ match                 │
+├────────┼────────┼───────────────────────┼──────────┼──────────┼──────────┼───────────────────────┤
+│ phrase │ answer │ 2026-09-10 11:24      │ 595db3b1 │ agent-a2 │ 4271865  │ …ng [index report]s   │
+│        │        │ GMT+3                 │          │          │          │ I…                    │
+│ phrase │ prompt │ 2026-09-11 03:48      │ 595db3b1 │ agent-a1 │ 0        │ …er [index report]    │
+│        │        │ GMT+3                 │          │          │          │ `I…                   │
+│ phrase │ prompt │ 2026-09-10 12:17      │ 595db3b1 │ agent-ac │ 0        │ …ng [index report]s   │
+│        │        │ GMT+3                 │          │          │          │ I…                    │
+│ near   │ answer │ 2026-09-09 16:26      │ 595db3b1 │ —        │ 81858157 │ … lane [report]ed     │
+│        │        │ GMT+3                 │          │          │          │ 66/…                  │
+│ near   │ answer │ 2026-09-17 12:03      │ 595db3b1 │ agent-a7 │ 286743   │ …s the [report].      │
+│        │        │ GMT+3                 │          │          │          │ Let'…                 │
+│ near   │ answer │ 2026-09-17 12:03      │ 595db3b1 │ agent-a7 │ 286743   │ …s the [report].      │
+│        │        │ GMT+3                 │          │          │          │ Let'…                 │
+│ both   │ answer │ 2026-09-11 05:00      │ 595db3b1 │ —        │ 93156686 │ Now the owed [index]… │
+│        │        │ GMT+3                 │          │          │          │                       │
+│ both   │ answer │ 2026-09-08 23:23      │ 595db3b1 │ —        │ 73206567 │ …your [index] has     │
+│        │        │ GMT+3                 │          │          │          │ `co…                  │
+└────────┴────────┴───────────────────────┴──────────┴──────────┴──────────┴───────────────────────┘
+my_context: 8 hit(s) in what was said, over prompt and answer spans.
+my_context:   phrase: 3 shown of 4 matched — the bound cut this reading.
+my_context:   near: 3 shown of 60 matched — the bound cut this reading.
+my_context:   both: 2 shown of 1078 matched — the bound cut this reading.
+my_context: and 1266 more in what was RUN — add `--sources ran` to see them, or `--sources both`.
+my_context: tool_result and thinking blocks are NOT indexed at all, so what a command PRINTED and what the model thought cannot be found by any search here.
 ```
 
 Every line at the bottom is required disclosure, not decoration — see §14.5.
@@ -170,8 +189,10 @@ raw JSON, so a path spelled with escaped backslashes in a record is still found 
 form a reader would type), capped at **`TOOL_VALUE_CAP = 2,000` characters per argument** (not per
 block — a `Write` call's `content` cannot crowd out its own `file_path`).
 
-Measured on this workspace's real archive (474 transcripts, 1,269,256,560 bytes) the day it
-shipped:
+Measured on this workspace's real archive on **2026-09-16**, the day it shipped, over the 474
+transcripts and 1,269,256,560 bytes it held then. Both figures are the SIZE OF THE SAMPLE this
+measurement was taken over, not a current count — the archive grows daily, and re-running the
+measurement today would answer about a different corpus:
 
 ```
 kind      spans     characters

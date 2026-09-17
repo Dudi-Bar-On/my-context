@@ -75,21 +75,22 @@ again even with anchors in it).
 ## 5.3 `origin: automatic` vs. `origin: owner`
 
 Every anchor row carries one of exactly two origin values — confirmed on this workspace's own
-file, re-measured 2026-09-16 **at the same moment as the `kind` count below it**, so the two
+file, re-measured **2026-09-17** at the same moment as the `kind` count below it, so the two
 figures describe one file at one instant rather than two different days (a defect in an earlier
 version of this chapter, corrected here — see the note at the end of this section):
 
 ```
 $ wc -l .my_context/.anchors.jsonl
-1355 .my_context/.anchors.jsonl
+1405 .my_context/.anchors.jsonl
 $ grep -o '"origin":"[a-z]*"' .my_context/.anchors.jsonl | sort | uniq -c
-   1354 "origin":"automatic"
+   1404 "origin":"automatic"
       1 "origin":"owner"
 ```
 
 **This number is not merely dated, it is volatile within the session that reads it** — three
 successive readings taken while repairing this chapter, minutes apart, gave 1,342, then 1,345,
-then 1,348, then 1,355, because the per-turn pass (§5.6, Path 1) writes marks while this document
+then 1,348, then 1,355 — and 1,405 at the 2026-09-17 re-reading above, fifty rows later — because
+the per-turn pass (§5.6, Path 1) writes marks while this document
 is being edited. **This chapter states the count exactly once, here, and every other section below
 that needs to talk about "how many" uses "§5.3's count" or a magnitude in words, never a repeated
 digit** — restating a specific number in more than one place is exactly how a previous version of
@@ -108,21 +109,25 @@ back* its own anchors when the grammar no longer recognises what is at that byte
 never touches a row whose `origin` is `'owner'`, whatever the grammar says about the turn under it.
 From `anchor-pass.ts`: *"an automatic pass that deleted a hand-made bookmark would be a far worse
 defect than any it could fix."* The web UI's write routes enforce the same asymmetry from the other
-direction: `apiAnchorMark` does not accept a `kind` or `origin` in the request body at all — a
-point marked by hand through the screen is unconditionally `kind: 'note'`, `origin: 'owner'` — so
-no request can forge a row that the automatic pass would later be entitled to erase.
+direction: `apiAnchorMark` does not accept an `origin` in the request body at all — `kind` it does
+accept, and has since 2026-09-15, but only from `OWNER_ANCHOR_KINDS` (`note`, `decision`,
+`question`, `defect`, `evidence`, `todo` — `src/core/anchors.ts:99-101`), validated by `ownerKind`
+(`src/ui/anchor-write.ts:115-128`) and defaulting to `'note'` when the field is absent. The set is
+DISJOINT from `AUTOMATIC_ANCHOR_KINDS`, which is the property that matters: no request can forge a
+row that the automatic pass would later be entitled to erase. §5.4b, forty lines below, states this
+correctly; this paragraph used to contradict it.
 
 `kind` on this same file, this same instant:
 
 ```
 $ grep -o '"kind":"[a-z_]*"' .my_context/.anchors.jsonl | sort | uniq -c
       1 "kind":"note"
-    447 "kind":"report"
+    471 "kind":"report"
      40 "kind":"ruling"
-    867 "kind":"table"
+    893 "kind":"table"
 ```
 
-1 + 447 + 40 + 867 = 1,355, matching the `origin` count and the file's own line count above —
+1 + 471 + 40 + 893 = 1,405, matching the `origin` count and the file's own line count above —
 three readings of one file taken at one instant agreeing, which is the property the version of this
 section before this repair lacked (it paired a 2026-09-16 `kind` reading against a stale 2026-09-12
 `origin` reading and a 2026-09-13 line count from a different section, three different days inside
@@ -186,10 +191,13 @@ these three write to, asserted disjoint from the owner's own vocabulary (§5.4b)
 reconciliation can never confuse a mark the pass made for one a person made.
 
 **Cost containment is two probes, not eight, and neither is `DEC-`/`RULE-` any more** — those went
-with the id grammar above. `ANCHOR_PROBES` (`src/core/anchor-pass.ts`), verified directly against
-source:
+with the id grammar above. `ANCHOR_PROBES` (`src/core/anchor-pass.ts:695-698`), quoted whole,
+with its type annotation, rather than reflowed:
 ```ts
-const ANCHOR_PROBES = [ { probe: '|---' }, { probe: '| ---' } ];
+const ANCHOR_PROBES: { probe: string; kind?: 'prompt' | 'answer' }[] = [
+  { probe: '|---' },
+  { probe: '| ---' },
+];
 ```
 Both probes narrow the search index to *table*-shaped candidates only, each capped at
 `ANCHOR_PROBE_LIMIT = 200` hits. **The `ruling` grammar is no longer probed at all** — it now reads
@@ -265,7 +273,7 @@ So `ruling` and `decision` **share** the first group — an earlier version of t
 `decision` gets its own group, which both undercounts the group (leaving `ruling` unaccounted for)
 and overstates `decision`'s distinctiveness; `defect`/`question`/`todo` share a second; `table`/
 `report`/`evidence` share a third; `note` carries no hue at all. **No sixth meaning-colour was
-minted for this** (`DEC-the-meaning-hue-budget-is-five` is still five) — a hue says *posture*,
+minted for this** (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn` is still five) — a hue says *posture*,
 never *which kind*, and the glyph plus the word say which kind, per the 2026-08-27 amendment quoted
 in chapter 15.
 
@@ -282,10 +290,15 @@ record that *starts* there; a character offset on an archive that is (per the co
 half Hebrew from record 5 onward lands mid-record and reads back as unreadable rather than
 throwing. The CLI actively refuses a non-digit-string offset with an explanation of exactly this.
 
-## 5.6 The three creation paths
+## 5.6 The four creation paths
 
-`REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`'s summary names them: *"as the
-conversation grows, by one catch-up run, and by hand while reading."*
+`REQ-every-anchor-capability-is-reachable-from-the-screen-and-a`'s summary names **three** — *"as
+the conversation grows, by one catch-up run, and by hand while reading"* — and the summary has not
+been re-stamped since the UI sweep shipped. The fourth is
+`POST /api/conversations/anchors/sweep`, one of the four routes `registerAnchorWriteRoutes`
+registers (`src/ui/anchor-write.ts:511-522`); it runs the same pass Path 2 runs, on demand from the
+screen. The heading of this section said "three" for as long as the diagram below drew four, which
+is the defect a heading is least often checked for.
 
 **Path 1 — per-turn, as the conversation grows.** `markAnchorsOnTurn` (`core/anchor-pass.ts`) is
 wired into `stopConversationRefresh` in `src/hooks/stop.ts`, after `rebuildConversations`, inside
@@ -343,7 +356,7 @@ the consent gate is deliberately a first-run-only cost, not a permanent tax on t
   `anchored: boolean` via `anchorIdFor`, so the screen knows before the click whether that exact
   point already has a bookmark).
 
-All three paths converge on the same two doors — `markAnchor` / `unmarkAnchor` in
+All four paths converge on the same two doors — `markAnchor` / `unmarkAnchor` in
 `core/anchors.ts` — which are the *only* legal way to reach `index.putAnchor`/`dropAnchor`: those
 lower-level index methods refuse to run outside a transaction they recognise
 (`IN_ANCHOR_TRANSACTION`, a `WeakSet` keyed by index handle), specifically so that a mutation which
@@ -356,12 +369,25 @@ that **every byte of the corpus except the anchors document and the index** is u
 flowchart TD
   P1["Path 1 — per-turn<br/>Stop hook: markAnchorsOnTurn"] --> AUTO
   P2["Path 2 — catch-up run<br/>conversation rebuild: markAutomaticAnchors"] --> AUTO
-  P4["Path 4 — UI sweep<br/>POST /api/conversations/anchors/sweep<br/>— the same pass, on demand"] --> AUTO["origin: automatic<br/>written directly on a match —<br/>table (structural) · ruling (word list) ·<br/>report (structural, not text-matched) —<br/>and revised or taken back on a later sweep"]
+  P4["Path 4 — UI sweep<br/>POST /api/conversations/anchors/sweep<br/>— the same pass, on demand"] --> AUTO["origin: automatic<br/>written directly on a match —<br/>table (a shape in the turn's OWN text) ·<br/>ruling (owner-typed record FIRST, then a word list) ·<br/>report (the archive's own columns, not the text) —<br/>and revised or taken back on a later sweep"]
   P3["Path 3 — by hand<br/>CLI conversation anchor ·<br/>web UI POST /api/conversations/anchors/mark"] --> OWNER["origin: owner<br/>written directly by a person —<br/>never touched by the automatic<br/>pass again, whatever the grammar says"]
   AUTO --> MARK["markAnchor / unmarkAnchor<br/>(core/anchors.ts) — the only legal route"]
   OWNER --> MARK
   MARK --> TXN["one transaction:<br/>.anchors.jsonl rewritten whole (truth)<br/>+ .index.db anchor row (derived) —<br/>both, or neither"]
 ```
+
+**Two words in the `automatic` node were backwards until 2026-09-17, and both were read out of
+`anchor-pass.ts` to fix.** `table` was labelled "structural" beside `report`'s "not text-matched",
+which tells a reader they work the same way; they do not. `table` is the one grammar that reads the
+turn's own characters — `anchorsInTurn` calls `tableIn(text)` (`:567`), and `firstTableSite`
+(`:121-129`) wants a delimiter row whose cell count matches the header row above it. `report` reads
+no text content at all: `laneReportAt` (`:650-661`) asks whether the record belongs to a lane,
+whether its byte offset is that lane's last answer, and whether the text clears a length floor —
+three questions about the archive's columns. And `ruling` was labelled "word list", which names the
+weaker half: `ownerTyped(facts.record)` gates it FIRST (`:570`; `ownerTyped` at `:512-519`, true
+only when `origin.kind === 'human'` and the record is neither a sidechain nor meta), and
+`RULING_WORDS` (`:391-392`) only runs inside that gate. §5.4 of this chapter argues the human-origin
+gate is the load-bearing half, so the label contradicted the section four pages above it.
 
 **This is not a propose/approve queue** — worth stating plainly, because "the grammar proposes, a
 person disposes" reads that way and the mechanism is narrower than that. There is no staged,

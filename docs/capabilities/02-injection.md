@@ -7,8 +7,9 @@ cannot. Injection is the answer to "given a corpus too large to paste in whole, 
 budget that is a small fraction of it, what gets shown, and how does a reader know what
 was left out?"
 
-The engine lives in `src/core/inject.ts` (`buildInjectionResult`, 1,231 lines) and
-`src/core/select.ts` (`select`, `fitToBudget`, `buildGoverningSpill`, 1,833 lines).
+The engine lives in `src/core/inject.ts` (`buildInjectionResult`, 1,243 lines) and
+`src/core/select.ts` (`select`, `fitToBudget`, `buildGoverningSpill`, 1,851 lines) — both `wc -l`,
+2026-09-17, and both move on any edit to either file.
 `inject.ts` is the orchestration layer: it resolves config, calls `select` once per
 event, and renders the result into text. `select.ts` is the pure selection algorithm —
 literally pure: `INV-select-is-pure` forbids it any I/O at all, so every fact it acts on
@@ -38,14 +39,14 @@ them is how the previous draft of this table went wrong. A **door** is a place w
 
 | Hook | File | Event passed to `select` | What it delivers |
 |---|---|---|---|
-| Session start (new/resumed/cleared) | `src/hooks/session-start.ts` | `'session-start'` | Full injection: pinned tier, continuity tier, index — via `buildInjectionResult` (shared verbatim with the MCP `load_context` tool, per that file's own header) |
+| Session start (`startup` · `clear` · `resume` · `fork`; `compact` has its own row below) | `src/hooks/session-start.ts` | `'session-start'` | Full injection: pinned tier, continuity tier, index — via `buildInjectionResult` (shared verbatim with the MCP `load_context` tool, per that file's own header) |
 | Session start after compaction | same file, `source: 'compact'` | **`'compact'`** | The real re-injection point after a compaction — `post-compact.ts` itself does *not* inject; it is bookkeeping (audit records, `restoredFor` accounting) around the boundary that `SessionStart(source: 'compact')` re-opens |
-| Subagent start | `src/hooks/subagent-start.ts` | **`'session-start'`** | Selecting as a session start means `tiersRun` pushes the same set a plain one does: **pinned, continuity and index** (`select.ts:1486-1494`), into a subagent's empty window — a subagent inherits none of the parent's context and no `SessionStart` fires for it, so this hook is, in the file's own words, the only thing standing between a dispatched subagent and "no knowledge of the project's own constraints" |
-| A tool call, mid-session | `src/hooks/pre-tool-use.ts` (`select(...)` at line 308) | `'tool'` | The **JIT tier** — items scoped to the path the tool is about to touch, offered in two bands (`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`). This row is an injection site and **not a door**: the rule store's pass here is an *assertion* (`assertDoor`, `pre-tool-use.ts:703`), not a delivery. |
+| Subagent start | `src/hooks/subagent-start.ts` | **`'session-start'`** | Selecting as a session start means `tiersRun` pushes the same set a plain one does: **pinned, continuity and index** (`select.ts:1486-1503`), into a subagent's empty window — a subagent inherits none of the parent's context and no `SessionStart` fires for it, so this hook is, in the file's own words, the only thing standing between a dispatched subagent and "no knowledge of the project's own constraints" |
+| A tool call, mid-session | `src/hooks/pre-tool-use.ts` (`select(...)` at line 313) | `'tool'` | The **JIT tier** — items scoped to the path the tool is about to touch, offered in two bands (`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`). This row is an injection site and **not a door**: the rule store's pass here is an *assertion* (`assertDoor`, `pre-tool-use.ts:708`), not a delivery. |
 
 **`SelectEvent` has exactly four members** —
 `'session-start' | 'compact' | 'tool' | 'manual'` (`src/core/select.ts:18`) — and the
-mapping is the one ternary at `src/core/inject.ts:699–700`:
+mapping is the one ternary at `src/core/inject.ts:709–710`:
 
 ```ts
 event: manual ? 'manual' : subagent ? 'session-start'
@@ -67,14 +68,16 @@ site — not a menu, a branch:
 
 ```mermaid
 flowchart LR
-  S(["A session starts"]) --> Q{"always: true?"}
+  S(["A session starts"]) --> Q{"always: true?<br/>(asked of normative items only)"}
   Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
   Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
-  S --> CONT["<b>continuity</b><br/>every continuity: true item, in full"]
+  S --> RAT["<b>rationale-tier items</b><br/>no full text, and no line —<br/>a bare count per category"]
+  S --> CONT["<b>continuity</b><br/>each continuity: true item not already<br/>delivered to this window or pinned,<br/>while budgets.continuity lasts"]
   F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
-  G -->|"yes, and it matches —<br/>offered first"| JIT["<b>just in time</b><br/>injected in full, once per session"]
-  G -->|"no — unrestricted,<br/>offered only after every<br/>scoped item already fit"| JIT
-  G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
+  G -->|"yes, and it matches —<br/>band 1, offered first"| JIT["<b>just in time</b><br/>injected in full; offered again only<br/>if the item itself changed"]
+  G -->|"no, and the category's scopePolicy<br/>is not inert — band 2, offered<br/>whatever band 1 left, first-fit"| JIT
+  G -->|"no, and scopePolicy: inert —<br/>it matches no path at all"| NO["nothing — the item stays<br/>out of the way"]
+  G -->|"yes, no match"| NO
   C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
   C --> PIN
   C --> IDX
@@ -83,14 +86,34 @@ flowchart LR
 
 (This is the same tier-firing diagram as
 [the README's §4](../../README.md#4-when-it-comes-back-and-what) — reused rather than redrawn, and
-corrected here and there together on 2026-09-17 against three drifted claims: the JIT tier offers a
+corrected here and there together. The 2026-09-17 corrections that hold: the JIT tier offers a
 *scoped, matching* item before an *unscoped* one, not the same outcome
-(`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`, `select.ts:1749-1752`); the
+(`DEC-the-jit-tier-offers-path-scoped-items-first-in-two-bands`, `select.ts:1750-1756`); the
 **continuity** tier fires at both a plain session start and after a compaction, and is drawn here
 rather than omitted, since leaving it out reads as "it does not fire then" rather than "this
 diagram is about a different axis"; and the JIT dedupe is **per session**, not per context
-window — the per-session seen file survives a compaction (`core/seen-file.ts:11`), and `restored`
-is what puts an item back, not a reset of what was already seen.)
+window — the per-session seen file survives a compaction, and `restored`
+is what puts an item back, not a reset of what was already seen. The two acts that DO remove it are
+`/clear` and `SessionEnd`, and they are the only two: `clearWindowState`
+(`src/core/window-state.ts:44`) is the sole caller of `clearSeen`, and its own header names those
+two callers at `:16-17`.)
+
+**Four labels in it were wrong on the same day they were corrected, and each is now read off the
+selector.** They are listed here rather than quietly replaced, because each was a *quantifier* — the
+part of a diagram that reads as certain and is checked least.
+
+| the label said | what `select.ts` does |
+|---|---|
+| an unscoped item is "offered only after every scoped item already fit" | The JIT call is `fitToBudget([scoped, unscoped], config.budgets.jit, 'jit')` (`:1750-1756`) with **no** `spareFrom` argument, so band 2 is an ordinary band. `fitToBudget` `continue`s past an over-budget item rather than breaking (`:924-937`), so a scoped item can spill and a smaller unscoped one still be admitted after it. "Everything already fit" is the **pinned** tier's gate (`:1638`), transplanted onto a tier that has none. |
+| an unscoped item is "unrestricted" | Only where the category's `scopePolicy` is not `inert`. `matchesScope` returns `scopePolicyFor(config, item.type) !== 'inert'` for an empty scope (`:601-603`), and the JIT candidate set is `fresh.filter((i) => matchesScope(i, target, config))` (`:1749`) — so under `inert` the item never reaches **either** band. It is not offered late; it is not offered. |
+| "every `continuity: true` item, in full" | `eligible.filter((i) => i.continuity && !delivered.has(i.id) && !alreadyChosen.has(i.id))` (`:1685-1687`), then `fitToBudget([candidates], config.budgets.continuity, 'continuity')` (`:1692`). Three exclusions the word "every" denies: already delivered into this window, already admitted by the pinned tier, and anything past `budgets.continuity` — whose overflow is `continuitySpill`. |
+| JIT is "injected in full, once per session" | The seen gate does not promise once. `fresh` keeps an item whose seen entry is not **both** whole and current: `return !(entry.whole && entry.checksum === i.checksum)` (`:1543`). An item edited mid-session has a new checksum and is offered again — see "The `seen` gate" below. |
+
+A fifth is an omission rather than an error, and the redraw adds it: the `index` tier enumerates
+**normative** items only. `buildIndex` builds its lines from
+`eligible.filter((i) => isNormative(i, config) && !chosenIds.has(i.id))` (`:1142-1144`) and reduces
+everything else to `counts[item.type]` (`:1248-1252`). A rationale item gets no line at all — chapter
+1 states this correctly, and this diagram used to route every non-`always` item to `index`.
 
 ### `PreCompact`, and a disagreement this chapter does not resolve
 
@@ -108,7 +131,7 @@ this chapter reports the disagreement rather than picking a side:
 - `def-a-door`'s `means` lists it: *"session start — new, resumed and compact-restore —
   `PreCompact`, and subagent start."*
 - The code does the opposite. `deliverAtDoor` has exactly two call sites —
-  `session-start.ts:131` and `subagent-start.ts:318` — and `pre-compact.ts:219` calls
+  `session-start.ts:134` and `subagent-start.ts:319` — and `pre-compact.ts:225` calls
   **`assertDoor`**, the same thing `pre-tool-use.ts` does. So `PreCompact` asserts that
   some door fired; it does not deliver.
 
@@ -161,7 +184,7 @@ flowchart LR
   OPEN -->|"the window fills"| PC(["PreCompact"])
   PC -->|"ASSERTS rule store<br/>snapshots corpus item ids for restore<br/>(NOT a corpus injection site —<br/>and disputed as a door, see below)"| POC(["PostCompact<br/>bookkeeping only,<br/>injects nothing"])
   POC --> SSC(["SessionStart<br/>source: compact"])
-  SSC -->|"DELIVERS rule store<br/>injects: pinned · restored · continuity · index"| OPEN
+  SSC -->|"DELIVERS rule store<br/>injects: pinned · continuity · restored · index<br/>— tiersRun's own order, select.ts:1486-1503"| OPEN
 ```
 
 **The matcher on `PreToolUse` matters and is easy to miss**: it fires on six tool names,
@@ -210,7 +233,7 @@ was never in force and items were silently missing from sessions."*
 
 Note the asymmetry with the rest of the config: an unknown key **inside `budgets`** is
 fatal, while some unknown keys elsewhere are recorded and skipped. The field that records
-those is `Config.skippedKeys` (`config.ts:805`), and `doctor` reports them under the
+those is `Config.skippedKeys` (`config.ts:840`), and `doctor` reports them under the
 `config_key_skipped` finding code.
 
 Each tier's admissions are computed by `fitToBudget(bands, budget, tier, spareFrom)`,
@@ -229,7 +252,7 @@ Pinning guarantees an item is offered at the `pinned` tier at **every** session 
 in `src/cli/commands/` — both are aliases dispatched onto `edit`. Only a `normative`-tier
 category may carry `always: true`, and the refusal is worth stating exactly, because the
 mechanism is not absence. `TIER_UPDATES.rationale` **does** carry an `always` entry
-(`src/core/categories.ts:125`) — with `values: ['false']` and the note *"Only false.
+(`src/core/categories.ts:124`) — with `values: ['false']` and the note *"Only false.
 `--always true` is REFUSED here — pinning governs on the normative tier only."* So
 `--always true` on a `decision` or `lesson` is refused by a **closed value set** plus
 `inertFieldError` in `cli/commands/edit.ts`, not by the field being unknown on that tier.
@@ -359,14 +382,20 @@ Put together, the pinned tier's admission pass is a packing problem in two bands
 `fitToBudget` call, and the fall-through from a missed pack is where a governing item can end up:
 full text, a title, or nothing at all. `governs(item)` — the predicate `byPriority` ranks
 **above** severity, not below it — is `GOVERNING_TYPES.has(item.type)` (`rule`, `constraint`,
-`invariant`, `instruction`, `requirement`, `standard`) **or** `isOpenWork(item)` (`select.ts:807-809`);
-this diagram is specifically the pinned tier's own mechanics, where the spare band lives — every
-other full-text tier (`jit`, `restored`, `continuity`) runs `fitToBudget` over one band, plain.
+`invariant`, `instruction`, `requirement`, `standard` — `select.ts:742-744`) **or** `isOpenWork(item)`
+(`governs` itself at `select.ts:807-809`);
+this diagram is specifically the pinned tier's own mechanics, where the spare band lives.
+**Two callers pass more than one band, not one** — `fitToBudget`'s own doc comment names them at
+`select.ts:853-855`: the pinned tier's spare band and the JIT tier. The four call sites are `:1641`
+(pinned, two bands, `spareFrom: 1`), `:1692` (continuity, one band), `:1701` (restored, one band)
+and `:1750` (jit, **two** bands, no `spareFrom`). An earlier revision of this sentence put `jit`
+among the single-band tiers, which this chapter contradicts twice over — at the tiers table above
+and in the JIT caption.
 
 ```mermaid
 flowchart TB
-  ALWAYS["band 0: every always: true item,<br/>priced in full"] --> WHOLE{"does the WHOLE set<br/>fit budget.pinned?"}
-  WHOLE -->|"no"| NOBAND["band 1 is not built at all —<br/>nothing else is offered<br/>the pinned tier this call"]
+  ALWAYS["band 0: every always: true item,<br/>priced in full"] --> WHOLE{"is the set NON-EMPTY, and<br/>does the WHOLE of it fit budget.pinned?<br/>— both conjuncts, select.ts:1638"}
+  WHOLE -->|"no to either — including<br/>a workspace that pins nothing"| NOBAND["band 1 is not built at all —<br/>nothing else is offered<br/>the pinned tier this call"]
   WHOLE -->|"yes"| BAND1["band 1, the spare band:<br/>non-pinned governing items<br/>(governs(item) true, always: false —<br/>never a pinned candidate)"]
   ALWAYS --> FTB{"fitToBudget([band 0, band 1], budget.pinned):<br/>band 0 admitted first, in full;<br/>each band sorted by byPriority —<br/>governs() first, THEN severity"}
   NOBAND --> FTB
@@ -375,7 +404,7 @@ flowchart TB
   FTB -->|"a band-1 item doesn't fit"| NOSPILL["no spill recorded —<br/>it was offered leftover room,<br/>never promised a place"]
   FTB -->|"admitted, either band"| FULL["Selection.full — tier: pinned"]
   PINSPILL --> GATHER
-  NOSPILL --> GATHER{"any governing item, from any tier,<br/>not admitted in full anywhere?"}
+  NOSPILL --> GATHER{"over the whole eligible corpus:<br/>isNormative AND governs AND<br/>not already chosen — and not on a<br/>tool event, which skips this"}
   GATHER -->|"fits budget.index"| TITLED["GoverningSpill.titled —<br/>id · type · title, no body"]
   GATHER -->|"does not fit budget.index"| UNTITLED["GoverningSpill.untitled —<br/>reaches this session in no form at all"]
 ```
@@ -455,10 +484,10 @@ would mean a document you asked to be watched was not."*
 
 Two things read the list:
 
-- **`src/hooks/post-tool-use.ts:89`** — the capture nudge. Edit a file matching
+- **`src/hooks/post-tool-use.ts:101`** — the capture nudge, inside `nudgeFor` (`:69`). Edit a file matching
   a watched glob and the hook says so, "because `watchedDocs` is a PROMISE the
   user configured in the very file" it names back to them.
-- **`doctor`'s `checkWatchedDocsServable`** (`src/doctor/checks.ts:1002`) —
+- **`doctor`'s `checkWatchedDocsServable`** (`src/doctor/checks.ts:613`) —
   which raises **`watched_doc_unserved`** (`warn`) for a watched file the UI's
   document route cannot serve. That route reaches `README.md` and every `.md`
   under `docs/` or `reports/`; a watched file outside all three "is claimed as
@@ -503,13 +532,13 @@ concluding from this chapter's silence that they do not exist.
   interaction with chapter 1's read boundary: `severity: hard` **exempts** an item from
   focus narrowing, which is one of the reasons a laundered severity must never read as
   `hard`.
-- **The one-shot carry** (`mycontext carry`, `IndexSummary.carried`, `select.ts:1147–1160`).
+- **The one-shot carry** (`mycontext carry`, `IndexSummary.carried`, `select.ts:1146` and `:1165–1168`).
   A carried id is ordered ahead of every other index candidate for one delivery, which
   changes *which* lines fit under the same budget — and the code makes the point that this
   second half is the one a plan usually loses. It has its own disclosure.
 - **What injection does when config is unreadable.** `injectionFailureNote`
   (`inject.ts:188`, returned at `:1228` with `pinnedSpill: null` and `deliveredIds: []`)
-  and `configUnreadableLine` (`src/hooks/io.ts:426`) are how a session is told it got
+  and `configUnreadableLine` (`src/hooks/io.ts:681`) are how a session is told it got
   nothing, rather than being handed a silently empty block.
 
 The **continuity tier** — one of the five budgets listed above, and the only full-text

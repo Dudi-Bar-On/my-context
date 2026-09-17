@@ -7,7 +7,7 @@ Every other undocumented subject in this project has a tutorial, a report, or at
 section naming it. This one — how work is chosen, what a task waits on, and how a person tracks a
 whole subject to completion — had none of the right shape: two corpus reference items, a pointer in
 `CLAUDE.md`, a narrative in `reports/V2-HANDOVER.md`, and a 48-line header comment at the top of
-`src/core/needs.ts` (the file itself runs to 866 lines, heavily commented throughout — an earlier
+`src/core/needs.ts` (the file itself runs to 866 lines as of 2026-09-17, heavily commented throughout — an earlier
 version of this sentence said 200, over-counting the file's *total* commentary as if it were the
 top-of-file header specifically). It is also, by the project's own account, the subject a newcomer must
 understand *before doing any work here at all* — which is exactly why it sits this late in the
@@ -62,7 +62,7 @@ falls out once every reference on a task has answered all three:
 
 ```mermaid
 flowchart TD
-  START(["a task — before `needs` is<br/>read at all"]) --> DONE{"state: done?"}
+  START(["an item that already passed workItems:<br/>a work category, and NOT superseded<br/>(needs.ts:291-297, called at :489)"]) --> DONE{"state: done?"}
   DONE -->|"yes"| SKIP["excluded entirely —<br/>not work, not held"]
   DONE -->|"no"| DEP{"status: deprecated?<br/>(cancelled before it was built)"}
   DEP -->|"yes"| SKIP
@@ -90,9 +90,12 @@ first one found, not all of them. **`held` is one array with four reasons, and t
 `blocked_without_needs` names a block that is not about `needs` at all — a `state: blocked` task
 with no satisfied reference to point at, rendered as "says blocked and names nothing" rather than
 one of the three `needs`-reference reasons. All four held rows in the live example below actually
-carry `pending`'s own text, "a blocker has not landed" — the `--limit 3` note beside that example
-already says the table is not what a fresh run would show, and this diagram draws all four reasons
-regardless of which one the current corpus happens to exercise.
+carry `pending`'s own text, "a blocker has not landed" — the **dated-reading note** beside that
+example says the counts move, and this diagram draws all four reasons regardless of which one the
+current corpus happens to exercise. (An earlier revision of this sentence credited that to the
+`--limit 3` on the command line instead. It cannot be: §16.3 states twice below that `--limit`
+bounds the ready list and never the held table, which is why the pasted example carries all four
+held rows under a `--limit 3`.)
 
 ## 16.3 `mycontext ready` — what is dispatchable, computed fresh on every run
 
@@ -108,16 +111,28 @@ successive earlier versions of this section each dropped something: one pasted o
 table (the held list) under a sentence promising the first (the ready list) too; the repair for
 that then pasted a held list with three of its four real rows, silently matching a `--limit 3` that
 does not actually apply to the held table at all** (`--limit` bounds only the *ready* list; the
-held list, the question list and the trailing counts are never truncated by it). Re-run and
-re-pasted 2026-09-17, complete, all four held rows included:
+held list, the question list and the trailing counts are never truncated by it).
+
+**And the repair after that one was not a capture either.** Every wrapped title cell in both tables
+had been folded onto one line with a … typed on the end — *"take the lane report and the owner's own
+words as automatic marks…"* — which is not what `mycontext ready` prints. The table wraps a long
+title across as many rows as it needs, inside the same cell borders, and the width it wraps to is a
+constant (`OUTPUT_WIDTH = 100`, `src/cli/commands/format.ts:83`). The hand-folded version also
+straightened the curly apostrophe in *owner's* and left the borders a character out of line, and the
+tail of the run was cut mid-sentence with `...` typed inside the fence. **Re-captured 2026-09-17 by
+redirecting the command to a file.** The two tables and every count are whole and unedited; the one
+cut is the closing prose, and it is marked where it happens:
 
 ```
-$ mycontext ready --held --limit 3     # 2026-09-17 — a dated reading; every count below moves
+$ mycontext ready --held --limit 3     # 2026-09-17, captured by redirecting to a file
 ┌────────────┬─────┬───────┬───────────────────────────────────────────────────────────────────────┐
 │ task       │ pri │ state │ title                                                                 │
 ├────────────┼─────┼───────┼───────────────────────────────────────────────────────────────────────┤
-│ anchors/12 │ 1   │ todo  │ take the lane report and the owner's own words as automatic marks…    │
-│ anchors/13 │ 1   │ todo  │ a user who installs mycontext mid-project has conversations nobody…   │
+│ anchors/12 │ 1   │ todo  │ take the lane report and the owner’s own words as automatic marks,    │
+│            │     │       │ and replace the ruling detector that only ever marked our own         │
+│            │     │       │ injection block                                                       │
+│ anchors/13 │ 1   │ todo  │ a user who installs mycontext mid-project has conversations nobody    │
+│            │     │       │ can mark, because the pass has no corpus to recognise                 │
 │ budget/6   │ 1   │ todo  │ an edited budget shows what it was, and one control puts it back      │
 └────────────┴─────┴───────┴───────────────────────────────────────────────────────────────────────┘
 
@@ -126,16 +141,29 @@ $ mycontext ready --held --limit 3     # 2026-09-17 — a dated reading; every c
 ┌───────────────────────────────────────────────────────────────────┬─────────┬────────────────────┐
 │ question                                                          │ blocks  │ title              │
 ├───────────────────────────────────────────────────────────────────┼─────────┼────────────────────┤
-│ OPENQ-does-export-import-ever-import-or-is-a-third-of-that-screen │ walk/89 │ does Export / import ever…│
+│ OPENQ-does-export-import-ever-import-or-is-a-third-of-that-screen │ walk/89 │ does Export /      │
+│                                                                   │         │ import ever        │
+│                                                                   │         │ import, or is a    │
+│                                                                   │         │ third of that      │
+│                                                                   │         │ screen permanently │
+│                                                                   │         │ a description of   │
+│                                                                   │         │ an act this        │
+│                                                                   │         │ product cannot     │
+│                                                                   │         │ perform?           │
 └───────────────────────────────────────────────────────────────────┴─────────┴────────────────────┘
 
 ┌───────────┬─────┬───────┬──────────────────────────┬─────────────────────────────────────────────┐
 │ task      │ pri │ state │ held by                  │ title                                       │
 ├───────────┼─────┼───────┼──────────────────────────┼─────────────────────────────────────────────┤
 │ walk/18   │ 1   │ todo  │ a blocker has not landed │ build init --rewrite-watched, and offer it  │
-│ docsys/11 │ 3   │ todo  │ a blocker has not landed │ both READMEs learn the composer and the help│
+│           │     │       │                          │ from the doctor screen                      │
+│ docsys/11 │ 3   │ todo  │ a blocker has not landed │ both READMEs learn the composer and the     │
+│           │     │       │                          │ help, in the repository and in the corpus   │
+│           │     │       │                          │ at once                                     │
 │ port/99   │     │ todo  │ a blocker has not landed │ LAST UI TASK: return the UI to the real     │
+│           │     │       │                          │ corpus                                      │
 │ port/98   │     │ todo  │ a blocker has not landed │ SCREEN-BY-SCREEN REVIEW: walk the rail item │
+│           │     │       │                          │ by item against the mockup and fix          │
 └───────────┴─────┴───────┴──────────────────────────┴─────────────────────────────────────────────┘
 
 153 ready; 3 shown. Raise the cap with --limit 153, or narrow it with --plan.
@@ -144,7 +172,13 @@ $ mycontext ready --held --limit 3     # 2026-09-17 — a dated reading; every c
 them.
 
 1 open question(s) stand between this list and open work. A question is finished by an ANSWER, not
-by work...
+by work: it carries no `seq`, nothing waits on its completion, and it leaves this report when
+somebody answers it or when the work it names lands.
+
+[… the last 9 non-blank lines of this run are not shown: the paragraph counting the 8 open
+questions that block nothing, and the paragraph on how readiness is derived. Both are discussed —
+and the first is quoted — in the prose below. Nothing above this marker is cut, reflowed or
+retyped. …]
 ```
 
 The **first** table is the ready list itself (columns `task │ pri │ state │ title`, no `held by`),
@@ -225,17 +259,34 @@ field: a subject whose row reads `held-by-owner`, or an open question naming tha
 enters this column is to file the question; the way it leaves is for the owner to answer it, with
 nobody editing a status by hand.
 
+The block below was **silently abridged** in four places until 2026-09-17, and none of the cuts was
+marked: the opening line naming the map's own totals was dropped entirely, two sentences were cut
+mid-clause with a typed `...`, the list of 21 closed subjects was truncated after three names, and
+the item id under D46 was removed. It is re-captured here by redirecting the command to a file, and
+it is short enough to print whole. Every count in it moves — 18 orphaned work items at the previous
+capture, 20 at this one.
+
 ```
-$ mycontext path --summary
-WAITING ON YOU — 2 subject(s), and no other command can say so...
+$ mycontext path --summary     # 2026-09-17, captured by redirecting to a file — whole, nothing cut
+78 subject(s) in the map, 40 shown, 137 open work item(s) under them. Every count here is derived on
+this run from REF-the-d-numbers-what-each-one-means-and-which-are-only's [D-MAP] block and the state
+of the items it names; nothing is stored and there is no progress file to go stale.
+
+WAITING ON YOU — 2 subject(s), and no other command can say so. This is the difference between a
+list and a path: a report that draws these as ordinary open work keeps offering you work you have
+already decided to defer.
   D46 · walk/89 — does Export / import ever import, or is a third of that screen permanently a
      description of an act this product cannot perform?
+     (OPENQ-does-export-import-ever-import-or-is-a-third-of-that-screen)
   D67 — the whole subject is held by your own ruling.
 
-21 subject(s) read "open" with every item done: D8, D13a/b, D14, ... A subject closes on a
-JUDGEMENT and never on a count — nothing here will close one for you.
+21 subject(s) read "open" with every item done: D8, D13a/b, D14, D16, D17, D20, D21, D22, D29, D31,
+D34, D35, D36, D38, D40, D42, D59, D65, D71, D73, D74. A subject closes on a JUDGEMENT and never on
+a count — nothing here will close one for you.
 
-18 open work item(s) belong to no subject at all... `npm run check:board --orphans` names them.
+20 open work item(s) belong to no subject at all, so they are in none of the rows above. `npm run
+check:board --orphans` names them. Filing an item before its number is minted is ordinary; nobody
+being told is how a subject disappears from the board.
 
 100% here means every remaining step is either DISPATCHABLE or NAMED AS YOURS. It is not a promise
 that every subject closes: one is held by your own ruling and others end in decisions only you can

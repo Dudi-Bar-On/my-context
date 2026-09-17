@@ -29,40 +29,61 @@ is read directly from both, since no chapter's prose already covers it.
 
 ```mermaid
 flowchart TB
-  DISK["transcript on disk —<br/>can run to hundreds of MB,<br/>tens of thousands of records"] -->|"fetched once, at mount"| OUT["the outline: one lightweight entry<br/>per node — kind, byte offset, char count,<br/>and a 140-char PEEK_CHARS peek of the text"]
+  DISK["transcript on disk —<br/>can run to hundreds of MB,<br/>tens of thousands of records"] -->|"fetched once, at mount"| OUT["the outline: one lightweight entry<br/>per node — kind, byte offset, char count,<br/>and, on a said or deed node, a 140-char<br/>PEEK_CHARS peek. A folded work run carries<br/>no peek — it carries its tool names"]
   DISK -.->|"the file grew"| REFILL["the tail is fetched again<br/>and spliced onto the same outline —<br/>extended, never rebuilt whole"]
   REFILL --> OUT
-  OUT -.->|"every node's POSITION (and its peek)<br/>is known from here, drawn or not"| REST(["the rest of a node's body:<br/>not fetched until<br/>a row actually needs it"])
+  OUT -.->|"every node's POSITION is known from here,<br/>drawn or not — and its peek too,<br/>where the node has one"| REST(["the rest of a node's body:<br/>not fetched until<br/>a row actually needs it"])
   OUT --> SCR["a prefix-sum of estimated pixel<br/>heights — a scroll position maps to<br/>a row index by binary search,<br/>not a walk of every row"]
   SCR --> WIN["the visible window:<br/>viewport rows, plus a few rows<br/>of buffer on each side"]
   WIN --> ROWS{"for each node<br/>in the window"}
   ROWS -->|"already drawn, still wanted,<br/>body already arrived"| KEEP["left alone, never rebuilt —<br/>an open detail or a selection survives"]
   ROWS -->|"a placeholder whose<br/>body has since arrived"| SWAP["rebuilt — the placeholder<br/>text is replaced"]
   ROWS -->|"left the window,<br/>and not held"| DROP["removed from the DOM"]
-  ROWS -->|"left the window,<br/>but the reader marked it (held)"| KEEP
+  ROWS -->|"left the window, but a text selection<br/>begins or ends in it (held) —<br/>the two ends only, never the middle"| KEEP
   ROWS -->|"newly entered<br/>the window"| FETCH["one page of body text<br/>fetched around this node,<br/>then built and drawn"]
 ```
 
 Four things worth stating precisely, because each is easy to get wrong from the shape alone — and
 three of them corrected a first draft of this section, 2026-09-17:
 
-- **The outline carries a peek of the text, not none.** Every node ships a `p` field — the first
-  `PEEK_CHARS = 140` characters of what was said, or of what a tool call asked
-  (`read-model-conversation-document.ts:185`, `:1797`, `:1820`) — and it is load-bearing, not
-  incidental: the find bar searches exactly that field, which is what lets it match *the whole
-  session* without a body having ever been drawn.
+- **The outline carries a peek of the text on most nodes, and on one kind it carries none.** `p` is
+  optional — `p?: string` (`read-model-conversation-document.ts:421`) — and it is set in exactly two
+  places: on a `said` node, and only when the peek is non-empty (`:1797-1798`), and on a `deed` node,
+  likewise (`:1820`). A folded `work` run is built without it (`:1830-1837`) and carries `x`, its
+  tool names, instead — and on a long transcript those runs are the bulk of the node count. The
+  peek itself is `PEEK_CHARS = 140` characters (`:185`). **An earlier revision of this bullet said
+  "every node ships a `p` field", which is untrue of a whole node kind.**
+- **What the find bar searches is four fields, and the peek is one of them.** The outline predicate
+  is `matchesNode` (`src/ui/public/lib/transcript-scroll.js:75-77`), and its haystack is:
+
+  ```js
+  const hay = `${node.p ?? ''} ${(node.x ?? []).join(' ')} ${node.y ?? ''} ${node.w ?? ''}`;
+  ```
+
+  the peek, the tool names, the synthetic label and the "who" column. And whole-session reach is
+  **not** what the peek buys on its own: `reView` ORs the local predicate with the server's
+  full-text answer — `matchesNode(nodes[i], needle, holds) || foundAt.has(i)`
+  (`src/ui/public/screens/conversations.js:7874`), over a source comment saying `foundAt` *"is an OR
+  and never a replacement … each finds rows the other cannot"*. The field's own doc comment calls it
+  *"the reader's filter"* (`read-model-conversation-document.ts:413-415`), which is the narrower and
+  accurate word.
 - **The outline is fetched once at mount, and *extended*, not rebuilt, when the file grows.** A live
   document's follow poll re-fetches only the tail and splices it onto the same array
   (`conversations.js`'s `refill`). It is never re-fetched whole and never rebuilt from scratch — the
   distinction that matters is "whole" versus "tail," not "once" versus "never again."
-- **A node's position (and its peek) and a node's full body are different facts with different
-  lifetimes.** Every node's position and 140-character peek are known from the outline the moment
-  the document opens, whether or not it has ever been drawn. The rest of its text is fetched only
+- **A node's position and a node's full body are different facts with different
+  lifetimes.** Every node's position is known from the outline the moment the document opens,
+  whether or not it has ever been drawn, and so is its 140-character peek where it has one — see the
+  first bullet for the node kind that does not. The rest of its text is fetched only
   once a row for it is actually built, one page at a time, around the node being scrolled to.
 - **"Recycling" here does not mean a fixed pool of DOM rows stamped with new content, and it is not
   an absolute "never rebuilt" either.** A row already drawn, still wanted, and holding real text is
-  left untouched. A row the reader has explicitly marked (`held`) survives leaving the window
-  instead of being removed. But a **placeholder** — a row still reading "Reading…" — *is* torn down
+  left untouched. A row a text SELECTION begins or ends in (`held`) survives leaving the window
+  instead of being removed — and only those two rows: `held` is cleared and refilled from
+  `boundaryRows()` inside the `selectionchange` handler (`screens/conversations.js:9551-9552`), under
+  a declaration that explicitly refuses to pin every marked row because `measure` would then force a
+  layout per pinned row (`:6979-6987`). An **anchor** mark — §15.3's sense of "marked" — holds no row
+  at all. But a **placeholder** — a row still reading "Reading…" — *is* torn down
   and rebuilt the moment its body arrives, held or not: there is no text worth keeping a selection
   in yet, and leaving it would pin the placeholder forever. The reason ordinary rows are left alone
   is stated directly in the source: a `<details>` element a reader opened, or a text selection, must
@@ -174,7 +195,7 @@ every caller written against the panel's first shipped shape keeps working uncha
 |---|---|---|
 | `normal` | the folded literal match §15.1 already describes | — |
 | `wildcard` | `*` matches any run of characters including none, `?` matches exactly one; `\*` escapes a literal star; the pieces between wildcards fold exactly like `normal` does, so `b*t...` still reaches `byte…` | a regular expression — matched by stitching literal pieces together, never compiled as one |
-| `logical` | `AND`, `OR`, `NOT`, `NEAR` in capitals are operators (lower-case `and` is a word); two words side by side mean `AND`; quotes make a phrase; parentheses group; a bare `NEAR` defaults to `NEAR_CHARS = 30` characters (a constant declared independently in `fold.js`, happening to match chapter 14's archive-side `near` tier at the same value); `NEAR/120` spells a custom distance, capped at `NEAR_MAX = 4,000` | a regular expression either — each operand is matched with the same folded matcher as `normal`, memoised per prose span so `a AND (a OR b)` reads the span for `a` once |
+| `logical` | `AND`, `OR`, `NOT`, `NEAR` in capitals are operators (lower-case `and` is a word); two words side by side mean `AND`; quotes make a phrase; parentheses group; a bare `NEAR` defaults to `NEAR_CHARS = 30` characters (`src/ui/public/lib/fold.js:1041`, a constant declared independently of chapter 14's archive-side `NEAR_CHARS` (`src/core/conversation-search.ts:891`), which carries the same **value** and a different **behaviour**: `nearPairs` here walks a true 30-codepoint gap (`fold.js:1160-1171`), while FTS5's `NEAR(…, 30)` there admits 28, its source stating the law as `N-2`; so the two agree on the number and not on the answer); `NEAR/120` spells a custom distance, capped at `NEAR_MAX = 4,000` | a regular expression either — each operand is matched with the same folded matcher as `normal`, memoised per prose span so `a AND (a OR b)` reads the span for `a` once |
 | `regex` | `RegExp` over the text exactly as written | — the one mode with an engine to report a real syntax error from |
 
 Every mode answers one of four shapes, not just hit-or-miss — `{ ok: true, find }`,
@@ -313,7 +334,7 @@ that never lands on the same turn twice, and — since 2026-09-16 — a turn wea
 See [chapter 5, §5.6a](./05-anchors.md#56a-a-turn-can-wear-two-marks--one-turn-two-rows-one-stop)
 for the mechanism; it is not repeated here.
 
-**No sixth hue was minted for any of this** (`DEC-the-meaning-hue-budget-is-five`, five fixed
+**No sixth hue was minted for any of this** (`DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn`, five fixed
 meaning-colours: `--gold`, `--ok`, `--carry`, `--crit`, `--warn`). The current-match highlight is
 drawn as the page's own colours inverted (`--ink` on `--paper`) plus an underline — spending no
 colour budget — per the 2026-08-27 amendment: *"a hue may narrow a group, never name one."* A hue

@@ -462,10 +462,11 @@ approval boundary, and its limits, are described in full in
 flowchart LR
   Y["<b>You</b><br/>mycontext add"] --> MD
   M["<b>Claude</b><br/>create_item"] --> MD["<b>.my_context/items/</b><br/>one Markdown file per item<br/><i>the source of truth</i>"]
-  MD --> SEL["<b>selection</b><br/>pure over the parsed items —<br/>no database on this path"]
+  MD --> SEL["<b>selection</b><br/>pure over the parsed items —<br/>no database when a session or<br/>subagent starts"]
   SEL --> HK["<b>hooks</b><br/>session start, incl. after a<br/>compaction · subagent start<br/>· before a file"]
   HK --> CX["Claude's context"]
-  MD -.->|"refreshed afterward,<br/>best-effort, skipped for a subagent"| DB[("<b>.index.db</b><br/>derived cache — read by<br/>search, list, query; never by injection")]
+  MD -.->|"refreshed afterward,<br/>best-effort, skipped for a subagent"| DB[("<b>.index.db</b><br/>derived cache — read by<br/>search, list, query")]
+  DB -.->|"and read FIRST before a file —<br/>Markdown is the fallback there"| SEL
 ```
 
 ### Step 1 — you capture it
@@ -1550,14 +1551,16 @@ spelled `jit`.
 
 ```mermaid
 flowchart LR
-  S(["A session starts"]) --> Q{"always: true?"}
+  S(["A session starts"]) --> Q{"always: true?<br/>(asked of normative items only)"}
   Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
   Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
-  S --> CONT["<b>continuity</b><br/>every continuity: true item, in full"]
+  S --> RAT["<b>rationale-tier items</b><br/>no full text, and no line —<br/>a bare count per category"]
+  S --> CONT["<b>continuity</b><br/>each continuity: true item not already<br/>delivered to this window or pinned,<br/>while budgets.continuity lasts"]
   F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
-  G -->|"yes, and it matches —<br/>offered first"| JIT["<b>just in time</b><br/>injected in full, once per session"]
-  G -->|"no — unrestricted,<br/>offered only after every<br/>scoped item already fit"| JIT
-  G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
+  G -->|"yes, and it matches —<br/>band 1, offered first"| JIT["<b>just in time</b><br/>injected in full; offered again only<br/>if the item itself changed"]
+  G -->|"no, and the category's scopePolicy<br/>is not inert — band 2, offered<br/>whatever band 1 left, first-fit"| JIT
+  G -->|"no, and scopePolicy: inert —<br/>it matches no path at all"| NO["nothing — the item stays<br/>out of the way"]
+  G -->|"yes, no match"| NO
   C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
   C --> PIN
   C --> IDX
@@ -1998,8 +2001,12 @@ terms, 6,000 of these units is about 24,000 characters — roughly 3,700 English
 a session start runs `pinned`, `continuity` and `index`, up to about 9,200 estimated tokens
 if all three are full, before you
 have typed anything, and each distinct file-triggered injection pays up to `jit` on top —
-once per item per context window (each subagent is its own), since the per-session dedupe
-record never delivers the same item twice to the same window.
+at most once per item per SESSION, not per context window, and each subagent is its own
+session for this purpose. The dedupe record is a per-session file, and it survives a
+compaction: a compaction rebuilds the window, and what puts an item back into the rebuilt
+one is the `restored` tier rather than a second `jit` delivery. The one thing that does
+re-offer an item inside a session is an EDIT to the item itself — the gate excuses a
+re-delivery only while the recorded checksum still matches and the delivery was a whole one.
 Against a 200,000-token context window that opening ceiling is around 4.6%, and a project
 with no item marked `continuity` pays 7,200 of it, around 3.6%.
 
@@ -6055,10 +6062,10 @@ stateDiagram-v2
   [*] --> active: you capture it yourself<br/>(mycontext add, with an explicit yes)
   draft --> active: mycontext review promote<br/>a human decision
   draft --> deprecated: mycontext review discard<br/>(any other draft)
-  draft --> deleted: mycontext review discard<br/>(a review-pass draft — never governed,<br/>so it is deleted, not deprecated)
+  draft --> [*]: mycontext review discard<br/>(a review-pass draft — never governed, so its<br/>FILE is removed and its row dropped.<br/>No status is written: there is no deleted status)
   active --> deprecated: mycontext edit --status deprecated<br/>a human decision
   active --> superseded: mycontext supersede, naming a replacement<br/>a human decision
-  deleted --> [*]
+  active --> validated: mycontext edit --status validated<br/>(also reachable from draft — edit takes every<br/>status but superseded)
   note right of draft
     Not selected for any tier.
     Counted in the index, injected nowhere.

@@ -19,13 +19,13 @@ This is enforced, not just argued: `src/rules/` is permitted to import exactly o
 Run directly against this repository:
 
 ```
-$ wc -c src/rules/entries/*.md | tail -1     # 2026-09-16; it was 32,516 on 2026-09-13 and 23,101 on 2026-09-12
+$ wc -c src/rules/entries/*.md | tail -1     # re-run 2026-09-17, same figures; it was 32,516 on 2026-09-13 and 23,101 on 2026-09-12
 41955 total
 $ ls src/rules/entries/*.md | wc -l
 16
 ```
 
-**Sixteen entries, 41,955 bytes, as of 2026-09-16** — one `product` and fifteen `developer`. Fifteen
+**Sixteen entries, 41,955 bytes, re-measured 2026-09-17** — one `product` and fifteen `developer`. Fifteen
 entries was the 2026-09-13 count (three had landed that day, `72584fd0`, 20:21, "three lessons
 enter the product": `a-fixture-must-not-be-what-makes-a-proof-pass`,
 `a-gate-that-cannot-be-shown-to-fail-is-not-a-gate` and
@@ -99,12 +99,44 @@ The filter itself lives in the loader:
 if (parsed.tier === 'developer' && !workspaceIsMyContext) continue;
 ```
 
-Of the sixteen shipped entries, **exactly one** (`an-unknown-category-means-a-possible-wrong-corpus`, a `fact`) is `product`; the other **fifteen** are `developer`. So in any ordinary consumer project, exactly one entry is ever in force; in this repository, all sixteen are. Confirmed live, 2026-09-16:
+Of the sixteen shipped entries, **exactly one** (`an-unknown-category-means-a-possible-wrong-corpus`, a `fact`) is `product`; the other **fifteen** are `developer`. So in any ordinary consumer project, exactly one entry is ever in force; in this repository, all sixteen are. Confirmed live. **The block below used to show only the two-line count and silently drop everything
+else the command prints** — the store-version header, its changelog note, and the sixteen-row entry
+table — while §"The sixteen entries" further down referred a reader back to *"the `rules list` table
+above"* that was not there. Re-captured whole on **2026-09-17** by redirecting the command to a
+file; the table is wide, and it is printed at its real width rather than retyped narrower:
 
 ```
-$ node src/cli/index.ts rules list
+$ node src/cli/index.ts rules list     # 2026-09-17, whole, nothing cut
+store version 5, published 2026-09-11T09:50:41.624Z
+  the provenance of a migrated entry moves out of its body and into the `movedFrom` / `movedOn`
+  fields, and the renderer discloses it to the DEVELOPER tier only. A product entry ships to every
+  install, where "moved from RULE-x" names a corpus item the reader does not have and cannot fetch —
+  a citation that resolves to nothing, inside the block this product says outranks every other
+  source. Owner's ruling, 2026-09-11: strip it for product entries, keep it for developer ones.
+
 my_context rules — 16 entry(s) in force here. This workspace IS my_context, so developer-tier
 entries apply too.
+
+  ┌────────────────────────────────────────────────────────┬─────────────┬───────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+  │ id                                                     │ kind        │ tier      │ title                                                                                                                       │
+  ├────────────────────────────────────────────────────────┼─────────────┼───────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  │ a-fixture-must-not-be-what-makes-a-proof-pass          │ standard    │ developer │ a proof's power must come from its subject, never from how its fixture happens to be arranged                               │
+  │ a-gate-that-cannot-be-shown-to-fail-is-not-a-gate      │ standard    │ developer │ a gate is not wired until somebody has broken the thing it guards and watched it go red there                               │
+  │ a-scanner-names-what-it-skips-not-what-it-scans        │ standard    │ developer │ a scanner enumerates what it will SKIP, never what it will scan                                                             │
+  │ an-unknown-category-means-a-possible-wrong-corpus      │ fact        │ product   │ an unknown-category error may mean the wrong corpus, not a misspelled flag                                                  │
+  │ commit-with-a-pathspec                                 │ prohibition │ developer │ the dispatching session commits by explicit path, never by the shared index                                                 │
+  │ def-a-door                                             │ definition  │ developer │ a door is a hook where a context window begins, and it carries an obligation to deliver                                     │
+  │ def-a-lane                                             │ definition  │ developer │ a lane is one delegated subagent, with its own context window and its own brief                                             │
+  │ def-known-red                                          │ definition  │ developer │ known-red means already failing at HEAD, counted, and recorded with a reason                                                │
+  │ def-prove-by-removal                                   │ definition  │ developer │ proving by removal breaks the line an assertion rests on and watches that assertion go red                                  │
+  │ def-spill                                              │ definition  │ developer │ a spill is a candidate that did not fit its budget, and is recorded with the reason                                         │
+  │ def-stand-down                                         │ definition  │ developer │ standing an item down clears the fields that make it reach a context window                                                 │
+  │ def-the-corpus                                         │ definition  │ developer │ the corpus is the Markdown under .my_context/items, and it is the source of truth                                           │
+  │ def-the-ration                                         │ definition  │ developer │ the ration bounds how much the self-improvement pass may put in front of a person                                           │
+  │ never-a-git-command-that-writes-the-shared-tree        │ prohibition │ developer │ a lane runs no git command that writes the shared working tree                                                              │
+  │ nothing-to-do-and-could-not-look-are-different-answers │ standard    │ developer │ a step that can decide there is no work must be able to say it could not look, and the two answers must never share a value │
+  │ numbered-options-on-a-question-put-to-the-owner        │ standard    │ developer │ a question put to the owner carries numbered options and one marked recommendation                                          │
+  └────────────────────────────────────────────────────────┴─────────────┴───────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 The one-`product` figure has held through every store version so far; the `developer` count is what moves.
@@ -115,12 +147,20 @@ The seal lives in `src/rules/manifest.ts`, entirely separate from the schema/loa
 
 `verifyManifest` checks three kinds of damage (`Damage = 'missing' | 'altered' | 'unexpected'`) and reports **every** problem found, not just the first — again `INV-nothing-is-dropped-silently`: naming one of three damaged entries would make a repair look complete when two-thirds of the damage remains.
 
-Live, on this repository right now:
+Live, on this repository, **2026-09-17**. The previous paste stopped after the path line and dropped
+the store version and the five-line changelog note that follow it — the same two things this
+chapter's own prose says the command prints. Whole, this time:
 
 ```
-$ node src/cli/index.ts rules verify
+$ node src/cli/index.ts rules verify     # 2026-09-17, whole, nothing cut
 my_context: the rule store is intact — every entry matches the checksum that shipped with it.
   D:\Users\UserC\source\repos\my-context\src\rules\entries
+store version 5, published 2026-09-11T09:50:41.624Z
+  the provenance of a migrated entry moves out of its body and into the `movedFrom` / `movedOn`
+  fields, and the renderer discloses it to the DEVELOPER tier only. A product entry ships to every
+  install, where "moved from RULE-x" names a corpus item the reader does not have and cannot fetch —
+  a citation that resolves to nothing, inside the block this product says outranks every other
+  source. Owner's ruling, 2026-09-11: strip it for product entries, keep it for developer ones.
 ```
 
 **What the seal refuses, and what it explicitly does not.** `assertStoreWritable` throws `StoreDamagedError` on any write attempt while the store disagrees with its manifest — but the error class's own doc comment draws a sharp line: *"it refuses WRITES ONLY. `loadRules` never calls this and must never call it: blocking reads punishes a user for a damaged install they can still recover from, and a tool that has stopped answering is one they cannot recover from at all. This is a safety catch, not a hostage."* A damaged store still delivers whatever it can parse; it just won't accept edits through the maintenance path.

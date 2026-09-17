@@ -21,6 +21,13 @@ flowchart TB
   CL --> CO
 ```
 
+**All three counts in that diagram are dated here rather than inside it**, because the fence is
+byte-identical to `README.md`'s own and a date typed into one copy would break the property that
+keeps them in step. **Re-measured 2026-09-17, and all three were already correct**:
+`ls commands/*.md | wc -l` → 91; the indented command lines of `node src/cli/index.ts --help` → 49;
+`TOOL_NAMES.length` (`src/mcp/tools.ts:2561`) → 28. A count that happens to be right is still a
+count that needs a date — this is the third pass in a row on which these three were flagged as
+undated, and the second on which they were also correct.
 (Reused from the README's own §5 — CLI and MCP are the two surfaces this diagram already
 names, and 49/28 match the counts below. Slash commands are a third, client-side surface
 this chapter does not otherwise cover — see
@@ -163,48 +170,62 @@ decision, lesson, tradeoff, assumption, edge_case, risk, measurement, reference,
 
 ### Corpus inspection — `list`, `show`, `search`, `query`, `status`
 
-**`status`** — counts, review queue size, ingest progress, decay/health summary in one screen. Read-only. Worked example, **real output captured 2026-09-12**. Every figure in it is a reading: the corpus was 1,235 items by 2026-09-13 (`rule` 56, `task` 866), so re-run it rather than quoting these numbers:
+**`status`** — counts, review queue size, ingest progress, decay/health summary in one screen. Read-only. Worked example, **re-captured 2026-09-17 by redirecting the command to a file**, whole and unedited. Every figure in it is a reading and every one of them moved between the 2026-09-12 capture this block used to carry and this one — the corpus went from 1,108 items to 1,320 in five days — so re-run it rather than quoting these numbers.
 
 ```
-$ node src/cli/index.ts status
-my_context 1.0.2: 1108 item(s), profile "standard"
+$ node src/cli/index.ts status     # 2026-09-17, captured by redirecting the command to a file
+my_context 1.0.2: 1320 item(s), profile "standard"
 
 by category
   ┌───────────────┬───────┐
   │ category      │ items │
   ├───────────────┼───────┤
   │ adr           │ 3     │
-  │ constraint    │ 7     │
+  │ constraint    │ 8     │
   │ decision      │ 99    │
   │ instruction   │ 11    │
-  │ invariant     │ 6     │
-  │ known_issue   │ 32    │
+  │ invariant     │ 7     │
+  │ known_issue   │ 35    │
   │ lesson        │ 43    │
-  │ measurement   │ 1     │
+  │ measurement   │ 3     │
   │ non_goal      │ 3     │
   │ note          │ 27    │
-  │ open_question │ 29    │
+  │ open_question │ 31    │
   │ reference     │ 5     │
   │ requirement   │ 32    │
-  │ rule          │ 55    │
+  │ rule          │ 58    │
   │ standard      │ 15    │
-  │ task          │ 740   │
+  │ task          │ 940   │
   └───────────────┴───────┘
 
 by status
-  active 1039 · deprecated 29 · superseded 40
+  ┌────────────┬───────┐
+  │ status     │ items │
+  ├────────────┼───────┤
+  │ active     │ 1246  │
+  │ deprecated │ 29    │
+  │ superseded │ 45    │
+  └────────────┴───────┘
 
 by origin
-  agent 38 · human 1070
+  ┌────────┬───────┐
+  │ origin │ items │
+  ├────────┼───────┤
+  │ agent  │ 38    │
+  │ human  │ 1274  │
+  │ review │ 8     │
+  └────────┴───────┘
 
 review queue: 0 draft(s) pending review — walk it with `mycontext review`.
 
-usage: 26 session(s) recorded. 1 normative item(s) not injected in the last 20 session(s) — not
+usage: 40 session(s) recorded. 0 normative item(s) not injected in the last 20 session(s) — not
 evidence they are unused, only that they were not selected. See `mycontext decay`.
   124 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
 
-health: 1 error(s), 56 warning(s), 48 note(s) — details from `mycontext doctor`.
+health: 2 error(s), 152 warning(s), 75 note(s) — details from `mycontext doctor`.
+  note: status's own exit code does not reflect the 2 error(s) above — only an unrelated corpus load
+  error fails this command. Run `mycontext doctor` if you need a command that fails on them.
 ```
 
 Use case: the first command to run at the start of a session to get a one-screen read on corpus size, health, and what's waiting for review.
@@ -214,7 +235,7 @@ Use case: the first command to run at the start of a session to get a one-screen
 **`search "<words>"`** — full-text-ish item search (distinct subsystem from the conversation-archive trigram search in Chapter 4/14 — this one searches item title/body/tags, not transcript prose) with `--type`, `--tag`, `--path`, `--status`, `--relation`, `--linked-to`, `--direction` filters. Real output, 2026-09-16:
 
 ```
-$ node src/cli/index.ts search "budget" --limit 3       # ran 2026-09-16; corpus size only
+$ node src/cli/index.ts search "budget" --limit 3     # 2026-09-17, captured by redirecting the command to a file
 ┌─────────────────────────────────────────────────────────────────┬─────────────┬────────┐
 │ id                                                              │ type        │ status │
 ├─────────────────────────────────────────────────────────────────┼─────────────┼────────┤
@@ -223,17 +244,17 @@ $ node src/cli/index.ts search "budget" --limit 3       # ran 2026-09-16; corpus
 │ TASK-an-edited-budget-shows-what-it-was-and-one-control-puts-it │ task        │ active │
 └─────────────────────────────────────────────────────────────────┴─────────────┴────────┘
 
-Ordered by relevance, most relevant first. 169 contain(s) that text as one phrase; 3 more share at
-least one of its words. Searched 1306 item(s).
+Ordered by relevance, most relevant first. 174 contain(s) that text as one phrase; 3 more share at
+least one of its words. Searched 1320 item(s).
 
-172 item(s) match; 3 shown. Raise the cap with --limit 172, or narrow the search.
+177 item(s) match; 3 shown. Raise the cap with --limit 177, or narrow the search.
 ```
 
-**The three rows, their order and the two phrase/word counts are stable; "Searched N item(s)" is
-not — it is the corpus's total item count, which grows every time anyone adds an item, including
-during the writing of this chapter** (1306 when this block was captured, 1309 minutes later while
-fixing an unrelated citation nearby, both on 2026-09-16). Re-run the command for today's total; the
-ranking and the rows it returns are the part of this example worth trusting.
+**The rows and their order are the stable part of this example; every number under them is not.**
+"Searched N item(s)" is the corpus's total item count, which grows every time anyone adds an item —
+1,306 when this block was first captured, 1,309 minutes later the same day, and different again on
+the 2026-09-17 re-capture above. Re-run the command for today's totals; the ranking and the rows it
+returns are what this example is for.
 
 **This is now a ranked search, and it was not always one.** `src/cli/commands/search.ts` and the
 MCP `list_items` tool both call `searchItems` (`src/core/rank.ts`, shipped 2026-09-16), not the
@@ -252,24 +273,55 @@ answer to a question that has not been put to him.
 
 Use case: "does something already say X" before writing a new item — the search-first half of the contradiction gate described in Chapter 3.
 
-**`query "SELECT ..." [--json] [--limit <n>]`** — raw, capped (1000 rows), read-only SQL over the derived SQLite index. Real schema, discovered read-only:
+**`query "SELECT ..." [--json] [--limit <n>]`** — raw, capped (1000 rows), read-only SQL over the derived SQLite index. Real schema, discovered read-only. **Both blocks below are captures, and neither was before:** the first used to be the boxed table retyped as three lines of comma-separated prose with its `16 row(s)` footer dropped, and the second used to be the `--json` output with each row welded onto one line. Neither shape is anything the command can print.
 
 ```
-$ node src/cli/index.ts query "SELECT name FROM sqlite_master WHERE type='table'"
-schema_version, items, ledger, ledger_source, conversations, subagents, persisted, named,
-conversation_prose, conversation_prose_data, conversation_prose_idx, conversation_prose_content,
-conversation_prose_docsize, conversation_prose_config, prose_sources, anchors
+$ node src/cli/index.ts query "SELECT name FROM sqlite_master WHERE type='table'"     # 2026-09-17, captured by redirecting the command to a file
+┌────────────────────────────┐
+│ name                       │
+├────────────────────────────┤
+│ schema_version             │
+│ items                      │
+│ ledger                     │
+│ ledger_source              │
+│ conversations              │
+│ subagents                  │
+│ persisted                  │
+│ named                      │
+│ conversation_prose         │
+│ conversation_prose_data    │
+│ conversation_prose_idx     │
+│ conversation_prose_content │
+│ conversation_prose_docsize │
+│ conversation_prose_config  │
+│ prose_sources              │
+│ anchors                    │
+└────────────────────────────┘
+
+16 row(s)
 ```
 
 ```
-$ node src/cli/index.ts query "SELECT id, status FROM items LIMIT 3" --json
+$ node src/cli/index.ts query "SELECT id, status FROM items LIMIT 3" --json     # 2026-09-17, captured by redirecting the command to a file
 {
   "rows": [
-    { "id": "ADR-build-rather-than-adopt", "status": "active" },
-    { "id": "ADR-markdown-plus-disposable-index", "status": "active" },
-    { "id": "ADR-normative-vs-rationale-tiers", "status": "active" }
+    {
+      "id": "ADR-build-rather-than-adopt",
+      "status": "active"
+    },
+    {
+      "id": "ADR-markdown-plus-disposable-index",
+      "status": "active"
+    },
+    {
+      "id": "ADR-normative-vs-rationale-tiers",
+      "status": "active"
+    }
   ],
-  "rowCount": 3, "truncated": false, "limit": 1000, "loadErrors": []
+  "rowCount": 3,
+  "truncated": false,
+  "limit": 1000,
+  "loadErrors": []
 }
 ```
 
@@ -277,18 +329,25 @@ Note: the `items` table has no `category` column — `SELECT id, category FROM i
 
 ### Workflow — `ready`, `path`, `focus`, `carry`, `todo`, `inbox-promote`
 
-**`ready`** — computes, on every run (nothing is cached, there is no stale "ready" state to go wrong), which `task` items have every `needs:` dependency satisfied, ranked by priority. Real output:
+**`ready`** — computes, on every run (nothing is cached, there is no stale "ready" state to go wrong), which `task` items have every `needs:` dependency satisfied, ranked by priority. Real output, re-captured 2026-09-17 — the previous paste folded each wrapped title onto one line with a typed `...`, which the table never does:
 
 ```
-$ node src/cli/index.ts ready --limit 3
-┌──────────┬─────┬───────┬──────────────────────────────────────────────────────────┐
-│ task     │ pri │ state │ title                                                    │
-├──────────┼─────┼───────┼──────────────────────────────────────────────────────────┤
-│ budget/6 │ 1   │ todo  │ an edited budget shows what it was, and one control...   │
-│ hooks/22 │ 1   │ todo  │ make mycontext autonomous from the first second: ...     │
-│ recall/2 │ 1   │ todo  │ reconstruct a subject from a passage you copied, ...     │
-└──────────┴─────┴───────┴──────────────────────────────────────────────────────────┘
-59 ready of 63 open task(s)
+$ node src/cli/index.ts ready --limit 3     # 2026-09-17, captured by redirecting the command to a file
+┌────────────┬─────┬───────┬───────────────────────────────────────────────────────────────────────┐
+│ task       │ pri │ state │ title                                                                 │
+├────────────┼─────┼───────┼───────────────────────────────────────────────────────────────────────┤
+│ anchors/12 │ 1   │ todo  │ take the lane report and the owner’s own words as automatic marks,    │
+│            │     │       │ and replace the ruling detector that only ever marked our own         │
+│            │     │       │ injection block                                                       │
+│ anchors/13 │ 1   │ todo  │ a user who installs mycontext mid-project has conversations nobody    │
+│            │     │       │ can mark, because the pass has no corpus to recognise                 │
+│ budget/6   │ 1   │ todo  │ an edited budget shows what it was, and one control puts it back      │
+└────────────┴─────┴───────┴───────────────────────────────────────────────────────────────────────┘
+
+153 ready of 157 open task(s)
+
+[… 33 further line(s) of this run are not shown: the held-task, open-question and readiness-derivation notes, all three of which chapter 16 prints whole.
+    Nothing above this marker is cut, reflowed or retyped. …]
 ```
 It also surfaces open questions that block work, and separately counts (without listing) open questions that block nothing yet — a deliberate anti-noise design choice stated in the command's own output: *"a list that showed every question every time would train a reader to skip it."* This is `mycontext ready`, the CLAUDE.md-referenced mechanism that replaced the hand-maintained `reports/EXECUTION-BOARD.md`. Use case: "what can I pick up right now" at the start of a work session.
 
@@ -302,12 +361,36 @@ the first the moment one of them is updated alone (the same argument `ready` its
 output, one subject:
 
 ```
-$ node src/cli/index.ts path --d 72
+$ node src/cli/index.ts path --d 72     # 2026-09-17, captured by redirecting the command to a file
 ┌─────┬────────┬──────┬───────┬──────┬───────┬───────────┐
 │ D   │ status │ done │ ready │ held │ yours │ work      │
 ├─────┼────────┼──────┼───────┼──────┼───────┼───────────┤
 │ D72 │ open   │ 2/4  │ 2     │ 0    │ 0     │ readmodel │
 └─────┴────────┴──────┴───────┴──────┴───────┴───────────┘
+
+78 subject(s) in the map, 1 shown, 137 open work item(s) under them. Every count here is derived on
+this run from REF-the-d-numbers-what-each-one-means-and-which-are-only's [D-MAP] block and the state
+of the items it names; nothing is stored and there is no progress file to go stale.
+
+WAITING ON YOU — 2 subject(s), and no other command can say so. This is the difference between a
+list and a path: a report that draws these as ordinary open work keeps offering you work you have
+already decided to defer.
+  D46 · walk/89 — does Export / import ever import, or is a third of that screen permanently a
+     description of an act this product cannot perform?
+     (OPENQ-does-export-import-ever-import-or-is-a-third-of-that-screen)
+  D67 — the whole subject is held by your own ruling.
+
+21 subject(s) read "open" with every item done: D8, D13a/b, D14, D16, D17, D20, D21, D22, D29, D31,
+D34, D35, D36, D38, D40, D42, D59, D65, D71, D73, D74. A subject closes on a JUDGEMENT and never on
+a count — nothing here will close one for you.
+
+20 open work item(s) belong to no subject at all, so they are in none of the rows above. `npm run
+check:board --orphans` names them. Filing an item before its number is minted is ordinary; nobody
+being told is how a subject disappears from the board.
+
+100% here means every remaining step is either DISPATCHABLE or NAMED AS YOURS. It is not a promise
+that every subject closes: one is held by your own ruling and others end in decisions only you can
+make.
 ```
 
 The **YOURS** column is computed from two things the corpus already holds — a subject whose row
@@ -326,10 +409,23 @@ including why 100% here means "every remaining step is dispatchable or named as 
 **`todo [--tag <t>] [--all] [--limit <n>]`** — the rationale-tier inbox. A todo is *never* injected in full and is not part of the review queue (`mycontext review` asks what should *govern*; a todo is pre-decision). Real output when empty:
 
 ```
-$ node src/cli/index.ts todo --limit 3
+$ node src/cli/index.ts todo --limit 3     # 2026-09-17, captured by redirecting the command to a file
 my_context: no todo items.
+
 Capture one the moment it occurs to you: `mycontext add todo "<what to do>"`. It takes no category
 decision and no review.
+
+`todo` is on the rationale tier, which is what makes it an inbox: a todo is never injected into a
+session in full, and the session index reduces the whole category to a bare count rather than naming
+any of these items. Nothing forces a capture to `draft` either, so a todo does not enter the review
+queue — `mycontext review` asks what should govern this project, and this list is not part of that
+question.
+
+The way out of the inbox is `mycontext inbox-promote <todo id> --to <category>`: it creates the item
+under the category the capture really is, carries the title, the body and the tags across, links the
+new item back with `derived_from`, and retires the todo as `deprecated`. Nothing here is ever
+deleted — a promoted todo keeps its file, its body and its observations, and `mycontext todo --all`
+still lists it.
 ```
 
 **`inbox-promote <id> --to <cat>`** — the exit from the inbox: creates a real item under the target category, carries title/body/tags across, links back with a `derived_from` relation, and retires the todo as `deprecated` (nothing is deleted). Use case: a todo jotted mid-session turns out to be a real `known_issue` — promote it rather than re-typing it.
@@ -338,38 +434,68 @@ decision and no review.
 
 **`ack <id> <code>`** — records that a person has *ruled on* a `doctor` finding for an item, anchored to the item's content as it stood at ack time (so a later edit invalidates the ack). `ack --all --code <code>` bulk-acknowledges. Not run live here (it mutates the audit/ack state); read from `src/cli/commands/ack.ts`.
 
-**`audit [--since T] [--item ID] [--op O] [--limit N]`** — the append-only run-time log of every mutation and hook action. Real output (`--limit 5`, redacted-length preserved):
+**`audit [--since T] [--item ID] [--op O] [--limit N]`** — the append-only run-time log of every mutation and hook action. Real output, re-captured 2026-09-17. **It is a boxed table**, and the previous paste showed it as free-form indented rows with a typed `...` where the rest went. What the rows say is whatever the last five hook actions in this workspace were, so the content below is expected to differ on every run; the shape is the part to read.
 
 ```
-$ node src/cli/index.ts audit --limit 5
+$ node src/cli/index.ts audit --limit 5     # 2026-09-17, captured by redirecting the command to a file
 my_context: 5 audit record(s), oldest first (most recent 5):
-  09-12 19:29:29  subagent-stop-untyped  595db3b1    delivery=finished agent=a6eaa4e6a6a476775
-                                                       type=<absent> (no agent_type on this firing...)
-  ...
+  ┌────────────────┬───────────────────────┬──────────┬─────────┬──────────────────────────────────┐
+  │ when           │ op                    │ who      │ subject │ detail                           │
+  ├────────────────┼───────────────────────┼──────────┼─────────┼──────────────────────────────────┤
+  │ 09-17 13:52:40 │ agent-step            │ 595db3b1 │         │ Bash: Run the three ch09 blocks  │
+  │                │                       │          │         │ for real agent=acf5d3ccb4e2c5edf │
+  │ 09-17 13:52:48 │ agent-step            │ 595db3b1 │         │ Bash: Read the rest of the ch09  │
+  │                │                       │          │         │ blocks agent=acf5d3ccb4e2c5edf   │
+  │ 09-17 13:53:03 │ agent-step            │ 595db3b1 │         │ Bash: Run audit, todo and path   │
+  │                │                       │          │         │ for real agent=acf5d3ccb4e2c5edf │
+  │ 09-17 13:53:05 │ subagent-stop-untyped │ 595db3b1 │         │ delivery=finished                │
+  │                │                       │          │         │ agent=a915a2fd560ae9bec          │
+  │                │                       │          │         │ type=<absent> (no agent_type on  │
+  │                │                       │          │         │ this firing — not a named lane;  │
+  │                │                       │          │         │ no step backfill will be         │
+  │                │                       │          │         │ attempted); its seen file was    │
+  │                │                       │          │         │ left in place                    │
+  │ 09-17 13:53:15 │ agent-step            │ 595db3b1 │         │ Bash: Wait for the in-scope run  │
+  │                │                       │          │         │ agent=ab3d4e1c3accc5f55          │
+  └────────────────┴───────────────────────┴──────────┴─────────┴──────────────────────────────────┘
 ```
 This is the same log Chapter 2's `governingSpill` and Chapter 11's contribution/decay figures are read back out of. Use case: "what actually happened in this session's hooks", forensic debugging of injection or a hook misfire.
 
-**`contribution [--full|--short|--summary]`** — per-item delivery counts, read backwards out of the audit log, explicitly framed as a *baseline for change-over-time comparison* rather than a usage ranking. Real output, **2026-09-12**; every count in it rises with every hook fire:
+**`contribution [--full|--short|--summary]`** — per-item delivery counts, read backwards out of the audit log, explicitly framed as a *baseline for change-over-time comparison* rather than a usage ranking. Real output, **2026-09-17**; every count in it rises with every hook fire, and all of them did — the 2026-09-12 capture this block used to carry read 2,840 injection records of 44,844. The cut below is marked; the previous paste stopped at the same place without saying so, which also dropped the closing sentence about subagent dispatches that chapter 11 quotes.
 
 ```
-$ node src/cli/index.ts contribution --short
+$ node src/cli/index.ts contribution --short     # 2026-09-17, captured by redirecting the command to a file
 my_context contribution — how often each item was actually delivered into a session, read backwards
-out of the audit log. The log holds 2840 injection record(s) of 44844 total, naming 183 distinct
-id(s); the corpus holds 1108 item(s), of which 158 could be chosen by `select` today.
+out of the audit log. The log holds 3726 injection record(s) of 63579 total, naming 193 distinct
+id(s); the corpus holds 1320 item(s), of which 165 could be chosen by `select` today.
 
-A record is one DELIVERY, not one session: 1383 jit, 1376 subagent-start, 54 session-start, 25
-compact-restore, 2 manual.
+A record is one DELIVERY, not one session: 1910 subagent-start, 1717 jit, 69 session-start, 28
+compact-restore, 2 manual. So a high count is mostly a count of subagent dispatches and hook fires,
+and reading any figure below as a number of sessions would overstate it by more than an order of
+magnitude.
+[… 65 further line(s) of this run are not shown: the BASELINE note and the per-item delivery table it introduces.
+    Nothing above this marker is cut, reflowed or retyped. …]
 ```
 The command's own text is explicit that reading via `show` or MCP `get_item` leaves no trace here — contribution measures *injection*, not *use*. Use case: deciding whether an item earns its `always: true` pin, backed by a real delivery count rather than a hunch.
 
-**`decay [--sessions N] [--all]`** — items not auto-injected in the last N sessions ("cold"), plus a separate "unrestricted" bucket (active + normative + no `scope`, so it competes for jit budget everywhere). Real output (this repo, today):
+**`decay [--sessions N] [--all]`** — items not auto-injected in the last N sessions ("cold"), plus a separate "unrestricted" bucket (active + normative + no `scope`, so it competes for jit budget everywhere). Real output, **2026-09-17** — the previous paste was labelled *"this repo, today"*, which names no date at all, and its `cold (1)` row had since become `cold: none`.
 
 ```
-$ node src/cli/index.ts decay
-cold (1) — not auto-injected in the window; check before acting:
-  RULE-never-weaken-byte-identity  rule  never injected
+$ node src/cli/index.ts decay     # 2026-09-17, captured by redirecting the command to a file
+my_context decay — items not injected in the last 20 session(s). The ledger holds 40 session(s).
+  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the
+  ledger records injection, not reading or reliance, so a new item, and any item consulted via
+  `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
+  Do not supersede or deprecate anything on this report alone — verify real usage first.
 
-unrestricted (124) — active and normative with no scope...
+cold: none — every active normative item was injected inside the window.
+
+unrestricted (124) — active and normative with no scope, so they apply to every file and compete for
+the jit budget on every file operation. Each is also counted as cold or warm — this is a view over
+those rows, not a fourth bucket. Not a defect: add a scope glob only if you meant to narrow where
+the item applies.
+[… 128 further line(s) of this run are not shown: the 124-row unrestricted table.
+    Nothing above this marker is cut, reflowed or retyped. …]
 ```
 The command is explicit that "cold" is not evidence of being unused — only that `select` never picked it in the sampled window; reading via `show`/MCP looks identical to abandonment. Use case: candidate list for pruning or scoping, always paired with a manual check per the command's own warning — never acted on from this report alone. This is also the trigger-side instrumentation for the self-improvement loop (Chapter 11).
 

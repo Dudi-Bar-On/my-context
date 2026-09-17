@@ -294,13 +294,25 @@ sequenceDiagram
   participant SS as SessionStart<br/>(the next window)
   participant Doc as reports/V2-HANDOVER.md
   Work->>PC: the window is about to compact
-  PC->>Doc: resolves freshness, records staleness —<br/>cannot deliver text to the model at all<br/>(no hookSpecificOutput for this event)
+  PC->>Doc: one latch read and one stat — was the ask<br/>acted on? NO file contents are read<br/>(checkHandoverAsk, pre-compact.ts:116)
   PC->>PoC: compaction happens
-  PoC->>Doc: records freshness bookkeeping only —<br/>anything it prints is a banner, never context
+  PoC->>Doc: READS it — resolveHandover then readHandover<br/>(post-compact.ts:144, :153, called at :354) —<br/>and records its state on the audit row. It still<br/>cannot deliver text to the model at all<br/>(no hookSpecificOutput for this event)
   PoC->>SS: the next window begins
   SS->>Doc: reads the marked section (or the head),<br/>capped to budgetTokens
   Doc-->>SS: delivered verbatim — and what was<br/>left behind is declared, never silent
 ```
+
+**Two edges in that diagram were reversed until 2026-09-17, and it is the diagram a previous
+verification scored 6 of 6 clean.** It had `PreCompact` resolving the document's freshness and
+`PostCompact` doing bookkeeping only; the two are the other way round. `PreCompact` never opens
+the handover file — `checkHandoverAsk` (`src/core/handover-ask.ts:986-1090`, called at
+`src/hooks/pre-compact.ts:116`) reads the per-session ask latch and then `statSync`s the configured
+path for its **mtime**, comparing it against the recorded ask time; the source states the cost in
+those terms at `pre-compact.ts:113-114` — *"one latch read and one `stat` — no file contents"*.
+`PostCompact` is the hook that reads the document: `resolveHandover` (`post-compact.ts:144`) calls
+`readHandover` (`:153`) and the result becomes `handoverFields(handover.read)` on the audit record
+(`:354`, `:366`). The prose above this diagram had it right; only the arrows were wrong, which is
+why a clean node-by-node score missed it.
 
 ### The on-demand side: `mycontext handover ask`
 

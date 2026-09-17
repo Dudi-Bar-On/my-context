@@ -49,8 +49,10 @@ prose index held exactly two span kinds, `prompt` and `answer` — "what was sai
 `classifyTurn` calls `machinery` (tool calls, their results, and the model's own `thinking`) was
 outside every index, at any scope. A third kind, `'ran'`, now indexes `tool_use` blocks — a tool's
 name and its arguments, rendered as `key: value` lines and capped at 2,000 characters per argument
-— beside the two that were always there. Re-measured on this workspace's real archive the same day
-(474 transcripts, 1,269,256,560 bytes): **13.58 M searchable characters widened to 43.87 M, 3.2x**,
+— beside the two that were always there. Re-measured on this workspace's real archive on
+**2026-09-16**, over the 474 transcripts and 1,269,256,560 bytes it held that day — a one-off
+measurement of the WIDENING, not a running count, and the archive has grown since:
+**13.58 M searchable characters widened to 43.87 M, 3.2x**,
 and the reader now chooses `said` (the default — `prompt` + `answer`, unchanged from before this
 date), `ran` (the new kind), or `both`. `tool_result` and `thinking` (16.4% of the archive's
 characters on its own) remain entirely unindexed, at any scope, and every search answer says so.
@@ -109,11 +111,14 @@ flowchart LR
   T["transcript .jsonl<br/>on disk"] --> W["iterateTranscript<br/>1 MiB Buffer chunks,<br/>byte offsets, never decoded<br/>as one string first"]
   W --> REC{"one record"}
   REC --> CL{"classifyTurn"}
-  CL -->|"prompt · answer"| SAID["'said' span"]
-  CL -->|"machinery —<br/>tool_result · thinking"| UN["not indexed,<br/>at any scope"]
+  CL -->|"prompt · answer"| SAID["'prompt' / 'answer' span<br/>— the said half"]
+  CL -->|"machinery"| NOSAID(["no said span —<br/>on its own, NOT a drop"])
   REC --> TP{"toolProseOf:<br/>a tool_use block<br/>in this record?"}
-  TP -->|"yes"| RAN["'ran' span<br/>(since 2026-09-16)"]
-  TP -->|"no — most records<br/>carry none"| UN
+  TP -->|"yes — INCLUDING a machinery<br/>record, which is precisely<br/>what 'ran' rescued"| RAN["'ran' span<br/>(since 2026-09-16)"]
+  TP -->|"no"| NORAN(["no ran span"])
+  NOSAID --> UN{"was neither span written?"}
+  NORAN --> UN
+  UN -->|"yes — a tool_result or thinking<br/>record and nothing else"| DROP["not indexed,<br/>at any scope"]
   SAID --> FTS[("conversation_prose<br/>FTS5 virtual table<br/>tokenize = trigram")]
   RAN --> FTS
   T -.->|"a separate, parallel,<br/>read-only pass"| SEC["conversation secrets<br/>proposes only,<br/>never writes to the index"]
@@ -127,6 +132,17 @@ that reason. The two branches are not mutually exclusive: an assistant record th
 something and calls a tool produces **two spans at the same `byte_offset`** — one `'answer'`, one
 `'ran'` — "two readings of one record," in the source's own words, which is why a hit lookup keyed
 on position alone would silently collapse the pair.
+
+**Neither branch reaches "not indexed" on its own, and an earlier revision of this diagram drew
+both of them doing so.** `proseFrom` calls `put` twice per record (`conversation-search.ts:605` and
+`:613`) and `put` writes a span whenever its text is non-empty (`:587-588`). So a `machinery`
+record that carries a `tool_use` block **is** indexed, at `'ran'` — the source says it in those
+words at `:606-612`, *"the record `classifyTurn` calls `machinery` is precisely the one this index
+used to drop on the floor"* — and a `prompt` or `answer` record with no `tool_use` block **is**
+indexed, at its own kind. A record reaches "not indexed, at any scope" only when **both** puts find
+nothing, which is what `UNINDEXED_BLOCKS` (`:88`, `['tool_result', 'thinking']`) names: a record
+whose content is only those blocks has no `text` block for `proseOf` (`:281-295`) and no
+`tool_use` block for `toolProseOf` (`:362-385`).
 
 `conversation_prose` is what chapter 14's three-tiered query reads; it is also one of the tables
 `conversation forget` does **not** drop (`conversations`, `subagents`, `persisted` and `named` are

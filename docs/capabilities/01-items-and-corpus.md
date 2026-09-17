@@ -44,27 +44,27 @@ touched (`./02-injection.md`) — without anyone re-typing it.
 ## Categories: 29 shipped, 16 in use here
 
 The task brief that requested this document names 14 categories as if that were the whole set. It is not.
-`src/core/categories.ts` (554 lines) is the single source of truth, and it currently defines **29** shipped
+`src/core/categories.ts` (556 lines, `wc -l`, 2026-09-17) is the single source of truth, and it currently defines **29** shipped
 categories, each with a name, an id prefix, a **tier** (`normative` or `rationale`), a `defaultEnabled`
 flag, a one-line description, and its own extra fields. This repository's own corpus currently holds items
 in 16 of the 29 (the rest are defined and available but this project hasn't populated them):
 
 | Category | Prefix | Tier | Items on disk here |
 |---|---|---|---|
-| constraint | CONST | normative | 7 |
-| invariant | INV | normative | 6 |
-| rule | RULE | normative | 56 |
+| constraint | CONST | normative | 8 |
+| invariant | INV | normative | 7 |
+| rule | RULE | normative | 58 |
 | requirement | REQ | normative | 32 |
 | standard | STD | normative | 15 |
 | pattern | PAT | normative | 0 |
 | glossary | GLOSS | normative | 0 |
 | instruction | INSTR | normative | 11 |
 | non_goal | NOGOAL | normative | 3 |
-| open_question | OPENQ | normative | 29 |
+| open_question | OPENQ | normative | 31 |
 | runbook | RUN | normative | 0 |
 | procedure | PROC | normative | 0 |
 | environment | ENV | normative | 0 |
-| known_issue | KNOWN | normative | 32 |
+| known_issue | KNOWN | normative | 35 |
 | exception | EXC | normative | 0 |
 | contract | CONTRACT | normative | 0 |
 | adr | ADR | rationale | 3 |
@@ -74,17 +74,27 @@ in 16 of the 29 (the rest are defined and available but this project hasn't popu
 | assumption | ASSUME | rationale | 0 |
 | edge_case | EDGE | rationale | 0 |
 | risk | RISK | rationale | 0 |
-| measurement | MEAS | rationale | 1 |
+| measurement | MEAS | rationale | 3 |
 | reference | REF | rationale | 5 |
 | plan | PLAN | rationale | 0 |
-| task | TASK | rationale | 866 |
+| task | TASK | rationale | 940 |
 | todo | TODO | rationale | 0 |
 | note | NOTE | rationale | 27 |
 
-(Counts are `ls .my_context/items/<category> | wc -l`, re-taken **2026-09-13**; the corpus totals 1,235
-item files. They move daily — `ee4a3a4a` alone turned 113 findings into task items — so read any count
-here as a dated reading. `task` dwarfs everything else at 866 items because it is the corpus's own project-management ledger — every unit of work this project has
-ever tracked, per `RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number` and its neighbours in
+(Counts are `ls .my_context/items/<category>/*.md | wc -l`, **re-taken 2026-09-17**; the corpus totals
+1320 item files across these 29 directories. They move daily — `ee4a3a4a` alone turned 113 findings
+into task items — so read every count here as a dated reading and re-run the command rather than
+trusting it. **This table is the only place in this chapter that carries a NON-ZERO count**: the
+bullet list in "Categories by group" below used to restate a handful of them bare and undated, and by
+2026-09-17 seven of the twenty-nine had drifted while the dated table beside them had not — so the
+bare restatements were removed rather than re-synchronised, because a second copy of a count is a
+second thing to keep true. What the bullets still say is *"0 items here"*, for the thirteen
+categories this project has never populated; those are measured zeroes re-taken on **2026-09-17**
+with the same command, and they are drawn rather than dropped for
+`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`'s reason. `task`
+dwarfs everything else because it is the corpus's own project-management ledger — every unit of work
+this project has ever tracked, per
+`RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number` and its neighbours in
 `src/rules/`.)
 
 Two profiles select a starting subset for `mycontext init`: `standard` is every `defaultEnabled: true`
@@ -116,7 +126,7 @@ buys:
   item exists.
   **One exception, and it is deliberate rather than a leak: the `continuity` tier.** That tier draws its
   candidates from `eligible`, not from `injectable`, and never consults `isNormative`
-  (`src/core/select.ts:1663–1669`), so **a rationale-tier item carrying `continuity: true` is delivered in
+  (`src/core/select.ts:1685–1687`), so **a rationale-tier item carrying `continuity: true` is delivered in
   full.** The source states this as the point of the tier, not a side effect: *"The item this tier exists
   for is a `reference`, which is rationale-tier by catalogue; gating here would have shipped a tier that
   could never deliver the one item it was built to deliver, and would have done it silently."*
@@ -165,7 +175,7 @@ what keeps `status` as the one field every category shares and `state` as one `t
 |---|---|---|
 | `id` | string | The filename stem; generated from the title, never hand-chosen. |
 | `type` | string | The category name (`rule`, `decision`, …). |
-| `title` | string | One line. Median 70 chars in this corpus; 202 of 730 titles have grown past 80, one reached 566 — the pressure that motivated `summary` below. |
+| `title` | string | One line. Measured over all 1,320 item files on **2026-09-17**: median 78 characters, 586 past 80, the longest 566 — the pressure that motivated `summary` below. Every one of those four numbers moves with the corpus. |
 | `status` | `active \| draft \| superseded \| deprecated \| validated` | Whether the item governs at all. |
 | `severity` | `hard \| soft` | Binding vs advisory, on normative items only. |
 | `always` | boolean | Pinned — injected at every session start regardless of scope/index budget. See [Injection](./02-injection.md). |
@@ -182,7 +192,7 @@ what keeps `status` as the one field every category shares and `state` as one `t
 | `checksum` | string | Stamped over the item's content; `mycontext doctor`/`repair` use it to find drift (see [Creation and the gates](./03-creation-and-gates.md)). |
 | `extra` | map | Category-specific fields — `directive` on `rule`, `waives`/`until`/`granted_by`/`reason` on `exception`, `state`/`plan`/`seq`/`priority`/`needs`/`verified_on` on `task`, etc. |
 | `request` (body section, not frontmatter) | free text | The person's own words when they asked for this item, verbatim, captured **before** any body/summary is derived — "documentation only… should not be injected." Structurally excluded from rendering, from the summary basis, and from the checksum. |
-| body | prose | What the item actually says; median 1,693 characters in this corpus. |
+| body | prose | What the item actually says; median **1,985 bytes** of post-frontmatter text over all 1,320 item files, **2026-09-17**. |
 
 `status` is the field that decides whether any of the rest of this table matters — a `draft`
 carries a full frontmatter and body like any other item, and none of it governs until a human
@@ -195,10 +205,10 @@ stateDiagram-v2
   [*] --> active: you capture it yourself<br/>(mycontext add, with an explicit yes)
   draft --> active: mycontext review promote<br/>a human decision
   draft --> deprecated: mycontext review discard<br/>(any other draft)
-  draft --> deleted: mycontext review discard<br/>(a review-pass draft — never governed,<br/>so it is deleted, not deprecated)
+  draft --> [*]: mycontext review discard<br/>(a review-pass draft — never governed, so its<br/>FILE is removed and its row dropped.<br/>No status is written: there is no deleted status)
   active --> deprecated: mycontext edit --status deprecated<br/>a human decision
   active --> superseded: mycontext supersede, naming a replacement<br/>a human decision
-  deleted --> [*]
+  active --> validated: mycontext edit --status validated<br/>(also reachable from draft — edit takes every<br/>status but superseded)
   note right of draft
     Not selected for any tier.
     Counted in the index, injected nowhere.
@@ -216,20 +226,38 @@ and has never governed anything, so it is DELETED rather than deprecated"; any o
 stood down to `deprecated` through the ordinary retirement path. `active → deprecated` is a third,
 previously undrawn edge — `mycontext edit <id> --status deprecated` reaches retirement through
 `updateItem` exactly as `supersede` does, per `mutate.ts`'s own comment on the four commands that
-converge there. `validated` is a fifth legal value of `status` this diagram still omits: nothing in
-this chapter or [chapter 3](./03-creation-and-gates.md) traces a command that produces it, so
-drawing a transition into it here would still be inventing one.) The gate this diagram draws — why
+converge there.
+
+**Two things in this drawing were corrected again on 2026-09-17, and both were read out of the
+source rather than out of the paragraph beside them.**
+
+`deleted` was drawn as a sixth box in a row of statuses. It is not a status:
+`Status` is exactly five values — `active | draft | superseded | deprecated | validated`
+(`src/core/types.ts:92`, and the same five in `STATUSES`, `src/core/vocabulary.ts:375`). What
+`review discard` does to a review-pass draft is remove the FILE and drop the row —
+`rmSync(...)` then `ctx.store.deleteById(item.id)` (`src/review/decline.ts:163-164`), after the
+decline ledger entry has been written and only if it was (`:149-161`). No `status` is ever
+assigned. The transition is real and belongs in the drawing; it is a terminal edge, not a state, and
+this revision draws it as one.
+
+And `validated` was described here as a value **"nothing in this chapter or chapter 3 traces a
+command that produces it"**. That is false, and it was false when it was written: `mycontext edit
+<id> --status validated` produces it. `edit` validates `--status` against `STATUSES`
+(`src/cli/commands/edit.ts:753`) and refuses exactly one member — `superseded`, at `:764-767`, which
+the usage line at `:96` also states by listing `active|draft|deprecated|validated` and nothing else.
+So the fifth status is reachable by the ordinary edit path from `draft` and from `active` alike, and
+the diagram now draws the edge instead of apologising for its absence.) The gate this diagram draws — why
 a machine-authored normative item lands unable to govern anything until a person looks at it — is
 [chapter 3](./03-creation-and-gates.md)'s subject in full; `origin` above is what the gate reads
 to decide `draft` versus `active` at capture time.
 
 Two fields the table above does not carry, and both are load-bearing:
 
-- **`layer`** (`project | global`, `src/core/types.ts:343`) — which root the file was loaded from.
-  `mergeLayers` (`src/core/select.ts:1309–1318`) makes **a project item shadow a global item with the
+- **`layer`** (`project | global`, `src/core/types.ts:511`) — which root the file was loaded from.
+  `mergeLayers` (`src/core/select.ts:1328–1337`) makes **a project item shadow a global item with the
   same id**, so a global corpus can ship a default that a repository quietly overrides. The field is
   derived from where the file sits, never written in frontmatter.
-- **`WRITABLE_SECTIONS`** (`src/core/item.ts:194`) is `{steps, observations, relations, request}` — the
+- **`WRITABLE_SECTIONS`** (`src/core/item.ts:243`) is `{steps, observations, relations, request}` — the
   four *body* sections a command may rewrite. Only `request` is described above; the other three are how
   `procedure step`, the observation ledger and the relation graph get onto disk.
 
@@ -269,8 +297,9 @@ Three surfaces agree about this by construction, which is why the table lives in
 
 - **`parseItem` performs the fallback** and says nothing — it is called during a parse that has nowhere to
   report.
-- **`doctor` reports it.** `launderedEnums` (`src/core/item.ts:527`) feeds the `laundered_enum` finding
-  (`src/doctor/checks.ts:4289`), at **`error`** level, with a copy-ready
+- **`doctor` reports it.** `launderedEnums` (`src/core/item.ts:576`) feeds the `laundered_enum` finding
+  (`src/doctor/body-integrity.ts:565–569` — not `doctor/checks.ts`, which is 2,596 lines long and
+  never emits this code), at **`error`** level, with a copy-ready
   `mycontext edit <id> --status|--severity <read value> --yes` remedy for the two fixable fields and an
   `ack` route for `origin`.
 - **`pack import` refuses rather than laundering.** `src/pack/reader.ts:310–337` rejects the **whole**
@@ -292,9 +321,14 @@ in sync by construction.
 
 `categories.ts` documents an owner ruling (2026-09-03) retiring `task.progress` and `task.last_change` —
 removed from the writable surface (`unknownExtraFieldError` now refuses a *new* write to either) but **not
-erased**: 518 items already carrying them keep them unchanged on disk. `last_change` was "hand-typed and
-unreliable, all 133 disagree with the audit log"; `progress` was "never more than state's shadow (only 0
-and 100 are used today)." This is the project's own model of what "retired" means for a field, distinct
+erased**: the items already carrying them keep them unchanged on disk. **The two figures in that ruling
+are the ruling's own, not a reading of today's corpus** — `categories.ts:453` records *"the 518 items
+already carrying these two keys"* and `:458` quotes the note, *"hand-typed and unreliable, all 133
+disagree with the audit log"*, both as measured on 2026-09-03. Counted again on **2026-09-17**
+(`grep -rlE '^(progress|last_change):' .my_context/items`), 161 item files carry either key and 143
+carry `last_change`. The two numbers are not reconcilable by any read-only count of the item files
+and are quoted here as the ruling's record rather than restated as current. `progress` was "never
+more than state's shadow (only 0 and 100 are used today)." This is the project's own model of what "retired" means for a field, distinct
 from a corpus item's `status: superseded` — a correction stops new instances, it does not rewrite history.
 
 ## A worked example: `mycontext show`
@@ -345,8 +379,8 @@ instance of "name the item, don't restate it," the same discipline this document
 
 ### Normative (injected in full when `always`, else indexed)
 
-- **`constraint`** — a non-negotiable limit (budget, stack, regulation, SLA). 7 items here.
-- **`invariant`** — a condition that must always hold during execution. 6 items here.
+- **`constraint`** — a non-negotiable limit (budget, stack, regulation, SLA). Count: see the dated table above.
+- **`invariant`** — a condition that must always hold during execution. Count: see the dated table above.
 - **`rule`** — a do/don't directive; its one extra field is `directive: do | dont` — "what the rule
   MEANS, which is why `directive` can never be removed from the category." Shipped example:
   ```
@@ -357,23 +391,23 @@ instance of "name the item, don't restate it," the same discipline this document
   Bodies carry passwords and reset tokens; logs are retained for 90 days.
   ```
   *Use case*: encode a security or process do/don't so it's re-asserted at every session start rather than
-  living only in a teammate's memory. 56 items here (2026-09-13) — the largest normative category by volume.
+  living only in a teammate's memory. The largest normative category by volume; count in the dated table above.
 - **`requirement`** — what must be built; extra field `kind` (only `functional` attested so far —
   deliberately no closed vocabulary was declared from one observed value: "four statements in the design
-  of record were measured false in one week" by exactly that kind of inference). 32 items here.
-- **`standard`** — formatting, coding convention, architectural guideline. 15 items here.
+  of record were measured false in one week" by exactly that kind of inference).
+- **`standard`** — formatting, coding convention, architectural guideline.
 - **`pattern`** — a reusable solution, or an anti-pattern to avoid. 0 items here; shipped example:
   `PAT-repository-objects-wrap-every-query-handlers-never-open-a` ("Keeps pool accounting in one place and
   makes the pool cap enforceable.")
 - **`glossary`** — ubiquitous language: the agreed term, and terms not to use. 0 items here; shipped
   example: `GLOSS-tenant-means-a-paying-organisation-not-a-user` ("Say 'tenant' for the billing entity and
   'member' for a person inside it. Never 'account'.")
-- **`instruction`** — governs the agent's *process*, not the artifact. 11 items here (e.g.
+- **`instruction`** — governs the agent's *process*, not the artifact (e.g.
   `INSTR-a-ruling-taken-in-the-screen-walkthrough-is-captured-before`). This is the category the task
   brief's 14-item list omits entirely, alongside 14 others.
-- **`non_goal`** — an explicit prohibition on building something. 3 items here.
+- **`non_goal`** — an explicit prohibition on building something.
 - **`open_question`** — deliberately undecided; extra field `blocks` names what cannot proceed until it's
-  answered. 29 items here — the agent must not decide these alone.
+  answered — the agent must not decide these alone.
 - **`runbook`** — the steps for a *repeatable* named operation. 0 items here; shipped example is a
   Stripe-webhook-secret rotation, 3 numbered steps. Contrast with `procedure` below — the test an author
   applies: "will you do this again next time the situation arises? Then it is a runbook."
@@ -382,7 +416,7 @@ instance of "name the item, don't restate it," the same discipline this document
   list|show|activate|done|step`) that `runbook` does not — see [Restore and handover](./07-restore-and-handover.md)
   and [Packs, procedures, and runbooks](./12-packs-export-import-procedures.md) for the mechanics.
 - **`environment`** — how the environments differ: what production does that local does not. 0 items here.
-- **`known_issue`** — broken, flaky, or a dead end right now; do not spend effort on it. 32 items here —
+- **`known_issue`** — broken, flaky, or a dead end right now; do not spend effort on it —
   the second-largest normative category, which tracks with a project that dogfoods itself hard.
 - **`exception`** — a scoped, dated carve-out from one named normative item (`waives`, `until`,
   `granted_by`, `reason`). 0 items here; shipped example waives a standard until `2026-12-31`. An exception
@@ -392,11 +426,11 @@ instance of "name the item, don't restate it," the same discipline this document
 
 ### Rationale (never injected in full; reduced to a count in the session index)
 
-- **`adr`** — a formal decision record, MADR-shaped. 3 items here.
-- **`decision`** — a lightweight decision not warranting a full ADR. 99 items here — by far the largest
+- **`adr`** — a formal decision record, MADR-shaped.
+- **`decision`** — a lightweight decision not warranting a full ADR — by far the largest
   rationale category besides `task`, reflecting how much of this project's history is owner rulings amending
   prior rules (as seen twice in the `RULE-1-1-…` example above).
-- **`lesson`** — what was learned; source material for generated rules. 43 items here. See
+- **`lesson`** — what was learned; source material for generated rules. See
   [The self-improvement loop](./11-self-improvement-loop.md) for how a lesson turns into a staged rule
   candidate via `mycontext lesson-stage`/`lesson-accept`.
 - **`tradeoff`** — what was sacrificed for what. 0 items here.
@@ -407,10 +441,10 @@ instance of "name the item, don't restate it," the same discipline this document
 - **`risk`** — may occur and would harm (`likelihood`, `impact`, deliberately no closed vocabulary yet). 0
   items here.
 - **`measurement`** — a number, how it was obtained (`method`), and when (`measured_on`), against what
-  (`subject`, `revision`) — "so a later reader can tell whether it still holds." 1 item here. A measurement
+  (`subject`, `revision`) — "so a later reader can tell whether it still holds." A measurement
   is a fact about a moment, never an instruction; this is the category the `UpdateStore` 276-task-item
   figure above would itself belong in, if it had been captured as a corpus item rather than a code comment.
-- **`reference`** — a snapshot of a file, with its origin recorded so `doctor` reports drift. 5 items here.
+- **`reference`** — a snapshot of a file, with its origin recorded so `doctor` reports drift.
   See [Restore and handover](./07-restore-and-handover.md) for `mycontext refresh`.
 - **`plan`** — a named body of work: `goal`, `done_when`, `wave`, `state`. **Not** a work category itself
   (`isWorkCategory` requires `plan`+`seq`+`state` together, and `plan` items carry only `state`) — it is the
@@ -418,12 +452,12 @@ instance of "name the item, don't restate it," the same discipline this document
 - **`task`** — a unit of planned work; `state` (todo/doing/blocked/done, projects to a tag), `plan`, `seq`,
   `priority` (1 highest), `needs` (comma-separated plan/seq references gating readiness — shape checked,
   existence not, because plans are written before their tasks), `verified_on` (stamped by a person
-  reviewing a `done` task afterward, not by finishing it). 866 items here (2026-09-13) — this is the category
+  reviewing a `done` task afterward, not by finishing it) — by a wide margin the largest category
   `mycontext ready` and three `doctor` checks (`blocked_without_needs`, `blocked_needs_met`,
   `needs_unresolved`) are built for.
 - **`todo`** — the inbox: captured the instant a thought occurs, zero friction. 0 items here (this project
   appears to promote or resolve todos quickly rather than letting them accumulate).
-- **`note`** — anything that arose during development and must not be lost. 27 items here.
+- **`note`** — anything that arose during development and must not be lost.
 
 ## What's not built, or built but off
 

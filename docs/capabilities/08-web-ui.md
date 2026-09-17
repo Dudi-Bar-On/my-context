@@ -52,7 +52,7 @@ local web surface write to my corpus?" is asking about:
    of recording a *served* read: it refuses to write anything whose `status` isn't `401`/`403` or
    whose `check` isn't one of `['host', 'origin', 'token-missing', 'token-mismatch']`. The nonce
    mint (`POST /api/nonce`, owner ruling 2026-08-28, tied to
-   `KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that-locks-out-the-next-one`) is
+   `KNOWN-a-locked-out-tab-can-only-be-recovered-by-the-restart-that`) is
    audited through the *same* binding — it is not a second entry in the set, which is why counting
    "refusal" and "mint" as two exceptions does not match the shape the test counts in.
 2. **`src/ui/execute.ts`** — the module that runs a real, mutating command on the person's behalf.
@@ -275,7 +275,7 @@ product's largest write surface**: it calls all four of `anchor-write.ts`'s rout
 and `sweep` (`:3106`, `:3166`) — and drives a retrieval stage/confirm/approve cycle: the mission
 request at `:3494`, its return at `:3667`, stage at `:3797`, the approve-confirm navigation at
 `:3841`, and approve itself at `:3884`. (An earlier version of this paragraph cited ten line
-numbers, none of which pointed at a write call — the file had grown past 11,000 lines and the
+numbers, none of which pointed at a write call — the file had grown past 11,000 lines (12,728 on 2026-09-17, and still rising) and the
 citations were never re-resolved after a splice edited the surrounding prose; every number above
 was re-read against the file directly for this repair, and this is a representative sample of call
 sites per operation, not an exhaustive list — several of these operations are called from more than

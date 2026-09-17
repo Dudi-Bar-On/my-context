@@ -43,13 +43,13 @@ flowchart TB
   PASS["a pasted passage"] --> Q["queryFromPassage(passage, vocabulary.terms):<br/>shape-matched only — an id, a plan/seq ref,<br/>a path, a backticked name, a commit hash,<br/>a heading — no shape match, no fuzzy guess"]
   Q -.->|"the passage's own text<br/>never goes further than this"| X1(["dead end"])
   MS["matchSubjects(vocabulary, spans) —<br/>a sibling entry point for 'I am lost',<br/>never downstream of a passage query"]
-  Q --> PF["pointersFor(index, query.names<br/>+ query.terms, scope)"]
+  Q --> PF["pointersFor(index, files,<br/>[...query.names, ...query.terms], scope)<br/>— four parameters, read-model-retrieval.ts:360-365"]
   MS --> PF
   PF --> NOISE["removeNoise: keep 'said', keep a tool call<br/>only if prose-bearing, drop everything else;<br/>drop exact-duplicate runs of text"]
   NOISE --> MISSION["writeMission() writes a MISSION file:<br/>pointers only — session, byte offset,<br/>stance, tool — missionText() never<br/>serialises the matched text itself"]
   MISSION -.->|"the archive's own text<br/>never goes further than this"| X2(["dead end"])
   MISSION --> SUB["a subagent, in its OWN fresh<br/>context window, reads the mission,<br/>opens the transcript itself, and verifies<br/>against the codebase and git — never the corpus"]
-  SUB --> RESULT["writeResult() writes one claim<br/>per line, each cited —<br/>an uncited line is never written at all"]
+  SUB --> RESULT["writeResult() writes one claim per line.<br/>An UNCITED line is written too — parseResult<br/>keeps it with empty citations and<br/>validateResult flags it 'uncited'"]
   RESULT --> PERSON{"a person chooses specific<br/>claim numbers — an empty<br/>choice is refused, not defaulted"}
   PERSON --> STAGE["return-stage.ts — the only writer on<br/>the RETURN half of this path<br/>(the mission and the result files above<br/>were already written, upstream)"]
   STAGE -.->|"reaches the ORIGINAL window<br/>only at its next ordinary<br/>session start"| ORIG(["your original<br/>context window"])
@@ -62,6 +62,17 @@ conversation spans directly. `matchSubjects` is never downstream of `queryFromPa
 mission and the result are both files written to disk earlier, by design — the "only writer" claim
 belongs to `return-stage.ts` alone, on the narrower **return** half of the path, not to the pipeline
 as a whole.
+
+**"An uncited line is never written at all" was wrong, and it was wrong in the direction that
+matters**: it described the guarantee as a mechanism when it is an instruction. The instruction is
+real — `missionText` tells the subagent *"A claim you cannot cite is a claim you drop"*
+(`src/core/retrieval/mission.ts:345`) — but nothing enforces it at the write. `writeResult`
+(`src/core/retrieval/result.ts:290-295`) renders and writes whatever claims it is handed;
+`parseResult` reads an uncited line back *"with an empty `citations`, never as nothing — that is
+what makes an uncited result reportable rather than invisible"* (`:258-262`); and `validateResult`
+(`:342-352`) raises a `kind: 'uncited'` finding for it. Section 5 below states this correctly, and
+the diagram used to contradict it. The design is that an uncited claim is **visible**, not that it
+is impossible.
 
 Everything left of `MISSION` runs inside the caller's own window and never touches conversation
 text; everything right of `SUB` runs inside a subagent's own, separate window that the caller never

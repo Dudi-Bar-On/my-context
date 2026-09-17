@@ -224,28 +224,43 @@ wider than it is**: a declaration says what a test *verifies*, never what it
 failure. Two of those fixtures live in `README.md` and `docs/README.he.md`,
 which carry no comment syntax and can never declare anything.
 
-**Real output, re-run 2026-09-13** (`node scripts/check-basis.ts`, tail). The
-2026-09-12 reading was `150 of 611 … 138 distinct … 461 predate`; these numbers
-move with every test file added, so read them as dated:
+**Real output, re-run 2026-09-17** — `node scripts/check-basis.ts` redirected to a file, and this is
+its tail from the summary line down, whole. The run is 142 lines in all; the 132 lines above this
+excerpt are the per-declaration RETIRED findings, one of which is quoted directly below. Every
+number here moves with every test file added: 2026-09-12 read `150 of 611 … 138 distinct … 461
+predate`, 2026-09-13 read `162 of 622 … 157 distinct … 460 predate`, and the 2026-09-13 paste that
+stood here cut its own last line mid-list with a typed `...` and said nothing about doing so.
 
 ```
-162 of 622 test file(s) declare a basis: 162 name item(s), 0 say `none` with a reason · 157 distinct item(s) are named
-460 predate the rule and are exempt via scripts/basis-undeclared.txt; 0 do not and are gated.
+$ node scripts/check-basis.ts     # 2026-09-17, tail from the summary line down, nothing cut
+238 of 691 test file(s) declare a basis: 238 name item(s), 0 say `none` with a reason · 241 distinct item(s) are named
+453 predate the rule and are exempt via scripts/basis-undeclared.txt; 0 do not and are gated.
 no test file outside the baseline is missing a basis or malformed.
-10 declaration(s) name a RETIRED item. Reported, never gated — the successors are printed above.
+11 declaration(s) name a RETIRED item. Reported, never gated — the successors are printed above.
 scripts/basis-undeclared.txt: 0 entr(ies) name a file that no longer exists and 1 name a file that now declares a basis. Both are spent lines and deleting them is the whole repair.
-11 helper module(s) under test/ and e2e/ declare a basis although nothing gates them: e2e/app.ts, e2e/composer-run.ts, ...
+12 helper module(s) under test/ and e2e/ declare a basis although nothing gates them: e2e/app.ts, e2e/composer-run.ts, e2e/composer.ts, e2e/global-setup.ts, e2e/mockup.ts, e2e/pixel-diff.ts, e2e/reduce.ts, e2e/scratch-corpus.ts, e2e/seed-agent-write.ts, e2e/seeds.ts, e2e/throwaway-home.ts, test/helpers/fabricate.ts.
+
+--undeclared lists the 453 exempt file(s). Nobody is asked to fill them in: an author asked today what a fixture written months ago rested on will guess, and a guess that resolves is worse than silence — see RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none.
+
+BLIND SPOT, stated so this number is not read wider than it is: a declaration says what a test VERIFIES, never what it ASSUMES — and it was the assumed half that reddened 26 fixtures in cdc9fd8. Two of those fixtures live in README.md and docs/README.he.md, which carry no comment syntax and can never declare anything.
 ```
 
-One of the ten `RETIRED` findings from that same run, real text:
+The first of the eleven `RETIRED` findings from that same run, whole — all eleven name the same
+superseded question, and the previous paste of this record truncated its second line with a typed
+`...` and dropped the four closing lines that say what would turn the report into a gate:
 
 ```
-RETIRED test/ui/read-model.test.ts:1
-        `OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items` is superseded — ...
+RETIRED test/core/audit-tokens.test.ts:1
+        `OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items` is superseded — does the pinned tier spend its spare room on governing items, at the price of forty-nine fixtures
         wrote: @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
         superseded by TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing
         REPORTED, NEVER GATED. A test resting on a superseded ruling is often
         correct as history. The repair is to say so where the reader is.
+        WHAT WOULD MAKE IT A GATE: a committed ceiling on this count, gated on
+        INCREASE only. It is not taken yet because the same owner ruling covers
+        this tier as covers `check-cited-items.ts` — forcing the edits would
+        delete history to go green — and a ratchet is a second baseline to keep,
+        which this file already argues against for `basis-undeclared.txt`.
 ```
 
 **Use case**: reviewing a PR that reverses a ruling — `check-basis.ts --items`
@@ -384,26 +399,30 @@ is asking); and `git commit --no-verify` skips it, as it skips every hook.
 | `check-basis.ts` | Covered in its own section above. |
 | `check-handover.ts` | Covered in [07 · Restore and handover](./07-restore-and-handover.md). |
 
-**Real output** — `check-vendor`, `check-needs-cycles` and
-`check-dependency-budget` run 2026-09-12 and reproducing unchanged;
-`check-text-files` re-run 2026-09-13:
+**Real output, all four re-run 2026-09-17.** Two of the four reproduce their previous capture
+exactly (`check-vendor`: 28 files; `check-dependency-budget`: the same four devDependencies) and two
+do not, because both count the tree: `check-text-files` scanned 1,330 files on 2026-09-13 and 1,452
+today, and `check-needs-cycles` walked 724 work items then and 923 now. **A count that reproduces
+and a count that moves look identical in a paste with no date on it** — which is why the dates are
+on the command lines rather than in the sentence above them.
 
 ```
-$ node scripts/check-vendor.ts
+$ node scripts/check-vendor.ts     # 2026-09-17
 28 vendored file(s) match src/ui/public/lib/vendor/VENDOR.md.
 
-$ node scripts/check-text-files.ts        # re-run 2026-09-13 — the finding is gone
-1330 text file(s) scanned: none contains a NUL byte.
+$ node scripts/check-text-files.ts     # 2026-09-17
+1452 text file(s) scanned: none contains a NUL byte.
 every one of them still diffs.
-# exit 0. On 2026-09-12 this run reported:
+# exit 0. On 2026-09-12 this run reported, in this repository's own working tree:
 #   NUL  src\ui\retrieval-write.ts  at byte 8280
 #   1309 text file(s) scanned: 1 contain(s) a NUL byte…
+# (those two lines are quoted from the 2026-09-12 run, not from this one)
 
-$ node scripts/check-needs-cycles.ts
-724 work item(s), 63 open · 702 plan/seq node(s) · 108 carrying "needs" · 141 edge(s) walked · 0 reference(s) nothing answers to, not walked · 15 item(s) carry no plan/seq and can be needed by nothing
+$ node scripts/check-needs-cycles.ts     # 2026-09-17
+923 work item(s), 157 open · 890 plan/seq node(s) · 111 carrying "needs" · 146 edge(s) walked · 0 reference(s) nothing answers to, not walked · 25 item(s) carry no plan/seq and can be needed by nothing
 no cycle: every "needs" chain in this corpus terminates.
 
-$ node scripts/check-dependency-budget.ts
+$ node scripts/check-dependency-budget.ts     # 2026-09-17
 package.json declares no runtime dependency, and 4 devDependencies (typescript, @types/node, @playwright/test, mermaid) — exactly what CONST-zero-runtime-dependencies enumerates.
 ```
 
@@ -411,7 +430,8 @@ package.json declares no runtime dependency, and 4 devDependencies (typescript, 
 `check-text-files.ts` genuinely found one NUL byte in
 `src/ui/retrieval-write.ts` at byte 8280, in this repository's own working tree,
 at the moment this chapter was written — not a constructed example. Re-run
-2026-09-13: `1330 text file(s) scanned: none contains a NUL byte`, exit 0. It is
+2026-09-13: `1330 text file(s) scanned: none contains a NUL byte`, exit 0; re-run again 2026-09-17,
+still clean, over 1,452 files. It is
 kept here as history, dated, rather than deleted, because a checker catching a
 real defect in the tree it guards is the evidence that it is not vacuous —
 which is the whole subject of this chapter.
@@ -547,15 +567,46 @@ this gap was found.
   `check:needs-cycles`, `check:dependencies`, `check:cited-items`,
   `hooks:install`. The table above fixes the "where does it run" half; naming
   them as scripts is still thin.
-- **Nineteen files in `scripts/` have no coverage anywhere**, including
-  `e2e-gate.ts` (what `npm run test:e2e` actually runs), `gen-commands.ts`,
-  `gen-doc-examples.ts`, `check-faint-usage.ts`, `check-ask-numbering.ts`,
-  `check-cssom-restatement.ts`, `gen-cli-ui-coverage.ts`, `gen-diagrams.ts`,
-  `migrate-rules.ts`, `seed-dogfood.ts`, `backfill-requests.ts`,
-  `vendor-webawesome.ts`, `convert-hebrew-bidi-marks.ts`, `set-version.ts`,
-  `changelog-section.ts`, the three `restamp-summary-basis*.ts`, and
-  `doc-clock.ts` / `doc-fixture.ts` / `repair-openq-filters.ts`.
-- **`test/rules/*` (16 files) is not described here**, though
+- **Nine of the 43 files in `scripts/` are not named anywhere under `test/` or `e2e/`**
+  (2026-09-17, `grep -rl <basename> test/ e2e/` per script): `changelog-section.ts`,
+  `measure-corpus-rank.ts`, `measure-review-coverage.ts`, `repair-openq-filters.ts`,
+  `restamp-summary-basis-lifecycle.ts`, `restamp-summary-basis-workflow-extra.ts`,
+  `review-trigger-replay.ts`, `seed-dogfood.ts`, `vendor-webawesome.ts`.
+  **This measures mention, not coverage, and the two are not the same claim.** An earlier
+  revision of this bullet asserted that *nineteen* scripts "have no coverage anywhere" and
+  named `e2e-gate.ts`, `gen-diagrams.ts`, `check-faint-usage.ts` and others among them; all
+  three of those are named under `test/` or `e2e/` today, and proving the stronger claim
+  needs an import-graph analysis over the suite that nobody has run. What is measured here
+  is the weaker fact, stated as the weaker fact: nine scripts no test file so much as
+  mentions. A script that IS mentioned may still be uncovered.
+- **`test/rules/*` (18 files as of 2026-09-17) is not described here**, though
+  `test/rules/isolation.test.ts` is what makes chapter 10's isolation claim
+  checkable rather than argued.
+- **The UTF-8 chunk-seam fixture guard is a `@basis`-shaped proof this chapter
+  does not carry.** `test/core/chunk-seam-utf8.test.ts` is written in Hebrew
+  precisely because on ASCII the defect it catches *cannot* fail a test, and it
+  asserts that byte 1,048,576 of its own fixture is a UTF-8 continuation byte —
+  so a fixture that drifted by one byte cannot go green by no longer testing
+  anything. That is `a-fixture-must-not-be-what-makes-a-proof-pass` (the product
+  rule store, [chapter 10](./10-rule-store.md)) in one file. See
+  [chapter 4](./04-conversation-archive.md).
+- **`check-retired.ts`'s retired-phrase contract only covers documents that
+  opt in** with an explicit `<!-- retired-phrases -->` HTML comment block —
+  it does not scan every document for staleness generally.
+
+## See also
+
+- [00 · Index](./00-index.md)
+- [03 · Creation and the gates](./03-creation-and-gates.md) — the summary
+  and contradiction gates that govern corpus items; this chapter's gates
+  govern the test suite that verifies them.
+- [06 · Retrieval](./06-retrieval.md) — the dynamic no-writes proof
+  (`approvedRestore`, the nonce, the planted-importer controls) that pairs
+  with this chapter's static `no-writes.test.ts` coverage.
+- [08 · The web UI](./08-web-ui.md) — the no-writes guarantee itself, and its
+  named exceptions, as a product property rather than a test.
+- [07 · Restore and handover](./07-restore-and-handover.md) — `check:handover`.
+ | wc -l`, 2026-09-17) is not described here**, though
   `test/rules/isolation.test.ts` is what makes chapter 10's isolation claim
   checkable rather than argued.
 - **The UTF-8 chunk-seam fixture guard is a `@basis`-shaped proof this chapter
