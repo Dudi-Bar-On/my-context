@@ -1,3 +1,43 @@
+## ⏭ 2026-09-17 (third) — BOTH DOC SETS ARE IN VERIFICATION. HEBREW IS NEXT AND IS GATED ON IT.
+
+1. **TWO VERIFICATION LANES ARE LIVE.** One over `docs/system/` — eight documents, 1,340 lines,
+   **never verified at all**, prose and its 13 diagrams. One over the **16 diagrams in
+   `docs/capabilities/`**, whose prose has been checked twice and whose pictures never once. Both
+   were told: *a diagram is a claim with higher believability and fewer words*, and to check ORDER
+   first, because a pipeline drawn in the wrong sequence is the most damaging kind of wrong.
+
+2. **HEBREW IS THE OWNER'S NEXT STEP AND HE HAS ALREADY REVIEWED THE ENGLISH.** He asked only for
+   these two verifications first. When both come back, `docs/the-store.he.md` is the register to
+   follow — and every diagram in both sets is Mermaid TEXT, zero images, so that pass translates
+   labels rather than redrawing.
+
+3. **`rulings/100` IS FILED AND THE BOARD HOLDS IT.** The three panels and their screenshots go
+   into the docs — blocked on `semantic/12`, `/13` and `/14` via `needs:`, because photographing
+   two panels that do not exist yet produces images wrong the day they land. It surfaces by itself
+   when those close; nobody has to remember it.
+
+4. **TWO GAPS MEASURED WHILE FILING IT.** There are **ZERO screenshots in any English document** —
+   none across 17 capability chapters and 8 system documents — while `docs/the-store.he.md` carries
+   ten of the real tool. And the find panel's prose in five chapters **predates its own second
+   round**: the four modes, the help, the pinned counts and the clear button are all newer.
+
+5. **THE STEPPER BUG WAS THE STALE SERVER, NOT CODE** — confirmed by the owner on a server
+   restarted 2026-09-17 10:26. That split (browser assets read live, server modules frozen at
+   start) has now cost a diagnosis TWICE. Recognise it in one reading: compare the server's start
+   time against the commit.
+
+6. **STEPPING IS NOW ONE STANDARD WITH THREE CALLERS** — marks, his own messages, and search
+   matches. A LIVE position counter that steps `1 of 15` → `2 of 15` → `15 of 15` and counts back
+   down; the current item highlighted distinctly; and genuinely VISIBLE when stepped to, including
+   when it would land beneath a floating panel. **`semantic/12` factors it once and `semantic/14`
+   calls it** — whichever lands first names it. Do not let three steppers grow three counters.
+
+7. **AND THE MARK STEPPER ALREADY DRAWS `Marked point 1 of 576`.** That is the existing shape and it
+   is his; the standard is that made consistent, not a fourth spelling. Two decisions were pushed to
+   both lanes rather than left to diverge: what `Next` does at the end (round one REFUSED
+   wrap-around on the record, and a counter changes that question), and what the counter reads
+   before the first step, when there is no current item at all.
+
 ## ⏭ 2026-09-17 (later) — THE CHAPTERS ARE DRAWN. ONE BUG IS UNCONFIRMED. HIS SERVER IS CURRENT AGAIN.
 
 1. **`rulings/99` IS HALF DONE AND BOTH HALVES ARE COMMITTED.** `docs/system/` took 6 diagrams
