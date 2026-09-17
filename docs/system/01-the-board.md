@@ -69,10 +69,21 @@ stateDiagram-v2
 
 **`status: deprecated` is a different field again, and it is the exit none of the four states can
 express.** A task abandoned before it shipped has nowhere to go in the diagram above — `done` would
-claim it landed, and it never did — so cancellation is recorded on `status`, checked first and
-independently by `readyReport` (`item.status === 'deprecated'` short-circuits before `state` is even
-read). A task can sit at `state: todo` and `status: deprecated` at once; the diagram shows what
-`state` alone means, not the whole lifecycle of the item it lives on.
+claim it landed, and it never did — so cancellation is recorded on `status`, on a guard of its own
+inside `readyReport`. **The order is the opposite of the natural guess, and worth stating exactly:**
+the loop reads `state` *first* (`needs.ts:490`) and drops `done` on the very next line (`:491`); the
+`item.status === 'deprecated'` guard sits nineteen lines further down, at **`:509`**. `status` is
+checked **second**, after the `done` short-circuit has already fired — nothing short-circuits on
+`status` before `state` is read, and a task that is both `done` and `deprecated` leaves the loop on
+`done` without the `deprecated` guard ever seeing it.
+
+That guard is also younger than the loop around it, which is why the order is what it is rather than
+what a designer would have chosen: it was added on 2026-09-06, after a worker read its own cancelled
+task back out of `ready` and said so. `workItems` filters `superseded` alone, so until that day six
+deprecated tasks on this corpus (`docsys/5`, `/6`, `/9`, `/10`, `walk/16`, `tuts/4`) were being
+offered as ready work, and one plan holding a single real task reported "2 ready of 2 open". A task
+can sit at `state: todo` and `status: deprecated` at once; the diagram shows what `state` alone
+means, not the whole lifecycle of the item it lives on.
 
 ## 2. The problem this replaced, told as a story rather than a table
 
@@ -129,18 +140,22 @@ flowchart TB
   N --> R["mycontext ready<br/>what can I start right now"]
   N --> P["mycontext path --d N<br/>where is ONE subject up to"]
   N --> D["scripts/check-board.ts<br/>is the map itself honest"]
-  Q["open_question<br/>blocks: item, item…"] --> N
+  Q["open_question<br/>blocks: item, item…"] --> QS["questions.ts<br/>the second, disjoint mechanism"]
+  QS -->|"imports buildTaskIndex,<br/>parseNeeds, refStatus"| N
+  QS --> R
+  QS --> P
   M["[D-MAP] block in<br/>REF-the-d-numbers…"] --> P
+  M -->|"parseDMap :459, dBoard :470 —<br/>Tier 1 is nothing else"| D
   R -.->|"nothing stored —<br/>recomputed every call"| R
   P -.->|"nothing stored —<br/>recomputed every call"| P
 ```
 
 **`mycontext ready`** answers "what is dispatchable right now," across the whole corpus, with
 nothing narrowed to a subject. **`mycontext path`** answers a different question `ready` cannot:
-"where is *this one subject* up to" — done/total, ready, held, and a fourth column no other command
-computes (§6). **`scripts/check-board.ts`** answers neither; it asks whether the map the other two
-commands trust is itself telling the truth. All three read the same `needs.ts` machinery and none
-of them cache anything — see `docs/capabilities/16-the-board.md` for the literal flags and real
+"where is *this one subject* up to" — done/total, ready, held, and a fourth measure no other command
+computes, `YOURS` (§5). **`scripts/check-board.ts`** answers neither; it asks whether the map the
+other two commands trust is itself telling the truth. All three read the same `needs.ts` machinery
+and none of them cache anything — see `docs/capabilities/16-the-board.md` for the literal flags and real
 terminal output of each.
 
 `questions.ts` adds a second, deliberately separate mechanism alongside `needs`: an `open_question`
@@ -152,14 +167,23 @@ describes). A question that blocks something is surfaced by name in `ready`'s ou
 that blocks nothing yet is counted, not listed — a deliberate anti-noise design, because a list that
 showed every open question every time would train a reader to stop reading it.
 
+**The separation is real in the code, and the dependency runs the direction §3 predicts** — which is
+worth stating because the obvious drawing of it is backwards. `needs.ts` never reads `blocks` at
+all: the field appears three times in that file's header prose and **zero** times in its code. The
+arrow runs the other way, with `questions.ts` importing `buildTaskIndex`, `parseNeeds` and
+`refStatus` *from* `needs.ts` (`questions.ts:137–139`). `ready.ts` (`:2–9`) and `path.ts` (`:6`)
+each import the two modules independently, and `path.ts` is where `questionReport` feeds the `YOURS`
+column of §5. `scripts/check-board.ts` does not import `questions.ts` at all, so no question data
+ever reaches the gate.
+
 ## 5. The D-numbers — a subject is bigger than a task, and named once
 
 A single task is too small a unit to plan around, and a whole corpus is too large. The D-numbers
 sit between: `REF-the-d-numbers-what-each-one-means-and-which-are-only` is a pinned reference item
 carrying a `[D-MAP]` block, and the item's own governing sentence is worth quoting because it is
-the whole design in one line: **"a D number names a subject, not a fixed list of items — a subject
-may widen, and widening is neither renumbering nor reuse."** A D number is assigned once, in this
-one item, and never reassigned or reused — announcing one anywhere else does not make it real.
+the whole design in one line: **"a D number names a subject, not a fixed list of items - the D37
+precedent, ruled 2026-09-08: a subject may WIDEN, and widening is neither renumbering nor reuse."**
+A D number is assigned once, in this one item, and never reassigned or reused — announcing one anywhere else does not make it real.
 
 Parsing that block used to be a regex over prose, and it was measured wrong twice on the same day
 this pass started: one subject read as closed because its own text merely *quoted* another
@@ -168,7 +192,8 @@ items by name alone, with no relation to the subject it was scoring. `needs.ts`'
 reads the block as **delimited data**, never as prose scanned for meaning — the fix was not a
 smarter regex, it was refusing to parse prose as if it were structured at all.
 
-**The `YOURS` column** — `mycontext path`'s fourth column, and the reason the command exists — is
+**The `YOURS` column** — the sixth of `mycontext path`'s seven columns (`HEADERS` at `path.ts:90` is
+`D · status · done · ready · held · yours · work`), and the reason the command exists — is
 worth calling out on its own, because it answers something no other command in this project can:
 which open work is waiting on the *owner specifically*, right now, derived from two facts the
 corpus already holds (a subject's own row reading `held-by-owner`, or an open question naming that

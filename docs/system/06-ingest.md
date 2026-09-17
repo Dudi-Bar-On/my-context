@@ -38,7 +38,8 @@ flowchart LR
 `mycontext ingest <path> [--anchor <heading>]` opens a session and chunks the document
 (`src/ingest/chunk.ts`): one chunk per section under a heading, with the anchor derived as a slug of
 that heading, `_preamble` for any text before the first heading, and a disambiguating suffix
-(`-N` or an 8-character hash) for an oversize or duplicate-named section. `request.ts` then builds
+(`--N`, double hyphen — `chunk.ts:339` builds `${candidate}--${n}` — or an 8-character hash) for an
+oversize or duplicate-named section. `request.ts` then builds
 the extraction request itself — and the file's own comment explains a design choice worth
 generalising: the request spells out *every rule the validator actually enforces*, because a request
 that teaches a rule the validator does not check is merely unhelpful, while a request that omits a
@@ -59,7 +60,7 @@ than duplicating it. `mycontext ingest-status [--summary]` reports session and a
 is a chain, not a single check, and the order is the order the source reads it in — a shape refusal
 before a content refusal, because a message about a missing quote is useless on an entry that is not
 even an object yet. Each `reject()` on the way is durable, not a thrown error that takes the batch
-down with it: `INV-a-validator-that-gates-writes-must-be-a-complete-precondition-for-the-write` is
+down with it: `INV-a-validator-that-gates-writes-must-be-a-complete` is
 what makes this a *complete* precondition rather than a first pass — nothing `createItem` would
 refuse gets past this chain, checked by generating and round-tripping tens of thousands of candidates
 against it.
@@ -101,8 +102,14 @@ same anchor.
 $ mycontext ingest --help
 usage: mycontext ingest <path>
   emit an extraction request for a document (you are the extractor)
+
 flags:
-  --anchor Authentication  Ask for one section rather than the whole document
+  --anchor Authentication  Ask for one section rather than the whole document. Omit it to take the
+                           next pending anchor. Takes a heading from the document.
+
+  The command's own usage block — the worked forms, and how they combine — is printed by running it
+  with an argument it refuses. `mycontext help cli` is the flag reference for the whole CLI, and
+  carries the exit-code contract a script reads.
 ```
 
 Two sibling commands: `ingest-apply <session-id> --anchor <a> (--file <path>|--stdin)`,

@@ -60,8 +60,14 @@ to the lesson it came from. `mycontext lesson-discard <id> <key>` marks a candid
 $ mycontext lesson --help
 usage: mycontext lesson "<text>" | <id> [--agent]
   record a lesson and request candidate rules
+
 flags:
-  --agent  Record the lesson as origin "agent" rather than "human"
+  --agent  Record the lesson as origin "agent" rather than "human" - the one claim a shell cannot
+           truthfully make on its own. `lesson-accept` refuses it by name.
+
+  The command's own usage block — the worked forms, and how they combine — is printed by running it
+  with an argument it refuses. `mycontext help cli` is the flag reference for the whole CLI, and
+  carries the exit-code contract a script reads.
 ```
 
 Three further subcommands exist beyond the flags shown above: `lesson-stage <id> (--file <path>|--stdin)`,
@@ -73,9 +79,20 @@ Three further subcommands exist beyond the flags shown above: `lesson-stage <id>
 - **MCP**: `create_lesson` mirrors `mycontext lesson` exactly, with one deliberate restriction —
   it **always** stamps `origin: 'agent'` and does not accept origin as an argument at all, on the
   reasoning, stated directly in the tool's own code, that a tool call is a non-human caller *by
-  construction*. There is no MCP tool for staging, accepting or discarding a candidate — those three
-  steps exist only at the CLI, which makes accepting a rule an act that currently requires a human at
-  a terminal, not merely a human's approval relayed through an agent.
+  construction*.
+- **MCP, staging**: `stage_rule_candidates` (`src/mcp/tools.ts:1889`, `annotations: ADDS`) is a
+  real registered tool, and its `run` calls the same `stageRuleCandidates` that `mycontext
+  lesson-stage` calls. **Staging has an agent-facing door**, and an earlier draft of this chapter
+  said it did not.
+- **Accepting and discarding do not.** `lesson-accept` and `lesson-discard` have no MCP tool, and
+  the absence is deliberate rather than merely unbuilt: `CLI_WITHOUT_TOOL['lesson-accept']` is
+  recorded as `intended`, and the reasoning is written into `stage_rule_candidates`'s own doc
+  comment three lines above the tool — staged candidates *"are inert until a HUMAN runs `mycontext
+  lesson-accept`, which is the only call site of `createItem` anywhere in this module and hardcodes
+  `origin: 'human'` with no override"*. So the conclusion stands and is in fact better sourced than
+  the premise was: **creating a rule from a lesson requires a human at a terminal.** What does not
+  stand is the wider claim that all three post-lesson steps are CLI-only. It overstated this
+  chapter's own case, which is the direction an error is least likely to be caught in.
 
 ## 5. What is known wrong or unfinished here
 

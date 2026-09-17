@@ -11,9 +11,11 @@ projections, two independent readings — is the thing no existing document stat
 ## 1. What this is, and the three things it gets confused with
 
 - **The audit log is not the conversation archive.** The archive (`docs/capabilities/04-conversation-archive.md`)
-  holds transcripts — what was *said*. The audit log holds what the *system did*: every mutation,
-  injection, hook action, focus change, access refusal, progress step and command execution. A
-  session can produce a long transcript and a short audit trail, or the reverse.
+  holds transcripts — what was *said*. The audit log holds what the *system did*, under eight kinds
+  — `--kind`'s own enum (`audit.ts:730`) is `mutation | injection | hook | focus | access | progress
+  | execution | read`: every mutation, injection, hook action, focus change, access refusal,
+  progress step, command execution **and item read**. A session can produce a long transcript and a
+  short audit trail, or the reverse.
 - **Decay is not deprecation, and it does not recommend one.** Decay answers one narrow question —
   which items have not been auto-*injected* in the last N sessions — and its own report repeats,
   every time it runs, that this is not the same as unused: an item consulted through `show`, through
@@ -37,11 +39,16 @@ constraint. Measured cost: about 0.55 ms at the 95th percentile, flat regardless
 log has grown — the stated reason the write happens directly on the hot path rather than being
 batched or deferred.
 
-Eighteen call sites write to it: every hook (`pre-tool-use`, `post-tool-use` and its failure
-variant, `session-end`, `subagent-start`/`stop`, `pre-compact`/`post-compact`, `observe`), plus
-`inject.ts`, `focus.ts`, `persist.ts`, `revision.ts`, `procedure.ts`, the MCP tool layer, and the
-UI's execution and security modules. **There is no CLI verb to hand-append an entry** — the log is
-a byproduct of the system's own operations, not a journal a person authors directly, which is worth
+**Eighteen modules call it, across thirty invocations.** The modules: every hook (`pre-tool-use`,
+`post-tool-use` and its failure variant, `session-end`, `subagent-start`/`stop`,
+`pre-compact`/`post-compact`, `observe`), plus `inject.ts`, `focus.ts`, `persist.ts`, `revision.ts`,
+`procedure.ts`, the MCP tool layer, the UI's execution and security modules — and `audit.ts` itself,
+which is easy to leave off a list of writers and is the eighteenth (`:1699` records a `kind: 'read'`
+item read). "Eighteen" is a count of *files*, not of call expressions: by invocation the number is
+**30**, concentrated in `pre-tool-use` (4), `post-tool-use` (3) and `ui/execute` (3).
+
+**There is no CLI verb to hand-append an entry** — the log is a byproduct of the system's own
+operations, not a journal a person authors directly, which is worth
 stating because it means "the audit log lied" is not a sentence that can be true of a human-authored
 mistake in the same way it can be of a corpus item.
 
@@ -66,7 +73,7 @@ a projection either being current or being disclosed as behind, never silently s
 
 ```mermaid
 flowchart LR
-  W["18 call sites<br/>hooks · inject · focus · persist ·<br/>revision · procedure · MCP · UI"] -->|"recordAudit()<br/>the ONE writer"| J[".audit/audit.jsonl<br/>append-only, source of truth"]
+  W["18 modules · 30 call sites<br/>hooks · inject · focus · persist · revision ·<br/>procedure · MCP · UI · audit.ts itself"] -->|"recordAudit()<br/>the ONE writer"| J[".audit/audit.jsonl<br/>append-only, source of truth"]
   J -->|"kept current SYNCHRONOUSLY<br/>by the writer, by ruling"| ADB["audit-db.ts<br/>SQLite projection · .audit/"]
   J -->|"replay-ledger,<br/>incremental or full rebuild"| LED["ledger.ts<br/>one row per session/item/tier · .index.db"]
   ADB --> WATCH["Watch screen ·<br/>/api/ask/audit"]
@@ -86,11 +93,18 @@ on screen, after an earlier build was found presenting the number nowhere in the
 ```
 $ mycontext decay --summary
 my_context decay — items not injected in the last 20 session(s). The ledger holds 40 session(s).
-cold 0, warm 165, of which 124 unrestricted.
+  "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the
+  ledger records injection, not reading or reliance, so a new item, and any item consulted via
+  `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
+  Do not supersede or deprecate anything on this report alone — verify real usage first.
+
+cold 0, warm 165, of which 124 unrestricted. Rows with `mycontext decay` (default) or `--full`.
 ```
 
-*(Real output against this repository, 2026-09-17. Re-run before citing — the ledger grows every
-session.)*
+*(Real output against this repository, 2026-09-17, **complete and unabridged** — re-captured by
+running the command, not by editing an earlier paste. The five indented lines are the disclosure
+§1 quotes, and they are printed on every run: an earlier draft of this chapter removed them while
+quoting one of them a page earlier. Re-run before citing — the ledger grows every session.)*
 
 ## 4. Contribution — what it computes, and real output
 
@@ -100,14 +114,40 @@ has actually been delivered, split by the `origin` it was captured under.
 
 ```
 $ mycontext contribution --summary
-The log holds 3598 injection record(s) of ~58000 total, naming ~193 distinct id(s); the corpus holds
-1306 item(s), 165 of them injectable, of which 0 have never been delivered.
+my_context contribution — how often each item was actually delivered into a session, read backwards
+out of the audit log. The log holds 3688 injection record(s) of 61890 total, naming 193 distinct
+id(s); the corpus holds 1317 item(s), of which 165 could be chosen by `select` today.
+
+A record is one DELIVERY, not one session: 1890 subagent-start, 1699 jit, 69 session-start, 28
+compact-restore, 2 manual. So a high count is mostly a count of subagent dispatches and hook fires,
+and reading any figure below as a number of sessions would overstate it by more than an order of
+magnitude.
+...
+by origin — the cohort table:
+  ┌────────┬───────┬────────────┬─────────────────┬────────────────┬──────────────────┬───────────────────────────┐
+  │ origin │ items │ injectable │ never delivered │ always spilled │ median delivered │ delivered, now ineligible │
+  ├────────┼───────┼────────────┼─────────────────┼────────────────┼──────────────────┼───────────────────────────┤
+  │ agent  │ 38    │ 6          │ 0               │ 0              │ 1283             │ 0                         │
+  │ human  │ 1271  │ 159        │ 0               │ 0              │ 1044             │ 28                        │
+  │ ingest │ 0     │ 0          │ 0               │ 0              │ 0                │ 0                         │
+  │ review │ 8     │ 0          │ 0               │ 0              │ 0                │ 0                         │
+  └────────┴───────┴────────────┴─────────────────┴────────────────┴──────────────────┴───────────────────────────┘
+...
+1317 item(s), 165 of them injectable, of which 0 have never been delivered. Rows with `mycontext
+contribution` (default) or `--full`.
 ```
 
-*(Real output against this repository, 2026-09-17; the exact totals move every session — re-run
-rather than cite this table as current.)* No dedicated tutorial exists for contribution, unlike
-decay and the audit log — it is currently explained only inside `docs/capabilities/11-self-improvement-loop.md`,
-in passing, which is one reason this chapter exists.
+*(Real output against this repository, 2026-09-17, **abridged — and the cuts are the two bare `...`
+lines**, which stand for four disclosure paragraphs and one "injectable and never delivered"
+paragraph. Every retained line is byte-identical to what the command printed; nothing here is
+retyped, summarised or rounded. An earlier draft of this chapter welded the opening paragraph to
+the closing summary line — some forty lines apart — into one sentence the command has never
+printed, and replaced two exact integers with `~58000` and `~193`. The command prints exact
+integers in both slots and has never printed a tilde. The totals move on every run, including runs
+of this command: re-run rather than cite them as current.)* No dedicated tutorial exists for
+contribution, unlike decay and the audit log — it is currently explained only inside
+`docs/capabilities/11-self-improvement-loop.md`, in passing, which is one reason this chapter
+exists.
 
 ## 5. The Watch screen — five sources, one screen
 
@@ -124,8 +164,12 @@ surface in this UI.
 Nobody writes to the audit log directly. The only doors that produce an entry are the eighteen
 internal call sites in §2 — a hook firing, an injection happening, a focus change, a mutation. The
 doors a *person* has are all read doors: the CLI (`mycontext audit`, `mycontext decay`,
-`mycontext contribution`), the MCP tools (`audit_log`, `decay_report`, and contribution's own tool),
-and the Watch/decay screens in the web UI. There is no write binding anywhere in the twelve the UI is
+`mycontext contribution`), the MCP tools `audit_log` (`tools.ts:1551`) and `decay_report` (`:1642`),
+and the Watch/decay screens in the web UI. **Contribution has no MCP door at all** — the word
+"contribution" does not appear anywhere under `src/mcp/`, and none of the 28 registered tools is
+its. Of the three readings this chapter treats as siblings, two are reachable by an agent and one
+is reachable only from a terminal, which sharpens §7's point rather than softening it: contribution
+is not merely the least-documented of the three, it is the only one with no agent-facing door. There is no write binding anywhere in the twelve the UI is
 ruled to have — this whole subject is observational by construction.
 
 ## 7. What is known wrong or incomplete here
@@ -143,9 +187,10 @@ ruled to have — this whole subject is observational by construction.
 - **Decay's own report actively warns against the inference a reader will reach for first** — that a
   cold item is a candidate for removal. It is not, and the report says so on every run, precisely
   because a ledger measuring injection cannot see reading.
-- **Contribution has no dedicated tutorial and is the least-documented of the three readings even
-  after this chapter** — it appears only as a passing mention inside the self-improvement-loop
-  chapter, which is a different subject with a different governing question.
+- **Contribution has no dedicated tutorial, no MCP tool, and is the least-documented of the three
+  readings even after this chapter** — it appears only as a passing mention inside the
+  self-improvement-loop chapter, which is a different subject with a different governing question,
+  and it is the one reading of this log an agent cannot reach at all (§6).
 
 ## 8. Code map
 

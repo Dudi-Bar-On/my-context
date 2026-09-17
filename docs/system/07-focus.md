@@ -30,26 +30,40 @@ additional axis costs the disclosure sharpness described below.
 
 Focus sits downstream of a mechanism it never replaces: which items are even candidates for a
 session's context window in the first place, before any filter narrows them further. `README.md`
-§4 names five such routes; the diagram below, reproduced from there unchanged, draws four of
-them — pinned, index, just in time, restored — because that is what README itself draws. The fifth,
-**continuity**, is missing from the picture for the same reason it is missing there, and it is the
-one this chapter cannot afford to leave out of the *prose*: it is one of the three axes focus must
-never hide, named again below. A reader of this chapter needs to know it exists even where the
-diagram does not show it. Only just-in-time's branch is the one focus can narrow at all — the other four
-fire on their own trigger regardless of what focus is set:
+§4 names five such routes, and the diagram below is reproduced from that section — **the same source
+the copy in `docs/capabilities/02-injection.md` §4 is drawn from**, which is the claim worth making
+here because it survives an edit to any one copy. (An earlier draft of this chapter said the two
+were *byte-identical*, which was true when it was written and false one commit later: README's §4
+diagram was repaired on 2026-09-17 to draw continuity, relabel the just-in-time branches, and say
+"once per session" rather than "once per context window". A claim about bytes rots; a claim about
+provenance does not.) All five routes are drawn, **continuity included** — an earlier draft of this
+chapter said the fifth was missing from the picture and explained why the prose had to carry it
+anyway. The picture carries it now, so the prose no longer has to; what the prose still owes the
+reader is that continuity is also one of the three things focus may never hide, named again below.
+
+**Focus narrows the whole eligible set, before any tier is computed — not one branch of this
+diagram.** `select.ts:1516–1519` filters `eligibleAll` through `focusHides` once, *"so every tier
+and the index inherit it from one place"*, and every route below draws from what survives that
+filter. Pinned and continuity items are not protected by lying outside focus's reach; they are
+protected by three explicit exemptions written *inside* `focusHides` (`select.ts:683–694`), which is
+why `exemptHard`, `exemptAlways` and `exemptContinuity` exist at all. §5 below is the proof: the
+three days in August 2026 when a focus hid six pinned items could not have happened if focus could
+not reach the pinned route.
 
 ```mermaid
 flowchart LR
   S(["A session starts"]) --> Q{"always: true?"}
   Q -->|yes| PIN["<b>pinned</b><br/>injected in full"]
   Q -->|no| IDX["<b>index</b><br/>one line: id · type · title"]
+  S --> CONT["<b>continuity</b><br/>every continuity: true item, in full"]
   F(["Claude is about to read<br/>or edit a file"]) --> G{"does the item<br/>declare a scope?"}
-  G -->|"no — unrestricted"| JIT["<b>just in time</b><br/>injected in full, once per context window"]
-  G -->|"yes, and it matches"| JIT
+  G -->|"yes, and it matches —<br/>offered first"| JIT["<b>just in time</b><br/>injected in full, once per session"]
+  G -->|"no — unrestricted,<br/>offered only after every<br/>scoped item already fit"| JIT
   G -->|"yes, no match"| NO["nothing — the item stays<br/>out of the way"]
   C(["The session is compacted"]) --> RES["<b>restored</b><br/>what was in context before"]
   C --> PIN
   C --> IDX
+  C --> CONT
 ```
 
 *(Reused from `README.md` §4, which owns this diagram — every route here also competes against a
@@ -59,8 +73,16 @@ chapter.)* Focus is a predicate `select.ts` applies **inside** this map, not a s
 — it can hide something these five routes would otherwise have offered, and, as the three
 exemptions below show, three kinds of item it is not allowed to hide even then.
 
-`select.ts` applies the filter: an item is hidden only if it fails **every** non-empty axis. But
-three classes of item are never hidden regardless of match, and this is the part that cannot be
+`select.ts` applies the filter, and the quantifier is the opposite of the one a reader expects:
+**an item is in focus only if every non-empty axis has at least one match, so it is hidden if it
+fails _any_ of them.** `matchesFocus`'s own docblock (`select.ts:631`) states it in four words —
+*"AND across axes, OR within one"* — and gives the worked case: `--tag billing --tag invoicing
+--category rule` means *"a rule tagged billing or invoicing, which is what a person means when they
+type it"*. The difference is most of the corpus. Under an OR reading, `--tag billing --category
+rule` would hide only what is neither tagged `billing` nor a `rule`; under the code it hides
+everything that is not a `billing`-tagged `rule`.
+
+But three classes of item are never hidden regardless of match, and this is the part that cannot be
 explained by focus alone — it is a fact about the injection budget (`docs/capabilities/02-injection.md`)
 that focus has to respect rather than override:
 
@@ -83,18 +105,21 @@ approval-boundary convention this project uses everywhere a command changes stat
 flowchart TB
   F["mycontext focus tags/categories/scope"] --> FJ[".my_context/state/focus.json<br/>workspace-scoped, gitignored"]
   FJ --> SEL["select.ts<br/>matchesFocus / focusHides"]
-  SEL -->|"fails every axis"| HIDDEN["hidden from injection"]
+  SEL -->|"fails ANY non-empty axis<br/>— AND across axes, OR within one"| HIDDEN["hidden from injection"]
   SEL -->|"severity:hard, always:true,<br/>or continuity:true"| KEPT["injected anyway,<br/>reported as exemptHard/Always/Continuity"]
   SEL -->|"a kept item's relation<br/>points at a hidden one"| DANGLE["disclosed as a dangling edge,<br/>never silently dropped"]
 ```
 
 ## 3. Real output
 
-The workspace this chapter was written against currently has no focus set:
+The workspace this chapter was written against currently has no focus set. Both lines below are
+printed; an earlier draft of this chapter kept the first and dropped the second, which is the line
+that tells a reader what to do next:
 
 ```
 $ mycontext focus --show
 my_context: no focus is set — every eligible item is injectable.
+Set one with `mycontext focus <tag>`, or see `mycontext focus --relations`.
 ```
 
 Previewing a narrower focus shows the disclosure described in §2 directly:
@@ -113,9 +138,15 @@ $ mycontext focus --category rule --preview
 Apply it by running the same command without --preview.
 ```
 
-*(Real output against this repository, 2026-09-17 — the exact counts move as the corpus does; a
-`--category rule` focus narrowing to nearly nothing but `rule` items is expected to exempt most of
-the corpus, which is exactly what the disclosure above shows happening.)*
+*(Real output against this repository, 2026-09-17 — **re-run while this chapter was repaired, and
+every retained line still reproduces byte for byte**: 6 dangling relations, that same first pair,
+53 `severity:hard` items with `CONST-evidence-must-cite-a-captured-record-id` at the head of the
+list, and that closing sentence. This is the one block in `docs/system/` that marked its own cuts
+from the start, and it is the one block that survived a verifier unchanged — the `...` lines here
+stand for the 1,129-item hidden list, a 7-item pinned block, and the tails of two enumerations. The
+exact counts move as the corpus does; a `--category rule` focus narrowing to nearly nothing but
+`rule` items is expected to exempt most of the corpus, which is exactly what the disclosure above
+shows happening.)*
 
 ## 4. Who may trigger it, and through which door
 

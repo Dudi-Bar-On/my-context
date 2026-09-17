@@ -40,12 +40,17 @@ three roots silently opens the wrong file — which is exactly why the page keep
 `lane.js` (323 lines) is a different thing entirely: the **bare lane window**, one subagent
 transcript in a chromeless tab, with no rail, no header, no application shell around it — an owner
 ruling from 2026-09-09, quoted directly in the file's own header: *"what i meant is to only see the
-viewer with the transcript in it as a single window without all the app around it."* It renders
+viewer with the transcript in it as a single window without all the app arround it."* (The
+misspelling is the owner's, and a direct quotation is not the place to tidy one.) It renders
 through `mountDocument`, **imported whole from `screens/conversations.js`** rather than
 reimplemented — the file's own comment is explicit that a second implementation of the virtualised
-scroll would be a second thing to keep correct, and that this is precisely the trap `doc.html` avoids
-falling into by *not* sharing a renderer with content it is structurally different from
-(`githubNodes` for prose documents, `markdownNodes`/`mountDocument` for transcripts).
+scroll would be a second thing to keep correct. **And it names the hazard the opposite way round
+from the way a reader expects: this is exactly the trap `/doc.html` _sets_, not one it avoids**
+(`lane.js:55–58`). `doc.html` legitimately runs its own renderer — it is drawn by `githubNodes`
+because it draws prose — and that legitimate precedent is precisely what makes a second renderer
+here look equally reasonable when it is not: lane content is drawn by `markdownNodes`, the pipeline
+the Conversations screen already owns. The lane window's answer is to import that one renderer
+whole rather than to follow the precedent.
 
 ```mermaid
 flowchart LR
@@ -67,12 +72,22 @@ Until this week, `lane.js`'s own header claimed it handed the viewer exactly fou
 `ctx` and that this was "everything `mountDocument` and its subtree reach for, measured over the
 file." That measurement was wrong. `mountDocument` draws four anchor-write controls, and every one
 of them calls `ctx.post` — which the lane window did not provide. **Every anchor write inside a
-lane window threw for about a week.** Measured against the archive: 704 of 1,310 marks carry a
-lane id, meaning over half of every bookmark ever made in this project's archive lived in the one
-window where writing a new one was silently broken.
+lane window threw for about a week.**
 
-The fix added `postJson` to the five functions a lane window now hands over (`t`, `tFlat`, `api`,
-`post`, `navigate`) and — the part worth calling out — **measured, live, that a cookie-only POST is
+**How big that was is a question the archive cannot answer, and the number that looks like an answer
+is not one.** 740 of 1,383 marks carry a lane id today (2026-09-17; 704 of 1,310 on 2026-09-16, the
+same 53%) — but those rows are almost entirely the automatic sweep's. `.my_context/.anchors.jsonl`
+holds exactly **one** row with `origin: 'owner'` against **1,382** with `origin: 'automatic'`. The
+bug broke the *owner* write path, so the population it could have touched is the marks a person
+makes by hand, of which there is one in the entire file. The honest statement of the damage is the
+mechanism and not the count: four write controls in a lane window threw on every click, for about a
+week, with nothing reporting it.
+
+The fix added **`post`** — the fifth of the five functions a lane window now hands over (`t`,
+`tFlat`, `api`, `post`, `navigate`, `lane.js:33`). `postJson` is a module-local `fetch` helper
+(`lane.js:171`) that `post` delegates to (`:210`); it was never a member of the handover set, and an
+earlier draft of this chapter named it as the thing added to a list it does not appear in. The fix
+also — the part worth calling out — **measured, live, that a cookie-only POST is
 accepted by the running server**, rather than trusting the earlier claim's shape a second time. The
 file's own header documents this correction in place, rather than quietly rewriting the old claim
 away: a claim that a set is complete is a claim a reader will act on, and this one was acted on for
@@ -116,8 +131,13 @@ full reference for every route and CLI verb this diagram compresses.
 `read-model-conversation-document.ts` (2,883 lines) exists because of one very concrete failed
 screen: an earlier version of the Conversations screen showed *"entries 0–50 of 24,757"* with no
 way to reach entry 51, and those fifty were almost entirely bookkeeping — one prompt, zero answers,
-forty-nine folded "0 characters" rows. A pager was not the fix the owner asked for; he asked for
-*"a way to browse, retrieve and display the content… like scrolling over a terminal."*
+forty-nine folded "0 characters" rows. A pager was not the fix the owner asked for. He had asked for
+*"a way to browse, retrieve and display the content at a later time"*; `seq:7` then ruled the pager
+out by name and said what to build instead — *"view the session on a SEQUENTIAL DOCUMENT with markers
+for prompts and answers AND NOT BROKEN TO PIECES — user should have a similar experience like
+SCROLLING OVER A TERMINAL."* Those are two statements made on two occasions
+(`read-model-conversation-document.ts:12–19`); joining them into one sentence with an ellipsis, as an
+earlier draft of this chapter did, hides a join rather than an omission.
 
 The design turns on one measurement, taken on a real 63,871,429-byte, 27,752-record transcript:
 
@@ -164,7 +184,7 @@ only in the windows the scroll actually asks for:
 ```mermaid
 flowchart TB
   subgraph DISK["on disk — never loaded whole"]
-    FILE["transcript.jsonl<br/>63,871,429 bytes · 27,752 records"]
+    FILE["transcript.jsonl<br/>63,871,429 bytes · 27,752 records<br/><i>one named file, read 2026-09-08 —<br/>re-measure before citing</i>"]
   end
   FILE -->|"one streaming walk, ~157 ms<br/>buildOutline()"| OUT
   subgraph MEM["in memory — small, independent of file size"]
@@ -196,9 +216,12 @@ the archive search box share, though — see §1 — they are otherwise unrelate
   11,364 real archive spans against 20 queries. That comparison run — not the upstream library — is
   what the project's own test pins going forward, because keeping the upstream source around to
   compare against would mean vendoring the library the owner ruled against.
-- **Why this matters at all, measured, not assumed:** this product writes an ellipsis `…` 752 times
-  across the archive's spans; a reader types three ASCII dots. Plain `indexOf` finds 456 of those
-  matches; NFKD folding finds 1,012 once related punctuation (non-breaking hyphens, "not equal"
+- **Why this matters at all, measured, not assumed:** this product writes an ellipsis `…` **3,062
+  times** and a reader types three ASCII dots (`fold.js:9`, restated at `:506`). Those writes land in
+  **752** of the archive's spans (`fold.js:13`) — two different measurements of the same habit, and
+  an earlier draft of this chapter printed the span count under the write count's label. Against a
+  reader typing `...`: plain `indexOf` finds **456** spans, FTS5's trigram index finds the same 456,
+  and NFKD folding finds **1,012** once related punctuation (non-breaking hyphens, "not equal"
   signs, micro signs, fullwidth pipes) is accounted for. 806 of 11,251 spans in the archive change
   under NFKD normalisation at all, and 376 of one session's spans change **length** — which is the
   actual difficulty: an offset computed against the folded text does not point at the same place in
@@ -247,9 +270,11 @@ design cannot have.
 
 - **Navigation and Copy panels are designed for but not built** — `lib/panel.js` is the frame for
   all three; only Search has shipped against it.
-- **The 704-of-1,310 lane-marks figure in §3 is a 2026-09-16 reading**, taken once, at the moment
-  the bug was fixed. It will not still be that number; re-count from `.my_context/.anchors.jsonl`
-  before citing it as current.
+- **The lane-marks figures in §3 are dated readings of a file that grows every session** — 704 of
+  1,310 on 2026-09-16, 740 of 1,383 on 2026-09-17. Re-count from `.my_context/.anchors.jsonl` before
+  citing either. More importantly, §3 now says what that ratio does *not* measure: it is a count of
+  the automatic sweep's rows, and an earlier draft of this chapter used it to size a bug that only
+  affected owner writes.
 - **A load-bearing docstring can be wrong and acted on for a week before anyone measures it** — this
   is not a defect in the current code (the claim in §3 is now correct), but it is a demonstrated
   failure mode of this exact viewer's own documentation practice, worth a reader's caution rather
