@@ -234,7 +234,7 @@ here; read the file for them._` — an instance of the general rule
 list or table in this product may quietly truncate.
 
 `<where>` is `the head` **or** `the marked section`, and the branch is
-`read.source` (`src/core/handover.ts:203–209`). **In this repository the marker
+`read.source` (`src/core/handover.ts:226`: `` const where = read.source === 'marker' ? 'the marked section' : 'the head'; ``). **In this repository the marker
 branch is what fires**: the default marker is U+23ED (⏭, `src/core/config.ts:483`,
 a *default* rather than a constant "because the convention is this project's
 own … and a project that marks its handover differently should not have to

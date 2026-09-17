@@ -84,7 +84,7 @@ export function workspaceIsMyContext(projectRoot: string): boolean {
 
 `packageRoot()` (`src/rules/store.ts:51–53`) resolves `dirname(store.ts) + '..' + '..'` — **two** levels, `src/rules` → `src` → the package root — i.e., "is the `.my_context` I'm running against literally sitting next to the source of the plugin package that shipped these rules." The code comment states the reasoning directly: a marker file "is something a stranger's project acquires by copying a file, and what hangs on the answer is whether rules about how THIS repository works are law somewhere else." Path identity can't be copied by accident; a marker file can.
 
-**But the store's *source* is environment-settable, and that deserves the same prominence as the tier.** `MYCONTEXT_RULES_DIR` (`RULES_DIR_ENV`, `src/rules/deliver.ts:332`) replaces the **entire** store: `resolveStoreDir` (`:417–421`) returns the named directory in preference to `entriesDir()`, and `deliverAtDoor`, `assertDoor` and — since 2026-09-14 (`store/8`) — all three `mycontext rules` subcommands go through that one resolution, deliberately, "because a second one would let the assertion count a different store from the one the door delivered." Until that date the CLI did not, so `rules list` and `rules verify` described the package's own store while the doors delivered another — and `missedDoorLine`, the sentence that tells a reader what to run when a door may have been missed, names those exact two commands.
+**But the store's *source* is environment-settable, and that deserves the same prominence as the tier.** `MYCONTEXT_RULES_DIR` (`RULES_DIR_ENV`, `src/rules/deliver.ts:439`) replaces the **entire** store: `resolveStoreDir` (`:543–547`) returns the named directory in preference to `entriesDir()`, and `deliverAtDoor`, `assertDoor` and — since 2026-09-14 (`store/8`) — all three `mycontext rules` subcommands go through that one resolution, deliberately, "because a second one would let the assertion count a different store from the one the door delivered." Until that date the CLI did not, so `rules list` and `rules verify` described the package's own store while the doors delivered another — and `missedDoorLine`, the sentence that tells a reader what to run when a door may have been missed, names those exact two commands.
 
 It is not silent. `substitutedStoreLine` (`:341–347`) emits, into the delivered block itself:
 
@@ -157,12 +157,26 @@ There is a second, *different* refusal the manifest module implements and is car
 The brief states: delivered at `session-start` and `subagent-start`; asserted at `pre-compact` and `pre-tool-use`. Verified exactly, by grep and by reading each hook:
 
 ```
-$ grep -rn "deliverAtDoor\|assertDoor" src/hooks/*.ts
-src/hooks/pre-compact.ts:217:    const missedStore = assertDoor(ws.projectRoot, sessionId);
-src/hooks/pre-tool-use.ts:684:    return assertDoor(root, key);
-src/hooks/session-start.ts:130:    return deliverAtDoor({...
-src/hooks/subagent-start.ts:316:    const store = deliverAtDoor({...
+$ grep -rn "deliverAtDoor\|assertDoor" src/hooks/*.ts     # re-run 2026-09-17
+src/hooks/pre-compact.ts:13:import { assertDoor } from '../rules/deliver.ts';
+src/hooks/pre-compact.ts:225:    const missedStore = assertDoor(ws.projectRoot, sessionId);
+src/hooks/pre-tool-use.ts:18:import { assertDoor } from '../rules/deliver.ts';
+src/hooks/pre-tool-use.ts:708:    return assertDoor(root, key);
+src/hooks/session-start.ts:9:import { deliverAtDoor } from '../rules/deliver.ts';
+src/hooks/session-start.ts:134:    const delivered = deliverAtDoor({
+src/hooks/subagent-start.ts:7:import { deliverAtDoor } from '../rules/deliver.ts';
+src/hooks/subagent-start.ts:319:    const delivered = deliverAtDoor({
 ```
+
+**This block was previously stale and self-contradicting** — an earlier version showed
+`session-start.ts:130` and `subagent-start.ts:316` with the text `return deliverAtDoor({...` /
+`const store = deliverAtDoor({...`, while the prose below (correctly, both times) cited `:134` and
+`:319` with the real variable name, `delivered`. A chapter's own pasted "verified exactly" evidence
+disagreeing with its own prose three paragraphs later is the single most dangerous shape a stale
+figure can take, because the paste reads as proof and disarms a reader who would otherwise doubt
+the prose. The command above is real, unedited output from this repository as it stands; the
+`import` lines are included because that is what the command actually prints, not trimmed for
+tidiness.
 
 **Delivery** (`deliverAtDoor`, `src/rules/deliver.ts`) renders the full, tier-filtered rule text and hands it to the model. It is called from exactly two hook files:
 - `session-start.ts` — for a brand-new or resumed session (`door: 'session-start'`), *and* for the session that follows a compaction (`door: 'compact-restore'`, when `options.source === 'compact'`). Both are the same hook file; the door label just changes with the trigger.
@@ -176,7 +190,7 @@ The `Door` type itself (`src/rules/delivered.ts:165`) is a closed union — `'se
 - `pre-compact.ts:225` — right before a compaction, to catch a session that somehow never got its opening delivery.
 - `pre-tool-use.ts:708` — the earliest hook that runs *after* every door. **Not on every tool call**: `PreToolUse` is registered in `hooks/hooks.json` with matcher `Read|Edit|MultiEdit|Write|NotebookEdit|Agent`, so it fires on six tool names. A `Bash` call does not reach it.
 
-**Where the "missed door" sentence goes is not into the model's context.** `pre-tool-use.ts:741` writes it with `process.stderr.write` — it is addressed to the person at the terminal, not to the agent, which is why a missed door is a thing a human notices rather than a thing a session is told.
+**Where the "missed door" sentence goes is not into the model's context.** `pre-tool-use.ts:747` writes it with `process.stderr.write` — it is addressed to the person at the terminal, not to the agent, which is why a missed door is a thing a human notices rather than a thing a session is told.
 
 **Two things about the ledger file itself**, both new on 2026-09-13 (`dc0f14fb`) or previously unstated:
 
@@ -413,7 +427,7 @@ Already quoted in full above. Notable as the store's own self-measurement: over 
   `list_rules` — that half of the original point survives: an agent that reads the sentence and
   has only tool calls available still has to translate it, even though a tool exists that would
   serve the same answer. (That sentence goes to **stderr**, to the person, not into the model's
-  context — `pre-tool-use.ts:741`.)
+  context — `pre-tool-use.ts:747`.)
 - **The delivered block omits the tier that `rules show` prints** (`deliver.ts:200`), so a reader of a delivery cannot tell a `product` constant from a `developer` one.
 - ~~**Store version and changelog are readable only from `src/ui/maintenance/`**~~ — **closed 2026-09-14 (`store/9`)**: `rules verify` and `rules list` print the version, the publish date and the latest changelog note, and both carry `storeVersion`/`publishedAt` in `--json`. The maintenance tool's exclusion is untouched, which is the point — the repair was a shipped surface, not a smaller exclusion. **Still true and not fixed here:** the changelog is five entries and at least one version behind the directory as of 2026-09-16 (`store/10`; it was four entries behind on 2026-09-13 — see "The full manifest changelog" above), so a reader who now CAN consult it is consulting something stale, and the gap is actively widening rather than fixed at four.
 - **`RuleSet.refused` rendering** — what a consumer actually sees when an entry fails to parse — is not described in this chapter.

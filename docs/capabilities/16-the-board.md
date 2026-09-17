@@ -66,37 +66,42 @@ the property that makes the whole mechanism trustworthy in the first place: a se
 readiness would disagree with the first the moment one of them updated alone, which is precisely
 the defect `reports/EXECUTION-BOARD.md` was retired for.
 
-Real output against this repository, `--held` — **the command prints up to three tables, and an
-earlier version of this section pasted only the third (the held list) under a sentence promising
-the first (the ready list) too**, which made its own worked example claim to show something it did
-not. All three, unabridged, 2026-09-16:
+Real output against this repository, `--held` — **the command prints up to three tables, and two
+successive earlier versions of this section each dropped something: one pasted only the third
+table (the held list) under a sentence promising the first (the ready list) too; the repair for
+that then pasted a held list with three of its four real rows, silently matching a `--limit 3` that
+does not actually apply to the held table at all** (`--limit` bounds only the *ready* list; the
+held list, the question list and the trailing counts are never truncated by it). Re-run and
+re-pasted 2026-09-17, complete, all four held rows included:
 
 ```
-$ mycontext ready --held --limit 3
-┌────────────┬─────┬───────┬───────────────────────────────────────────────────────────────────┐
-│ task       │ pri │ state │ title                                                               │
-├────────────┼─────┼───────┼───────────────────────────────────────────────────────────────────┤
-│ anchors/12 │ 1   │ todo  │ take the lane report and the owner's own words as automatic marks…  │
-│ anchors/13 │ 1   │ todo  │ a user who installs mycontext mid-project has conversations nobody… │
-│ budget/6   │ 1   │ todo  │ an edited budget shows what it was, and one control puts it back    │
-└────────────┴─────┴───────┴───────────────────────────────────────────────────────────────────┘
+$ mycontext ready --held --limit 3     # 2026-09-17 — a dated reading; every count below moves
+┌────────────┬─────┬───────┬───────────────────────────────────────────────────────────────────────┐
+│ task       │ pri │ state │ title                                                                 │
+├────────────┼─────┼───────┼───────────────────────────────────────────────────────────────────────┤
+│ anchors/12 │ 1   │ todo  │ take the lane report and the owner's own words as automatic marks…    │
+│ anchors/13 │ 1   │ todo  │ a user who installs mycontext mid-project has conversations nobody…   │
+│ budget/6   │ 1   │ todo  │ an edited budget shows what it was, and one control puts it back      │
+└────────────┴─────┴───────┴───────────────────────────────────────────────────────────────────────┘
 
-149 ready of 153 open task(s)
+153 ready of 157 open task(s)
 
-┌─────────────────────────────────────────────────────┬─────────┬─────────────────────────────┐
-│ question                                            │ blocks  │ title                         │
-├─────────────────────────────────────────────────────┼─────────┼─────────────────────────────┤
-│ OPENQ-does-export-import-ever-import-or-is-a-third… │ walk/89 │ does Export / import ever…    │
-└─────────────────────────────────────────────────────┴─────────┴─────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────┬─────────┬────────────────────┐
+│ question                                                          │ blocks  │ title              │
+├───────────────────────────────────────────────────────────────────┼─────────┼────────────────────┤
+│ OPENQ-does-export-import-ever-import-or-is-a-third-of-that-screen │ walk/89 │ does Export / import ever…│
+└───────────────────────────────────────────────────────────────────┴─────────┴────────────────────┘
 
-┌───────────┬─────┬───────┬──────────────────────────┬───────────────────────────────────────────┐
-│ task      │ pri │ state │ held by                  │ title                                     │
-├───────────┼─────┼───────┼──────────────────────────┼───────────────────────────────────────────┤
-│ walk/18   │ 1   │ todo  │ a blocker has not landed │ build init --rewrite-watched, and offer it│
-│ docsys/11 │ 3   │ todo  │ a blocker has not landed │ both READMEs learn the composer and help  │
-│ port/99   │     │ todo  │ a blocker has not landed │ LAST UI TASK: return the UI to the real   │
-└───────────┴─────┴───────┴──────────────────────────┴───────────────────────────────────────────┘
-149 ready; 3 shown. Raise the cap with --limit 149, or narrow it with --plan.
+┌───────────┬─────┬───────┬──────────────────────────┬─────────────────────────────────────────────┐
+│ task      │ pri │ state │ held by                  │ title                                       │
+├───────────┼─────┼───────┼──────────────────────────┼─────────────────────────────────────────────┤
+│ walk/18   │ 1   │ todo  │ a blocker has not landed │ build init --rewrite-watched, and offer it  │
+│ docsys/11 │ 3   │ todo  │ a blocker has not landed │ both READMEs learn the composer and the help│
+│ port/99   │     │ todo  │ a blocker has not landed │ LAST UI TASK: return the UI to the real     │
+│ port/98   │     │ todo  │ a blocker has not landed │ SCREEN-BY-SCREEN REVIEW: walk the rail item │
+└───────────┴─────┴───────┴──────────────────────────┴─────────────────────────────────────────────┘
+
+153 ready; 3 shown. Raise the cap with --limit 153, or narrow it with --plan.
 
 4 open task(s) held and not listed above: 4 a blocker has not landed. `mycontext ready --held` lists
 them.
@@ -105,12 +110,16 @@ them.
 by work...
 ```
 
-The **first** table is the ready list itself (columns `task │ pri │ state │ title`, no `held by`);
-the **second**, printed only when a blocking question exists, is that question named directly; the
-**third**, printed only with `--held`, is the held list this section is actually about, with its
-own `held by` column. Every number is real and moved by exactly one between this section's first
-draft and this repair (`150 ready` → `149 ready`, `3` open task total unchanged at `153`) — ordinary
-drift from lanes closing work in between, not an error.
+The **first** table is the ready list itself (columns `task │ pri │ state │ title`, no `held by`),
+and it alone respects `--limit`; the **second**, printed only when a blocking question exists, is
+that question named directly; the **third**, printed only with `--held`, is the held list this
+section is actually about, with its own `held by` column, and it prints every held task regardless
+of `--limit`. **"4 open task(s) held" and four rows in the held table is the invariant this example
+exists to demonstrate — if a future reader sees three rows under a claim of four, or four rows
+under a claim of three, the mismatch is the bug to report, not the count.** Every absolute number
+here (`153 ready of 157`, `4 held`) is a 2026-09-17 reading and will already be wrong by the time
+this is read; the shape — three tables, the held table always complete, the trailing counts always
+matching what was actually printed — is what this example is for.
 
 **Open questions that block work are surfaced by name; questions that block nothing yet are counted
 and not listed** — a deliberate anti-noise design, stated in the report's own text: *"a list that
@@ -217,15 +226,22 @@ totals stop adding up while every individual row still looks correct in isolatio
 lying error nobody audits for by eye.
 
 **Tier 2 — a commit named an item, and the item is still open. Reported, never gated.** First
-measured the day this chapter was written: 23 of 153 open task items had already been named by a
-commit since 2026-09-14 — one lane's work was in `HEAD` with the item it finished still reading
-`state: todo`, so the subject it belonged to reported two of its four items shipped as zero. **This
-number is one of the fastest-moving in the whole reference, because it counts a race this project's
-own lanes are actively closing.** Re-run for this repair pass, 2026-09-16 (later the same day):
-`node scripts/check-board.ts` now reports **3 of 153 open work items, over the last 120 commits
-(2026-09-12 to 2026-09-16)** — a real drop, not a correction, as lanes closed the items the first
-reading caught mid-flight. Read whatever number a fresh run gives you as current; the mechanism is
-what this section is actually documenting. This is the project's
+measured the day this chapter was written: 23 of an open-task total in the low 150s had already been
+named by a commit since 2026-09-14 — one lane's work was in `HEAD` with the item it finished still
+reading `state: todo`, so the subject it belonged to reported two of its four items shipped as
+zero. **This number is one of the fastest-moving in the whole reference, because it counts a race
+this project's own lanes are actively closing, and it is computed over a sliding 120-commit window
+that itself moves out from under a fixed denominator within a day.** Every re-run since has given a
+different pair, and the exact 2026-09-16 denominator quoted in an earlier version of this section
+(153) could not be reconstructed against a later run's window (which read 154) — the two numbers
+are close enough that this is most likely an off-by-one from reusing `ready`'s neighbouring
+open-*task* figure rather than the command's own open-*work-item* figure, but that is not provable
+after the window has moved, so it is stated as a caveat rather than corrected to a specific value.
+Re-run right now, 2026-09-17: `node scripts/check-board.ts` reports **5 of 157 open work items, over
+the last 120 commits (2026-09-13 to 2026-09-17)**. Read whatever a fresh run gives you as current;
+the mechanism — a sliding window over recent commits, checked against live item state, with four
+named exclusions — is what this section is actually documenting, not any specific pair of numbers.
+This is the project's
 own dispatch loop failing to verify the one thing that actually matters: every brief says "close
 each finished item," some lanes do and some do not, and the commit step checks the code and the
 tests and never checks that the item's own state changed. **It cannot be a hard gate, and the
@@ -257,11 +273,14 @@ runs beside `check:board` in the same two workflows.
 - **This chapter does not describe `mycontext status`'s own board-adjacent counts**, or the
   `check:board --orphans` flag beyond naming that it exists — both are real surface this pass did
   not verify past what is shown above.
-- Every count in this chapter (`149 ready`, `78 subjects`, `3 of 153`, `2 waiting on you`) is a
-  **dated reading from 2026-09-16**, taken against a corpus that both commands recompute from
-  scratch on every run — and several of them already moved once *within* the same day this chapter
-  was written and re-verified. Re-run them for today's numbers; that is the entire point of the
-  mechanism.
+- Every count in this chapter (the ready total, the subject count, the commit/item-state ratio,
+  "waiting on you") is a **dated reading**, taken against a corpus that both commands recompute
+  from scratch on every run. `78 subjects in the map` has held steady across every reading this
+  chapter has been through, because D-numbers move only when a subject is deliberately minted; the
+  ready total and the commit/item-state ratio have each moved on **every single re-run** across
+  three separate verification passes on three different days. Re-run them for today's numbers; that
+  is the entire point of the mechanism, and this chapter's own revision history is itself the best
+  evidence that a bare number here goes stale faster than a reader expects.
 
 ## See also
 

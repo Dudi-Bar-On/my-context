@@ -28,11 +28,16 @@ config value this load-bearing deserves the flag.) A fresh install still has
 all three closed — the distinction between what the product ships and what
 this repository sets is the one this whole section exists to keep separate.
 
-**Source root:** `src/review/` holds **thirteen** modules at HEAD (`870e57c5`) —
+**Source root:** `src/review/` held **thirteen** modules at commit `870e57c5` (2026-09-13) —
 `trigger.ts`, `pass.ts`, `input.ts`, `rubric.ts`, `propose.ts`, `dedupe.ts`,
 `claim.ts`, `decline.ts`, `declined.ts`, `prompt.ts`, **`pending.ts`**,
-**`drift.ts`** and **`model.ts`**. The last three are described below and were
-absent from an earlier draft of this list; `drift.ts` is a **third off-switch**
+**`drift.ts`** and **`model.ts`**. **Naming that count "at HEAD" was already wrong by the time an
+earlier version of this sentence was corrected once** — a commit hash is a fixed point and "HEAD"
+is not one, and three more modules have landed since:
+`backfill-recommendations.ts`, `promote.ts` and `recommend.ts`, for **sixteen** at the actual
+current HEAD as this correction was written (re-run `ls src/review/*.ts` for the true count at any
+later moment; do not trust "sixteen" either, past this sentence). `pending.ts`, `drift.ts` and
+`model.ts` were absent from an even earlier draft of this list; `drift.ts` is a **third off-switch**
 this chapter's "what's built but off" section has to account for, and
 `model.ts` — landed 2026-09-13 — reverses this chapter's single most repeated
 claim (see "Reaching a model").
@@ -350,9 +355,11 @@ it is the owner's. **It is no longer a refused key** — `model` left
 `REVIEW_LATER_KEYS`, which now holds only `crossSessionSameCwd`, and the source
 records why: *"It was refused for as long as the refusal was true."*
 
-**The call site is in `pass.ts:397–430`, not in `propose.ts`**, and the
-placement is argued: it runs *before* the proposing block and its result is
-folded in, so that **a model call that fails still leaves a report saying it
+**The call site is in `pass.ts:445–502`, not in `propose.ts`**
+(`const modelCandidates` opens the block at `:445`, `if (options.model !== null)` at `:446`,
+`reviewPrompt(input)` at `:447`, `callAgentCli` at `:449`), and the
+placement is argued in the comment immediately above it, at `:440–444`: it runs *before* the
+proposing block and its result is folded in, so that **a model call that fails still leaves a report saying it
 was attempted and why**, and so `propose` stays testable without a transport.
 `options.model === null` short-circuits the whole block. The call is bounded by
 `MODEL_TIMEOUT_MS = 180_000` and `MAX_REPLY_BYTES = 1_000_000`, and
@@ -555,9 +562,11 @@ wired into the real hook path — and shipped off by two independent defaults**
   repository* is "a model is reached, on this repository's own configuration,"
   not "no model is reached by any path." A fresh install still gets the
   off-by-default `null`.
-- **`src/review/drift.ts` is still imported by nothing but tests** — its only
-  importers anywhere are `test/review/drift.test.ts` and
-  `test/core/retrieval-return.test.ts`. At 18.5 KB it is the larger of the two
+- **`src/review/drift.ts` is still imported by nothing but its own test** — its only
+  importer anywhere is `test/review/drift.test.ts`. (An earlier version of this
+  bullet also named `test/core/retrieval-return.test.ts` as an importer; that file only
+  *mentions* `drift.test.ts` inside two comments, it does not import the module —
+  re-verified directly against both files.) At 18.5 KB it is the larger of the two
   modules this chapter used to describe as unwired, and it is now the only one.
 - **`src/review/pending.ts`, by contrast, IS wired**, and this chapter
   discusses `queueCeiling` at length without naming the module that computes

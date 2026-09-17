@@ -37,10 +37,14 @@ choose a mode; they get the most literal answer first and progressively looser o
 which was the explicit design goal of the report this shipped from: *"the failure mode to avoid is
 a Find dialog with nine checkboxes nobody ticks."*
 
-Worked example, real output against this repository's own archive:
+Worked example, real output against this repository's own archive, **re-run and re-pasted
+2026-09-17** (the previous version of this block was left undated after its own capture and, unlike
+every other live paste in this reference, silently stopped reproducing — one of the seven rows had
+been displaced by a newer hit and three totals had moved; this one carries its date for exactly
+that reason, and is expected to look different again the next time anyone runs it):
 
 ```
-$ mycontext conversation search "index report" --limit 3
+$ mycontext conversation search "index report" --limit 3     # 2026-09-17
 ┌────────┬────────┬──────────────────┬──────────┬──────────┬───────────┬───────────────────────┐
 │ tier   │ kind   │ when             │ session  │ lane     │ byte      │ match                 │
 ├────────┼────────┼──────────────────┼──────────┼──────────┼───────────┼───────────────────────┤
@@ -49,14 +53,14 @@ $ mycontext conversation search "index report" --limit 3
 │ phrase │ prompt │ 2026-09-10 12:17 │ 595db3b1 │ agent-ac │ 0         │ …ng [index report]s I…│
 │ near   │ answer │ 2026-09-09 16:26 │ 595db3b1 │ —        │ 81858157  │ … lane [report]ed 66/…│
 │ near   │ answer │ 2026-09-08 23:23 │ 595db3b1 │ —        │ 73206567  │ …ng to [report] a hal…│
-│ near   │ answer │ 2026-09-16 12:38 │ 595db3b1 │ —        │ 135594684 │ …[index]ed and [repor…│
+│ near   │ answer │ 2026-09-16 20:05 │ 595db3b1 │ —        │ 141684342 │ …The subjects [repor]…│
 │ both   │ answer │ 2026-09-11 05:00 │ 595db3b1 │ —        │ 93156686  │ Now the owed [index]… │
 └────────┴────────┴──────────────────┴──────────┴──────────┴───────────┴───────────────────────┘
 my_context: 7 hit(s) in what was said, over prompt and answer spans.
 my_context:   phrase: 3 shown of 3 matched — the bound cut this reading.
-my_context:   near: 3 shown of 48 matched — the bound cut this reading.
-my_context:   both: 1 shown of 1009 matched — the bound cut this reading.
-my_context: and 1138 more in what was RUN — add `--sources ran` to see them, or `--sources both`.
+my_context:   near: 3 shown of 51 matched — the bound cut this reading.
+my_context:   both: 1 shown of 1029 matched — the bound cut this reading.
+my_context: and 1177 more in what was RUN — add `--sources ran` to see them, or `--sources both`.
 my_context: tool_result and thinking blocks are NOT indexed at all, so what a command PRINTED and
 what the model thought cannot be found by any search here.
 ```

@@ -178,7 +178,10 @@ this reference; those chapters describe it from source instead and say so.
 
 ---
 
-*17 files, 7,364 lines, ~495 KB (`wc -c docs/capabilities/*.md`, decimal kB), first written
+*17 files, 7,376 lines, 508,660 bytes (508.7 kB decimal / 496.7 KiB) as of this correction —
+**this figure changes with every edit to this reference, including this one, so treat it as a
+lower bound rather than a constant**; `wc -l docs/capabilities/*.md` and
+`wc -c docs/capabilities/*.md` reproduce it on any later checkout. First written
 directly against the source tree and this repository's own live corpus on 2026-09-12,
 **verified claim by claim and corrected against the code on 2026-09-13**
 (`reports/2026-09-13-capabilities-doc-verified.md` is the audit that drove it), **audited and
@@ -192,13 +195,28 @@ while an older section still described code deleted days earlier). Every false c
 pass found is corrected in place, including two the second pass itself flagged as most
 consequential: this repository's self-improvement-loop dials (chapter 11, and this index) were
 described as two-of-three-on when the live config in fact has all three on, and this index once
-again contradicted chapter 10's own corrected `rules verify --restore` bullet. Every number in
-this reference was re-read from the tree for one of these passes rather than copied from a prior
-draft; where an older figure is still quoted, it is quoted explicitly as a historical comparison,
-never as current state — and the discipline that survived both audits best was pasting real,
-unabridged command output rather than hand-typed line citations, which is why several corrections
-below replace a `file.ts:123` reference with a symbol name or a live command a reader can re-run.
-Counts, line citations and live outputs are dated where they appear; the corpus, the anchor file
-and the conversation archive all grow daily — several counts in this reference moved measurably
-between its own first and second verification passes on the same day — so read any figure as a
-reading rather than as a constant.*
+again contradicted chapter 10's own corrected `rules verify --restore` bullet. And **a third,
+independent verification on 2026-09-17** (`reports/2026-09-17-capabilities-verified-again.md`, 282
+claims checked, 21 false) found a narrower and sharper failure: every one of the 21 sat beside a
+claim the previous pass had just repaired — a refreshed count in one section left five other
+mentions of the same number unrefreshed in chapter 5, four corrected hook citations left in place
+beside a pasted `grep` block in chapter 10 that still showed the old ones, a chapter-15 disclaimer
+that asserted work "had not landed at HEAD" when it had landed in HEAD's own parent by the time the
+sentence was committed. **The fix for that pattern is structural, not another round of point
+fixes**: a changed number is now swept through its whole file rather than corrected at one site,
+volatile counts (anchor rows, `ready`'s totals, servable-document counts, ellipsis counts) are
+dated and flagged as moving within the hour rather than stated bare, and no sentence in this
+reference asserts what is or is not in a commit, a branch, or "HEAD" — a commit hash is a fixed
+point and "HEAD" is not one, and a reference that conflates the two goes stale the moment another
+lane pushes. Every number in
+this reference was re-read from the tree for one of these three passes rather than copied from a
+prior draft; where an older figure is still quoted, it is quoted explicitly as a historical
+comparison, never as current state — and the discipline that survived every audit best was pasting
+real, unabridged, **dated** command output rather than hand-typed line citations or an undated live
+paste, which is why several corrections below replace a `file.ts:123` reference with a symbol name
+or a live command a reader can re-run, and why a live command's own output now carries the date it
+was run beside it. Counts, line citations and live outputs are dated where they appear; the corpus,
+the anchor file and the conversation archive all grow daily — several counts in this reference
+moved measurably between its own three verification passes, in one case within the same
+afternoon — so read any figure as a reading rather than as a constant, and prefer the command over
+the number wherever both are given.*

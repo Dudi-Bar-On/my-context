@@ -195,7 +195,7 @@ Use case: the first command to run at the start of a session to get a one-screen
 **`search "<words>"`** — full-text-ish item search (distinct subsystem from the conversation-archive trigram search in Chapter 4/14 — this one searches item title/body/tags, not transcript prose) with `--type`, `--tag`, `--path`, `--status`, `--relation`, `--linked-to`, `--direction` filters. Real output, 2026-09-16:
 
 ```
-$ node src/cli/index.ts search "budget" --limit 3
+$ node src/cli/index.ts search "budget" --limit 3       # ran 2026-09-16; corpus size only
 ┌─────────────────────────────────────────────────────────────────┬─────────────┬────────┐
 │ id                                                              │ type        │ status │
 ├─────────────────────────────────────────────────────────────────┼─────────────┼────────┤
@@ -209,6 +209,12 @@ least one of its words. Searched 1306 item(s).
 
 172 item(s) match; 3 shown. Raise the cap with --limit 172, or narrow the search.
 ```
+
+**The three rows, their order and the two phrase/word counts are stable; "Searched N item(s)" is
+not — it is the corpus's total item count, which grows every time anyone adds an item, including
+during the writing of this chapter** (1306 when this block was captured, 1309 minutes later while
+fixing an unrelated citation nearby, both on 2026-09-16). Re-run the command for today's total; the
+ranking and the rows it returns are the part of this example worth trusting.
 
 **This is now a ranked search, and it was not always one.** `src/cli/commands/search.ts` and the
 MCP `list_items` tool both call `searchItems` (`src/core/rank.ts`, shipped 2026-09-16), not the
@@ -435,9 +441,10 @@ read directly.)
 tool: ready
 args: { "limit": 3 }          // limit defaults to 50 when omitted
 → PLAIN TEXT, not JSON. `run` ends `return lines.join('\n')` (src/mcp/tools.ts:1405),
-  composing one line per task at :1400 as
+  composing one line per task at :1371 as
   `${row.item.id} · ${taskCell(row)} · pri ${priority} · ${state} · ${title}`,
-  followed by the readiness-is-derived disclosure. `limit` is read at :1370.
+  followed by the readiness-is-derived disclosure. `limit` is read at :1341
+  (`const limit = optNum(args, 'limit', 50);`).
 ```
 
 There is **no JSON payload at any point** on the MCP side. The CLI's

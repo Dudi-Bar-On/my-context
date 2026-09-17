@@ -37,14 +37,19 @@ So `.my_context/.anchors.jsonl` — one JSON object per line, protocol-tagged
 anything else. Confirmed on this workspace:
 
 ```
-$ wc -l .my_context/.anchors.jsonl      # 2026-09-13; it was 636 on 2026-09-12
-715 .my_context/.anchors.jsonl
-
-$ head -n 1 .my_context/.anchors.jsonl
-{"protocol":"my_context/anchor@1","id":"595db3b1-a481-4553-b4c0-7248c31b2655:-:100522902",
- "sessionId":"595db3b1-a481-4553-b4c0-7248c31b2655","agentId":null,"byteOffset":100522902,
- "label":"today","kind":"table","origin":"automatic","at":"2026-09-11T22:35:10.797Z"}
+$ head -n 1 .my_context/.anchors.jsonl      # re-run 2026-09-17; this line will not match a later run
+{"protocol":"my_context/anchor@1","id":"595db3b1-a481-4553-b4c0-7248c31b2655:-:100165384",
+ "sessionId":"595db3b1-a481-4553-b4c0-7248c31b2655","agentId":null,"byteOffset":100165384,
+ "label":"D | subject | state","kind":"table","origin":"automatic","at":"2026-09-11T22:20:36.813Z"}
 ```
+
+**This is the one live paste in this chapter that is genuinely expected to change on every
+re-run, by design, not by drift**: the file is fully rewritten in sort order on every write
+(explained further down in this section), so "line 1" is whichever row currently sorts first — a different row than the
+one shown here as soon as one more automatic anchor with a lower id lands. The line is shown to
+demonstrate the **shape** of a row (nine keys on the wire, one JSON object per line) and the fact
+that `head -n 1` is a meaningful, cheap way to confirm the file parses — not to assert which
+specific row is first today.
 
 Every row has the same **eight** fields, plus the `protocol` tag shown above that makes nine keys on
 the wire: `id`, `sessionId`, `agentId` (a lane id, or `null` for the session's own transcript),
@@ -76,11 +81,21 @@ version of this chapter, corrected here — see the note at the end of this sect
 
 ```
 $ wc -l .my_context/.anchors.jsonl
-1345 .my_context/.anchors.jsonl
+1355 .my_context/.anchors.jsonl
 $ grep -o '"origin":"[a-z]*"' .my_context/.anchors.jsonl | sort | uniq -c
-   1344 "origin":"automatic"
+   1354 "origin":"automatic"
       1 "origin":"owner"
 ```
+
+**This number is not merely dated, it is volatile within the session that reads it** — three
+successive readings taken while repairing this chapter, minutes apart, gave 1,342, then 1,345,
+then 1,348, then 1,355, because the per-turn pass (§5.6, Path 1) writes marks while this document
+is being edited. **This chapter states the count exactly once, here, and every other section below
+that needs to talk about "how many" uses "§5.3's count" or a magnitude in words, never a repeated
+digit** — restating a specific number in more than one place is exactly how a previous version of
+this chapter went stale in five places at once. Re-run the two commands above for the true count at
+any later moment; do not trust a number copied from this page into a conversation or another
+document.
 
 - **`automatic`** — marked by the automatic pass (§5.4) because the turn under it matched a fixed
   grammar ("this is an anchor by its shape"), with no person asked.
@@ -102,20 +117,25 @@ no request can forge a row that the automatic pass would later be entitled to er
 ```
 $ grep -o '"kind":"[a-z_]*"' .my_context/.anchors.jsonl | sort | uniq -c
       1 "kind":"note"
-    442 "kind":"report"
+    447 "kind":"report"
      40 "kind":"ruling"
-    862 "kind":"table"
+    867 "kind":"table"
 ```
 
-1 + 442 + 40 + 862 = 1,345, matching the `origin` count and the file's own line count above —
-three readings of one file agreeing, which is the property the previous version of this section
-lacked (it paired a 2026-09-16 `kind` reading against a stale 2026-09-12 `origin` reading and a
-2026-09-13 line count from a different section, three different days inside one paragraph). (An
-earlier `kind` snapshot, 2026-09-13: 1 `note`, 299 `ruling`, 336 `table`, no `report` — see §5.4a
-below for why `report` exists at all now.) `note` is the default kind for a hand-marked anchor —
-but as of 2026-09-15 it is one of **six** a person may now choose, not the only one (§5.4b).
-`table`, `ruling` and **`report`** are the three grammars the automatic pass recognizes (§5.4) —
-and the one hand-marked anchor on this workspace is still the single `note`.
+1 + 447 + 40 + 867 = 1,355, matching the `origin` count and the file's own line count above —
+three readings of one file taken at one instant agreeing, which is the property the version of this
+section before this repair lacked (it paired a 2026-09-16 `kind` reading against a stale 2026-09-12
+`origin` reading and a 2026-09-13 line count from a different section, three different days inside
+one paragraph — and a repair of that specific defect then immediately produced a *narrower* version
+of the same defect, by refreshing this block and leaving five other mentions of the count elsewhere
+in this chapter unrefreshed; those five now say "see this section" rather than a digit, for exactly
+that reason). (An early `kind` snapshot, 2026-09-13: 1 `note`, 299 `ruling`, 336 `table`, no
+`report` — see §5.4a below for why `report` exists at all now; useful only to show the shape of the
+grammar change, not as a baseline for arithmetic.) `note` is the default kind for a hand-marked
+anchor — but as of 2026-09-15 it is one of **six** a person may now choose, not the only one
+(§5.4b). `table`, `ruling` and **`report`** are the three grammars the automatic pass recognizes
+(§5.4), `table` is comfortably the largest of the three and `ruling` comfortably the smallest, and
+the one hand-marked anchor on this workspace is still the single `note`.
 
 ## 5.4 What "automatic by nature" means — the grammar, not a judgement
 
@@ -200,8 +220,8 @@ it. This is why the closed list above can hold `'report'` again without reviving
 owner ruled out: the two `report`s test for entirely different things, and the second one cannot
 reproduce the first's failure mode by construction.
 
-Re-measured 2026-09-16: `report` is now the **second most common kind on this workspace's own
-anchor file**, 440 of 1,342 rows (§5.3) — up from 192 of 432 lane-report turns being named `report`
+`report` is now the **second most common kind on this workspace's own anchor file** — see §5.3 for
+the live count and how to re-derive it — up from 192 of 432 lane-report turns being named `report`
 at all when the owner asked for this on 2026-09-15, to all of them.
 
 ## 5.4b The owner's own vocabulary — six kinds a person may choose, not just `note`
@@ -304,9 +324,10 @@ the pass's own rows, each a seek).
 **The first run over a workspace's archive is a different act, and it asks first.** Nobody starts a
 project with this plugin already installed — the ordinary case is months of Claude Code sessions
 already on disk, and `conversation rebuild` is the door those pre-existing conversations come
-through. Measured on a foreign archive the day this shipped (2026-09-16) — 13,375 turns, 575 lanes
-— that door would mark **1,213 points in one act**, and §5.3's own measurement is that even 1,342
-marks is already enough to make the rarer kinds hard to find by scrolling. So `automaticAnchorsStanding(index) === 0` is
+through. Measured on a foreign archive the day this shipped (2026-09-16) — one session, 575 lanes,
+**13,375 prose spans**, of which **726** were turns the person himself typed — that door would mark
+**1,213 points in one act**, and §5.3's own measurement is that even a count in the low thousands
+is already enough to make the rarer kinds hard to find by scrolling. So `automaticAnchorsStanding(index) === 0` is
 detected as "this is a first run," and only a first run **plans before it writes**: it composes the
 same report a real run would produce, discloses it in full (every line, before the write, including
 on `--json` — as the `plan` field rather than a sentence a machine reader would never see), and then
@@ -348,10 +369,14 @@ hit asking "is this point already marked") keep deriving an id from a byte offse
 need to know what kind of mark might be there.
 
 **What it costs, and why it is purely additive.** The table grammar keeps first claim on the bare
-id — 861 turns already carried a judged-good table mark at the point's own id when this shipped —
-so adding the report grammar beside it gained rows and rewrote none: **+240 rows, 0 rewritten**, on
-this workspace's own archive the day it landed (measured again 2026-09-16: 861 `table` + 440
-`report`, up from 336/192 respectively on 2026-09-13's mixed grammar).
+id — the large majority of turns already carried a judged-good table mark at the point's own id
+when this shipped — so adding the report grammar beside it gained rows and rewrote none: **+240
+rows, 0 rewritten**, measured once on this workspace's own archive the day it landed (2026-09-16).
+That `+240` is a one-time delta from a specific `git diff`-style before/after around the change
+itself, which is why it stays a fixed fact even though every *absolute* count in this chapter
+(table's total, report's total, the file's total) is not — see §5.3 for the live reading, taken at
+a different, later instant, and expect it to disagree with any specific absolute number quoted
+here.
 
 **The count stays honest about what changed.** A turn with two marks counts **once** in "N marked
 point(s) here" — the stepper's job is "take me to the next *place*," and it must never land on the
@@ -400,9 +425,12 @@ turn already had a stop at that point, so nothing new appears to scroll past.
   (`src/ui/read-model-retrieval.ts:105`, with the fixed-point handling at `:517`). It is reachable
   **only from the retrieval surface** — not from `mycontext conversation anchor`, which lists the
   file. See [06 — Retrieval](./06-retrieval.md).
-- **The anchor count moves constantly** — 636 on 2026-09-12, 715 on 2026-09-13, 1,342 on
-  2026-09-16, because the automatic pass runs every turn and a new automatic grammar (`report`,
-  §5.4a) landed in between. Read any figure in this chapter as a dated reading.
+- **The anchor count moves constantly, within minutes and not just across days** — 636 on
+  2026-09-12, 715 on 2026-09-13, then three successive readings taken minutes apart while repairing
+  this very chapter on 2026-09-16/17 (§5.3), because the automatic pass runs every turn and a new
+  automatic grammar (`report`, §5.4a) landed in between. This chapter states the exact count in
+  exactly one place (§5.3) for exactly this reason; treat any other number in this chapter that
+  looks like a row count as either a fixed historical fact (labelled as such) or an error to report.
 - **The writer batches its flush, and that is the actual "on the fly" delay** (§5.6, Path 1) —
   measured up to 5m 37s from a turn being written to its anchor reaching `.anchors.jsonl`, against
   a reader-facing repaint of well under a second once the store does move. A future lane shortening
