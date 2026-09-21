@@ -10,16 +10,19 @@ first.** The companion runbook is `reports/2026-09-21-v2-release-runbook.md`.
 You are releasing `my_context` version 2.0.0. You are the dispatching session: you plan, you
 dispatch lanes, you commit and push, you report at checkpoints. You do not tag; the owner tags.
 
+**The owner's ruling that shapes everything: nothing is deferred. Every task open today is
+2.0.0. The release is done when `mycontext ready` prints no rows.**
+
 ## 0. Ground rules that override anything else
 
-These come from this repository's own corpus and they are delivered to you at session start;
-read the items named here before your first dispatch, and cite an item by id whenever you act
-on it.
+These come from this repository's own corpus and are delivered to you at session start; read
+the items named here before your first dispatch, and cite an item by id whenever you act on it.
 
 - **The corpus is the record.** `mycontext ready` is the board; nothing else is. Every phase
   below is filed as a `task` item before its lane is dispatched, because
   `dispatchGate.enabled` is on in this repository: an Agent prompt must name an existing item
-  id or carry `no-item: <reason>`. Name the phase's task id in every dispatch prompt.
+  id or carry `no-item: <reason>`. Name the phase's task id, or the board task the lane closes,
+  in every dispatch prompt.
 - **A delegated lane never runs a git command that writes, and never runs a command that
   reaches beyond its own process** (`RULE-a-delegated-worker-never-runs-a-command-that-reaches-beyond`
   and its sibling on git). You commit, staging by explicit pathspec, never `git add` a
@@ -34,38 +37,43 @@ on it.
   imports** (`CONST-node-24-no-build-step`, `CONST-zero-runtime-dependencies`).
 - **Never edit `.my_context/items/**` by hand**: use `mycontext` (`add`, `edit`, `supersede`,
   `review promote`) or the MCP tools. Never edit `src/rules/entries/` by hand.
-- **Never widen the scope.** This prompt is the whole of 2.0.0. A defect you find that is not
-  listed here is filed as a `task` tagged `v2.1` in one line and left alone, unless it breaks a
-  checkpoint command, in which case you fix it and say so.
+- **Nothing is deferred, and nothing is filed silently.** A finding you make while working is
+  fixed on the spot if it is in a file the lane already holds. Otherwise it is filed as a `task`
+  with `--extra plan=release` and reported in the checkpoint line "filed for 2.0", and the owner
+  says at that checkpoint whether it stays. You never tag anything for a later version.
 - **Windows and Linux both count.** The owner's machine is Windows; the Ubuntu CI job is the
   Linux evidence and it also runs the browser suite. Every checkpoint is "green on both jobs".
-- **Stop at every checkpoint** and report in the format in §6. Do not proceed past a red one.
+- **Stop at every checkpoint** and report in the format in §11. Do not proceed past a red one.
+- **Lanes never share a file.** Before dispatching a phase, list each lane's files; two lanes
+  with a file in common run one after the other. `app.js`, `conversations.js` and `styles.css`
+  are the three that collide most; phase 6 is ordered around them.
 
 ## 1. OWNER ANSWERS (filled by the owner before pasting)
 
 ```
-A freeze on the list below ....................... yes / no
-B retire the three mockup-parity browser specs ... yes / no
-C full export is declared non-importable .......... yes / no
-D keep the narrow spare band, add the sentence .... yes / no
-E Content-Security-Policy on, script-src 'self' ... yes / no
-F dispatch gate requires a lowercase slug ......... yes / no
-G owner-only tasks (one line each, or "2.1"):
-   port/99: 
-   anchors/12: 
-   hooks/22: 
-   review/10: 
-   rulings/89: 
-   walk/66: 
-   walk/167: 
-   walk/14: 
-   handover/16: 
-   swallow/16: 
-   backfill --apply: 
-H close the 17 done tasks and retire the 11 obsolete ... yes / no
+A new findings join 2.0 only at a checkpoint, on my word ... yes / no
+B retire the three mockup-parity browser specs ............ yes / no
+C full export is declared non-importable ................... yes / no
+D keep the narrow spare band, add the sentence ............. yes / no
+E Content-Security-Policy on, script-src 'self' ............ yes / no
+F dispatch gate requires a lowercase slug .................. yes / no
+G owner-only tasks, one ruling each:
+   port/99 (I look at every screen in phase 9): 
+   anchors/12 (which mark wins; rebuild in phase 7): 
+   hooks/22 (hooks programme is the finished ground; survey in phase 5): 
+   review/10 (option 1, 2 or 3): 
+   rulings/89 (does report 3 overturn 2026-08-31): 
+   walk/66 (ledger projection: live or batch): 
+   walk/167 (visible confirmation: approved chrome or not): 
+   walk/14 (budget carry from the simulator: build it or retire): 
+   handover/16 (pointer convention becomes a rule: yes/no): 
+   swallow/16 (I fire the nine hook events in phase 9): 
+   backfill --apply (authorise after B1's repair): 
+H close the 17 done tasks and retire the 11 obsolete ....... yes / no
 ```
 
-If an answer is blank, use the default from the runbook §2 and say so in your first report.
+If an answer is blank, use the default from the runbook §2 and §7.3 and say so in your first
+report.
 
 ## 2. First: write the plan, then file the phases
 
@@ -73,15 +81,18 @@ If an answer is blank, use the default from the runbook §2 and say so in your f
    `docs/superpowers/plans/2026-09-2X-v2-0-release.md` from this prompt, in the format the other
    plans in that directory use, headed `REQUIRED SUB-SKILL: use
    superpowers:subagent-driven-development`. Every task below becomes a plan task with files,
-   steps, and a verification command. Cite the spec as this file and the runbook.
+   steps and a verification command; the board tasks in phases 4 to 8 are listed by id and each
+   plan task links to its item, whose body is the specification.
 2. File one `task` item per phase (`mycontext add task "<phase title>" --summary "…"
    --extra plan=release --extra seq=<n> --extra state=todo --yes`; check the exact `--extra`
    spelling with `mycontext help capture` first, and confirm each landed with a plan, seq and
-   state, because `add task` accepts an item with none and exits 0). Tag each `v2.0`.
+   state, because `add task` accepts an item with none and exits 0).
 3. Commit the plan and the items, push, and report (checkpoint 0).
 
-Then execute with `superpowers:subagent-driven-development`: one lane per task, lanes that
-touch the same file never run together, every lane told its files and told it may not run git.
+Then execute with `superpowers:subagent-driven-development`: one lane per task or per small
+group of tasks in the same files, every lane told its files, its item ids and that it may not
+run git. A lane closes a board task by meeting the task's own closing condition; you set
+`state=done` after you have read the lane's evidence yourself.
 
 ## 3. Phase 1 — the repository tells the truth
 
@@ -96,34 +107,35 @@ drives `path.relative` returns an absolute path and the guard passes it. Add
 corpus: the 84 items whose `source_file` starts with `C:/` (55 also carry `source_checksum`)
 must stop claiming a source; use `mycontext edit <id> --unlink` (D3.7) or the equivalent
 documented route, never a hand edit, and record the repair in one commit whose message names
-the count. After it, `doctor` from a fresh clone exits 0.
+the count. After it, `doctor` from a fresh clone exits 0. Then, if the owner authorised it, run
+`node scripts/backfill-requests.ts .my_context --apply` and report its output.
 
 **1.2 The citation gate (B2, `rulings/47`).** `npm run verify:citations` lists 26 broken
 documentation-tier citations (for example
 `docs/superpowers/plans/2026-08-16-web-ui-1-server-and-reads.md:500,510,511,518`). Repair each
 by re-anchoring to the fragment that exists now or by adding a historical marker where the
 cited text is legitimately gone, as the script's own header explains. Exit 0 without
-`--strict-source`. Do not flip `--strict-source` in this release.
+`--strict-source`. The task's other half, the `.html` citation form, is closed by ruling that
+the mockup is frozen and cited as a historical marker.
 
 **1.3 Portable tests (B3).** Make these pass on a machine that is not the owner's:
 `test/ui/staging-endpoint.test.ts:456` and `test/ui/palette-screen.test.ts:511` (read
 `.my_context/.staging`, which is gitignored: create what they read in a temp workspace, or skip
 with a named reason `check:basis` accepts); `test/rules/seed-numbering.test.ts:122` (needs the
 real archive: same choice); `test/docs/examples.test.ts` ×3 where `scrubOutput` does not know
-this checkout's path (teach it the repository root generically, not a literal path);
-`test/cli/experimental-warning.test.ts:122` (Node 24.21 no longer prints the `node:sqlite`
-warning: rewrite the assertion to what the shebang still guarantees, or retire the test with
-its reason); `test/ui/execute-route.test.ts:702` and `test/cli/pack-import.test.ts:529`
-(isolate first; fix if real, otherwise pin the environment). Then `npm run gen:docs` so the
-README `status` example matches the command again. Also fix or delete
-`harness/self-test/run.test.mjs:18`, which asserts the warning and is wired to nothing.
+this checkout's path (teach it the repository root generically); `test/cli/experimental-warning.test.ts:122`
+(Node 24.21 no longer prints the `node:sqlite` warning: rewrite the assertion to what the
+shebang still guarantees, or retire the test with its reason); `test/ui/execute-route.test.ts:702`
+and `test/cli/pack-import.test.ts:529` (isolate first; fix if real, otherwise pin the
+environment). Then `npm run gen:docs` so the README `status` example matches the command again.
+Fix or delete `harness/self-test/run.test.mjs:18`, which asserts the warning and is wired to
+nothing.
 
 **1.4 CI order (B15).** In `.github/workflows/ci.yml`, run `npm test` before
 `verify:citations`, or add a second job that runs the unit suite regardless; keep the comment
 that explains why the cheap gates come first, and add one sentence on why the suite must not
 be hidden behind a doc gate (27 days of it, 2026-08-21 to 2026-09-17). Add `fetch-depth: 0`
-to `actions/checkout` so `check:board`'s drift tier sees history, or state in its comment that
-it is vacuous under a depth-1 clone.
+to `actions/checkout` so `check:board`'s drift tier sees history.
 
 **1.5 Cleanup.** Delete `simulate-before.png`, `simulate-rec.png`, `stair-after.png` at the
 root. Add a retirement header to `docs/ROADMAP.md` and `reports/CONTINUE-HERE.md` in the shape
@@ -134,8 +146,8 @@ Checkpoint 1.
 
 ## 4. Phase 2 — the board says what is left
 
-Exit: `mycontext ready` shows only `v2.0`-tagged rows; `npm run check:board` and
-`check:needs-cycles` exit 0.
+Exit: `mycontext ready` shows the remaining rows only; `npm run check:board` and
+`check:needs-cycles` exit 0; every remaining row has a plan, seq and state.
 
 **2.1 Close the 17 done tasks** (runbook §7.1) with `mycontext edit <id> --extra state=done
 --yes`, one commit, message naming each id and its evidence line.
@@ -144,15 +156,13 @@ Exit: `mycontext ready` shows only `v2.0`-tagged rows; `npm run check:board` and
 --yes` where a successor exists (the duplicates), otherwise `mycontext edit <id> --status
 deprecated --yes` with the reason in `--note`. `rulings/84` is retired in favour of decision E.
 
-**2.3 Apply the owner's G answers.** A "2.1" answer tags the task `v2.1`; a ruling is
-recorded as a `decision` item citing the task, and the task is closed or tagged as the ruling
-says.
+**2.3 Record the owner's G rulings.** Each becomes a `decision` item citing the task. Where
+the ruling closes the task (`rulings/89` no, `walk/66` batch, `handover/16` yes with the rule
+written), close it now. Where it lands in a later phase (`anchors/12`, `hooks/22`, `review/10`,
+`walk/167`, `walk/14`, `port/99`, `swallow/16`), leave it open and note the phase in the item.
 
-**2.4 Tag the 115 deferred tasks `v2.1`** (runbook §7.5). One commit.
-
-**2.5 Give the eleven planless tasks a plan/seq/state or retire them** (they are in §7.1 and
-§7.2 already; confirm none is left without a plan). File `review/10`'s chosen option as a
-2.1 task if the owner chose one.
+**2.4 The planless tasks.** After 2.1 and 2.2 none should remain without a plan; confirm with
+`mycontext ready --json` and give any survivor `plan=release`.
 
 Checkpoint 2.
 
@@ -183,7 +193,7 @@ and the changelog's "reads a full export and not only a pack" are false. Make `p
 a `kind: export` artefact refuse in one sentence that says a full export is an archive to copy
 back, not to import, and points at `--as-pack`; delete the dead branch; fix
 `test/cli/pack-import.test.ts:820-833` to feed a real export projection; correct the changelog
-entry and README §5 and `docs/capabilities/12-…` and their Hebrew mirrors.
+entry, README §5, `docs/capabilities/12-…` and their Hebrew mirrors.
 
 **3.6 Dispatch gate (B11, decision F)**: `src/hooks/pre-tool-use.ts:555` `AGENT_ID_TOKEN`
 requires a lowercase slug after the hyphen and a left boundary, or derives the prefix
@@ -208,9 +218,9 @@ browser (`npx playwright install chromium`), run `npm run test:e2e`. Retire
 `test/ui/styles-parity.test.ts`. For every remaining red spec: fix the product if the spec is
 right; fix the spec if its scenario is stale (the 13 `strip.spec.ts` reds are a scenario that
 never supplies a warm session: route `/api/sessions` in every scenario the way line 355 does;
-`doctor-outcome` and `doctor-settle` need a workspace with one deliberate finding, per
-`CONTINUE-HERE.md`'s note). Record the clean baseline on the pinned browser as `rulings/114`
-asks. Exit: `npm run test:e2e` exit 0 on this machine and on the Ubuntu job.
+`doctor-outcome` and `doctor-settle` need a workspace with one deliberate finding). Record the
+clean baseline on the pinned browser as `rulings/114` asks. Exit: `npm run test:e2e` exit 0 on
+this machine and on the Ubuntu job.
 
 **3.10 First-session sentence (B13, decision D)**: `cmdInit` prints one line after
 "initialized": nothing is pinned yet, so governing items arrive as titles until one is pinned
@@ -223,48 +233,175 @@ sentence. A test pins the message on a zero-pinned corpus.
 `mycontext lesson` a `--summary` flag (`src/core/command-flags.ts:409`, `lesson.ts:161-164`);
 `inbox-promote` asks for one; `promoteRevision` records `SUMMARY_OMITTED_NOTE`.
 
-Checkpoint 3.
+Checkpoint 3. From here the repository is releasable; the owner has ruled that it is not
+released until the board is empty.
 
-## 6. Phase 4 — the stranger test
+## 6. Phase 4 — silent failures and disclosures (17 board tasks)
 
-Exit: the owner runs runbook §6 on Windows and reports the rule body arrived, `plugin details`
-lists 18 hooks and 1 MCP server, and `mycontext --version` prints the version. You do not run
-this; you wait for the owner's report. If it fails, fix and return to checkpoint 3.
+Exit: each task's closing condition met; `npm test` green; both jobs green.
 
-## 7. Phase 5 — documentation
+The items are the specification; read each body first. Group by file: `src/core/audit.ts`
+(`rulings/80`), `src/core/select.ts` (`swallow/14`: disclose dropped restore ids as a spill the
+way `carriedDropReason` at `:1123` does for the carry tier), `src/ui/read-model-retrieval.ts`
+(`swallow/13`: distinguish the two empty classes the way `read-model-conversations.ts:2191-2206`
+does), the sixteen `recordAudit` call sites in `src/hooks/` (`rulings/81`),
+`src/doctor/state-verification.ts:138` (`dxfindings/6`), `src/cli/commands/status.ts:112` and
+`src/mcp/tools.ts:247` and `read-model-tutorials.ts:170` (`walk/147`), `src/core/ledger.ts:923-954`
+and `pre-compact.ts` (`walk/148`), `src/pack/import.ts` (`store/7`: pre-flight
+`unknownExtraFieldError` per item in `planImport`, and write config with temp-plus-rename),
+`src/rules/manifest.ts:473-490` (`store/13`), `src/core/code-identity.ts:418-431` (`live/28`),
+the seven remaining one-line swallows (`swallow/11`), the swallow-class gate itself
+(`swallow/15`, `unread/6`: a script under `scripts/` that reads catch blocks and refuses an
+unargued one, wired into `ci.yml`), `rulings/85` and `rulings/88`, `swallow/9`, and the test
+that writes into the live audit log (`TASK-the-audit-log-still-records-two-session-ids…`: fork
+test rows the way `delivered.ts:132` does).
+
+Checkpoint 4.
+
+## 7. Phase 5 — CLI, store, types and hygiene (28 board tasks)
+
+Exit: each closing condition met; `npm test` green; both jobs green.
+
+CLI and prose lane group: `rulings/76` (derive every banner from `COMMAND_FLAGS` the way `add`
+does at `src/cli/index.ts:581`), `rulings/83`, `rulings/87` (`src/doctor/checks.ts:355-357`),
+`rulings/92`, `rulings/38`, `rulings/93` (part 3, the per-D reading), `cliscript/5`,
+`cliscript/6` (the two renames), `contra/5` (`edit.ts:91-98` usage), `walk/11`, `walk/142`
+(every printed time names its clock), `walk/162` (five refusals name a route out),
+`hooks/22` (the integration survey, per G), `review/10` (per G; default: `review promote`
+takes `--plan` and `--seq`).
+
+Store, types and perf lane group: `rulings/77` (a `Covers<>` helper and the fifteen lists),
+`rulings/78` (`statusline-powerline.ts:96` and the 24 hand-written `usage:` strings),
+`rulings/86` (`assertNever` at every outcome switch; `hooks/stop.ts:611`), `rulings/91` (the
+`as Item` and `as Origin` sites in `store.ts`, `verdict-store.ts:121`, `pack/history.ts:555`),
+`store/10` (replay the store changelog and add the five missing entries), `store/11` (`verify`
+parses every entry), `store/12` (`deliver.ts:252` prints the tier), `hooks/12q` (the percentile
+index, six files under `test/perf`), `accretion/6` (split `conversation-index.ts` or record
+"it stays" with the reason), `repaint/12` (steps 2 and 4), `dxfindings/4` (the two remaining
+checks), `live/20` (a git guard on Bash for delegated workers; the item records the cost
+argument, answer it), `live/24` (the three remaining), `confirm/6`, `readmodel/2` (the client
+request shape), `readmodel/4`.
+
+Checkpoint 5.
+
+## 8. Phase 6 — the web UI (55 board tasks)
+
+Exit: each closing condition met; `npm test` green; `npm run test:e2e` green on this machine
+and on Ubuntu.
+
+Order the lanes by file so no two hold `app.js`, `conversations.js` or `styles.css` at once:
+
+1. **Shell and rail** (`app.js`, `index.html`, `styles.css`): `wcag/3` (skip link, `h1`, a
+   `document.title` per screen), `wcag/5`, `wcag/9`, `wcag/1` and `wcag/2` (a second breakpoint
+   and a rail collapse; the strip wraps or scrolls below 1200 px), `walk/153`, `walk/154`,
+   `walk/155` (language switch without a reload, if the closures allow; otherwise record why),
+   `walk/157` (keyboard jumps between screens), `walk/169`, `walk/139`, `walk/151`, `walk/167`
+   (per G), `builder/18`, `screens/25`.
+2. **Conversations** (`conversations.js` and its libs): `wcag/4` (per-row accessible names on
+   rename and drop), `wcag/7`, `wcag/8`, `walk/160`, `walk/166`, `screens/27` (the question in
+   the viewer: the check half in `scripts/check-ask-numbering.ts:168-196`), `screens/26`
+   (the viewer-wide glyph survey).
+3. **Individual screens**, one lane per screen module: `dxfindings/2` (Doctor: filter,
+   collapse, a table of contents), `walk/2` (proc), `walk/12` (every standing refusal
+   enumerated and driven to zero), `walk/32` and `walk/33` (watch model refusals), `walk/39`
+   (the provenance bar: decide what it is for and fill it or remove it), `walk/57`, `walk/59`
+   (simulate: the opening tier and a `div.at` test), `walk/76` (audit tab cap disclosure:
+   `audit-db.ts:1238` `LIMIT` plus one), `walk/89` (status: `st.staged`/`st.ingest` from
+   `/api/staging`), `walk/100` (ask cap sentence), `walk/102` (preview literals keyed),
+   `walk/105` (config `skippedNotice` keyed), `walk/119` (a summary trigger on every item
+   surface), `walk/134` (search ranks and matches words in any order: `src/core/search.ts:291`),
+   `walk/144` (hover and click help on every button; adopt `lib/disclosure.js` in the six
+   screens that hand-build it, `screens/23`), `screens/24` (the unmeasured mark on proc, port,
+   packs), `walk/149` (glob tester cap note), `walk/152` (watch table sizing), `walk/163`
+   (help screen `dir` and count), `walk/164` (plural rules in both string tables), `walk/165`,
+   `walk/168` (`aria-errormessage`, `role=status`), `builder/12` (ack picker offers only items
+   with a finding), `ui1/17b` (index-tier ghost on the ribbon).
+4. **Typography and palette** (`styles.css` only): `walk/156` (type scale, `.body`
+   `max-width`), `walk/158`, `walk/159`, `wcag/6` (`@media (forced-colors)` blocks).
+5. **Browser gates**: `walk/15` (styles-parity compares resolved cascade), `walk/43`
+   (a regression test on `applyStatic`), `walk/55` (Capture out of `KNOWN_GAPS` and
+   `EXPECTED_EMPTY`), `port/101` (ledgers re-derived over the real corpus, dated).
+
+Checkpoint 6.
+
+## 9. Phase 7 — features (8 board tasks plus two rulings)
+
+Exit: each closing condition met; the feature documented in its chapter and Hebrew mirror;
+`npm test` green; both jobs green.
+
+`ui3/15` (typed SQL surface on Ask, per the owner ruling in the item; size L), `walk/8`
+(`drawStair` draws the free-space line from the real window), `walk/18` (`init
+--rewrite-watched`, offered from the Doctor screen; needs `walk/106` first), `walk/106`
+(`watchedDocs` printed by `status` and checked by `doctor`), `budget/6` (Configure shows the
+in-force value beside a typed one and a restore control), `rulings/82` (a reporting surface
+for `.my_context/.rules/delivered.jsonl`: a `mycontext rules delivered` command or a doctor
+line), `semantic/10` (the said/ran/both control on Conversations, and the `tool_result` cap
+recorded as the owner's decision), `walk/141` (Ask and Capture reviewed as they are now, with
+the findings fixed in the same phase), `anchors/12` (per G: apply the ruling and run the
+rebuild on the owner's archive with `MYCONTEXT_UI_SESSIONS_DIR` sandboxing as the record
+describes), `walk/14` (per G).
+
+Checkpoint 7.
+
+## 10. Phase 8 — documentation
 
 Exit: `npm run gen:docs` clean; `npm test` green (including `test/docs/parity.test.ts` and
 `system-parity.test.ts`); `npm run verify:citations` exit 0; `npm run check:cited-items`
-reports zero live citations of retired items; both CI jobs green.
+reports zero live citations of retired items; both jobs green.
 
-**5.1 Retired items cited as live (B5, `rulings/115`)**: `npm run check:cited-items` names 13
+**8.1 Retired items cited as live (B5, `rulings/115`)**: `npm run check:cited-items` names 13
 sites (`docs/capabilities/03-creation-and-gates.md:401`, `14-search-over-the-archive.md:251`,
 `docs/system/01-the-board.md:290`, `docs/capabilities/10-rule-store.md:331,350`,
 `docs/system/07-focus.md:224`, and the Hebrew twins). Each becomes a citation of the successor
 or is marked historical.
 
-**5.2 README false claims (B14)**: §3 `mycontext help <command>` (it does not exist; `help`
+**8.2 README false claims (B14)**: §3 `mycontext help <command>` (it does not exist; `help`
 takes seven topics; `<command> --help` is the per-command form); §5 `init` "creates … an
 `items/` directory" (it does not until the first capture); the `status` example (regenerated in
-1.3); the export/import sentences (3.5); `--version` (3.1); the pinned sentence (3.10). Every
-change lands in `docs/README.he.md` in the same commit, because `test/docs/parity.test.ts`
-holds them in lockstep.
+1.3); the export/import sentences (3.5); `--version` (3.1); the pinned sentence (3.10); every
+feature from phase 7. Every change lands in `docs/README.he.md` in the same commit, because
+`test/docs/parity.test.ts` holds them in lockstep.
 
-**5.3 Chapter 10 line 453** says no maintenance screen exists and recommends editing the store
-by hand; `docs/the-store.he.md` and the code say otherwise. Correct it. Also
-`docs/capabilities/11-self-improvement-loop.md` states the loop's dials; confirm its sentence
-matches the shipped defaults (`enabled: false`, `maxProposalsPerPass: 0`, `model: null`) and
-this repository's config, and retire the 2026-09-16 subject map's "switched off" sentence with
-a note.
+**8.3 Screenshots (`rulings/101`)**: every English capability chapter and system document
+gets the screenshots its own placeholders name, shot against this repository's live session
+through a server sandboxed with `MYCONTEXT_UI_SESSIONS_DIR` so the owner's record is never
+touched, never on port 58888; then the Hebrew editions re-shoot the same slots. Chapter 15 is
+the model.
 
-**5.4 The changelog**: under `## [Unreleased] — 2.0.0 when tagged`, add `### Fixed` entries
-for B1, B6, B7, B8, B9, B12 and the summary-gate back doors, in the voice `VERSIONING.md` asks
-for ("what changes in practice"); correct the export/import sentence; add a `### Removed` for
-the three retired browser specs. Do not rewrite the section.
+**8.4 The rest**: `docsys/11` (both READMEs learn the composer and the help; needs
+`library/6`), `library/6` (the help tested as a reader uses it, every subject), `rulings/67`
+(the six corpus bodies citing the nickname), `rulings/79` (`app.js:2490` and the `security.ts`
+header), `rulings/111` (re-pin the floors 68 → current, 40 → current), `walk/143`, chapter 10
+line 453 (the maintenance tool exists; say so and stop recommending the hand edit),
+`docs/capabilities/11-self-improvement-loop.md` (state the shipped defaults and this
+repository's config; retire the 2026-09-16 subject map's "switched off" sentence with a note).
 
-Checkpoint 5.
+**8.5 The changelog**: under `## [Unreleased] — 2.0.0 when tagged`, add `### Fixed` entries
+for B1, B6, B7, B8, B9, B12, the summary-gate back doors and every phase-4 disclosure, in the
+voice `VERSIONING.md` asks for ("what changes in practice"); `### Added` for every phase-7
+feature; `### Removed` for the three retired browser specs; correct the export/import sentence.
+If the owner asked at checkpoint 8 for an editorial pass, do it here and only here.
 
-## 8. Phase 6 — the release cut (the owner does steps 4 and 5)
+Checkpoint 8.
+
+## 11. Phase 9 — the owner's
+
+You do not run this; you prepare it and wait.
+
+1. Give the owner the runbook §8 commands for the stranger test.
+2. Give the owner the list of twenty screens to look at on the real corpus (`port/99`), with
+   the URL and the credential from a server you start on a port above 47000 with
+   `MYCONTEXT_UI_SESSIONS_DIR` sandboxed. Close `port/99` on the owner's word.
+3. Give the owner the nine hook events and the payload each expects (`swallow/16`), and record
+   the owner's answer in the item; make `session-end.ts:48` and `session-start.ts` agree with
+   what was observed.
+
+When the owner reports all three, run `mycontext ready`. It must print no rows. If it does
+not, list them and return to the phase each belongs to.
+
+Checkpoint 9.
+
+## 12. Phase 10 — the release cut (the owner does steps 4 and 5)
 
 Follow `VERSIONING.md` "Cutting a release" exactly:
 
@@ -281,34 +418,35 @@ Follow `VERSIONING.md` "Cutting a release" exactly:
    ceiling is the only red on the Windows job, report it with the measurement; do not widen a
    ceiling without the owner's word.
 
-After the tag: the open board is the 2.1 list. Report it as the last checkpoint and stop.
+Report the last checkpoint and stop.
 
-## 9. How you report at every checkpoint
+## 13. How you report at every checkpoint
 
 One message, this shape, nothing else:
 
 ```
 CHECKPOINT <n> — <phase title>
 commit: <sha> pushed: yes
-ran:  npm test → <pass/fail counts>   verify:citations → exit <n>   doctor → exit <n>   check:* → <all 0 | which failed>
+ran:  npm test → <pass/fail counts>   verify:citations → exit <n>   doctor → exit <n>   check:* → <all 0 | which failed>   test:e2e → <exit or "not this phase">
 CI:   windows <green|red|pending>  ubuntu <green|red|pending>  <link>
-done: <task ids closed this phase>
-filed for 2.1: <ids, one line each, or none>
+board: <rows open before> → <rows open after>
+closed: <task ids closed this phase>
+filed for 2.0: <ids, one line each, or none>   (the owner rules on each before the next phase)
 blocked on the owner: <what, or nothing>
 next: <phase n+1 title>
 ```
 
 If any line is red, the message ends at that line with what you tried and what you need.
 
-## 10. What you must not do
+## 14. What you must not do
 
+- Do not tag anything for a later version. There is no later version until the board is empty.
 - Do not touch `docs/design/web-ui-mockup.html` (frozen, `DEC-the-mockup-is-a-frozen-reference…`).
-- Do not change the selector's spare band, budgets, tiers or categories: those are compatibility
-  surfaces under `VERSIONING.md` and this release adds no behaviour change beyond the listed
-  fixes.
+- Do not change the selector's spare band, budgets, tiers or categories beyond what a listed
+  task asks: those are compatibility surfaces under `VERSIONING.md`.
 - Do not skip, disable or quarantine a test to go green; retire a spec only with a decision item
   and the owner's B answer.
 - Do not run `taskkill`, `pkill`, or restart the owner's UI server on port 58888.
 - Do not start GSD, `.planning/`, or any second board.
-- Do not file more than the one-line 2.1 tasks §0 allows. Filing kept pace with closing for six
-  weeks; this release exists to stop that.
+- Do not file a task without reporting it in the checkpoint line, and do not carry on past a
+  checkpoint the owner has not answered.
