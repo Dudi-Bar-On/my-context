@@ -94,6 +94,51 @@ group of tasks in the same files, every lane told its files, its item ids and th
 run git. A lane closes a board task by meeting the task's own closing condition; you set
 `state=done` after you have read the lane's evidence yourself.
 
+## 2b. The dispatch loop, and what survives a compaction
+
+The board is the state machine. There is no `STATE.md`; the `state` field of each task item
+(`todo` → `doing` → `done`) is the state, it lives in git, and `mycontext ready` recomputes
+the frontier from it on every call. Run this loop for every phase:
+
+1. **Frontier.** `mycontext ready --json --plan <phase plan>` lists the tasks that are open
+   and unheld. A task held on `needs:` or on an open question stays out until its blocker
+   closes; `mycontext ready --held` shows why.
+2. **Wave.** Pick up to three frontier tasks whose files do not overlap (each item's body names
+   its files; when it does not, read the code once and record the files in the item with
+   `mycontext edit <id> --observation "files: …" --yes`). Two tasks sharing a file never ride
+   in one wave. Phase 6's five lane groups are already ordered this way.
+3. **Claim.** For each picked task: `mycontext edit <id> --extra state=doing --yes`, one commit,
+   pushed. The claim is on disk before the lane exists, so a restart can see it.
+4. **Dispatch** the wave's lanes in parallel with `superpowers:subagent-driven-development`,
+   each prompt naming its task id (the dispatch gate reads it), its files, its closing condition
+   quoted from the item, and the two prohibitions: no git, nothing beyond its own process.
+5. **Land.** When a lane returns: read its evidence yourself, run the fast checks
+   (`npm run check:basis`, the affected test files, `typecheck`), stage by explicit pathspec,
+   `mycontext edit <id> --extra state=done --yes`, commit, push. A lane that returns without
+   meeting the closing condition is re-dispatched once with the gap named; a second miss is
+   reported at the checkpoint as blocked.
+6. **Repeat** until the phase plan has no open rows, then run the phase's exit commands and
+   write the checkpoint report. Also append the report to
+   `reports/2026-09-2X-release-checkpoints.md` and commit it: that file is the durable log of
+   where the release stands.
+
+**After a compaction or a new session, do exactly this before anything else:**
+
+1. Read what the session start delivered (the handover block, `reports/V2-HANDOVER.md`, and
+   the restore tier bring the pinned rules and the last snapshot back).
+2. Read `reports/2026-09-2X-release-checkpoints.md` (last entry = current phase) and
+   `docs/superpowers/plans/2026-09-2X-v2-0-release.md`.
+3. Run `mycontext ready --json --plan <current phase>`. Any task in `state: doing` with no lane
+   alive is an orphaned claim: reset it to `todo` and re-dispatch it. Nothing else needs
+   reconstructing, because every claim and every close was committed when it happened.
+4. Continue the loop from step 1.
+
+Before a compaction the repository's own `PreCompact` hook snapshots the window and, at 90 %
+occupancy, asks for a handover (`handover.path` in `.my_context/config.json`). Write the handover
+yourself when asked: the current phase, the wave in flight, and the task ids it holds. That plus
+the committed state is what makes this resistant to compaction: the plan is a file, the state is
+the board, the progress is a committed log, and the lanes are stateless.
+
 ## 3. Phase 1 — the repository tells the truth
 
 Exit: on this machine, `npm test` exits 0, `npm run verify:citations` exits 0, `node

@@ -314,3 +314,29 @@ disclosure (`swallow/16`). The session gives you the list for each.
 - **The changelog.** Its `[Unreleased]` section is 627 lines and phases 3 to 7 add to it. The
   session closes it as `## [2.0.0]`; if you want it edited down, say so at checkpoint 8 and it
   becomes part of phase 8.
+
+---
+
+## 10. How the lanes are dispatched, and what survives a compaction
+
+Nothing here is a new tool. The board is the state machine and git is the memory.
+
+- **The state is the task items.** Each task is `todo`, `doing` or `done` in its own file under
+  `.my_context/items/task/`, committed. `mycontext ready` recomputes what is dispatchable from
+  those fields every time it runs; nothing is kept by hand.
+- **Waves.** The session picks up to three ready tasks whose files do not overlap, marks each
+  `doing` (committed, pushed), dispatches one lane per task in parallel, and when a lane returns
+  it verifies the evidence, runs the fast checks, commits by explicit pathspec, marks `done`,
+  pushes. Tasks that share a file run one after the other. Phase 6 is pre-ordered into five lane
+  groups for exactly this reason.
+- **Checkpoints are a committed log.** Every checkpoint report is appended to
+  `reports/2026-09-2X-release-checkpoints.md` and committed, so the last entry always says
+  which phase and which wave the release is in.
+- **After a compaction or a new session** the session reads the handover block the plugin
+  injects, the checkpoint log, the plan file, and `mycontext ready`; any task marked `doing`
+  with no lane alive is reset to `todo` and re-dispatched. That is the whole recovery: no
+  reconstruction, because every claim and every close was committed the moment it happened.
+- **Compared with GSD's phases:** GSD keeps `STATE.md` and `ROADMAP.md` as hand-written files
+  beside the code; here the same two facts are the board (computed) and the plan file
+  (committed), plus the plugin's own PreCompact snapshot and handover ask. It is the same idea
+  with one copy instead of two, which is the rule this project already lives by.
