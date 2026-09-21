@@ -40,25 +40,28 @@ plan below sequences it so the repository is green and shippable from the end of
 onward; everything after that is you choosing to keep the ruling rather than cut.
 
 **The one rule that makes it finite.** Nothing is deferred, and nothing new is filed during
-the release without you seeing it: a finding a lane makes is fixed on the spot if it is in a
-file that lane already holds; otherwise it appears in the checkpoint report as a count, and you
-say at that checkpoint whether it joins 2.0. Filing outpaced closing for six weeks; the board
-reaches zero only if every addition is a decision you make, not a reflex.
+the release without you seeing it. A bug a lane finds is always 2.0: fixed on the spot if it is
+in a file that lane already holds, filed as a release task otherwise. A finding that is not a
+bug (a design gap, a feature idea, an open question) appears in the checkpoint report as a
+count, and you say at that checkpoint whether it joins 2.0. Filing outpaced closing for six
+weeks; the board reaches zero only if every idea is a decision you make, not a reflex.
 
 ---
 
 ## 2. Your decisions, before anything runs (about one hour)
 
-The session cannot make these. Each has a default; saying "defaults" for all of them is a
-valid answer and the prompt is written for that.
+**Answered on 2026-09-21**, one by one, in the session that wrote this runbook; the prompt's
+`OWNER ANSWERS` slot carries them. The table below is the record of what was asked and what
+you chose. Re-read it once in the morning; change a line in the prompt only if you have
+changed your mind.
 
 | # | Decision | Default | Why it is yours |
 |---|---|---|---|
-| A | **New findings during the release** join 2.0 only when you say so at a checkpoint. | yes | Without it the board cannot reach zero. |
+| A | **Bugs a lane finds are always 2.0** (fixed now in its own files, filed otherwise); **non-bug findings** (design gaps, ideas, open questions) join 2.0 only when you say so at a checkpoint. | yes, this refined form | Without it the board cannot reach zero; you asked why a bug should wait for you, and it should not. |
 | B | **The three mockup-parity browser specs** (`e2e/screen-parity.spec.ts`, `pixel-parity.spec.ts`, `tree-parity.spec.ts`) are retired. `styles-parity` (a unit test on tokens) stays. | retire | They enforce the 1:1 rule you replaced with `DEC-the-mockup-is-a-reference-to-initial-thoughts-and-only-a`; two are red on HEAD. |
 | C | **A full export is not importable.** `pack import` keeps refusing it; the changelog, `pack.ts:555` and the dead branch at `import.ts:523-529` are corrected to say so. Packs (`--as-pack`) stay the way knowledge travels. | declare non-importable | The alternative (ignore `config.json` on `kind === 'export'`) keys trust on an unsigned field. |
 | D | **First session shows rule bodies.** Keep your 2026-09-07 "narrow form" (spare band only when something is pinned) and make `init`, the first normative capture, and README §4 say in one line that nothing is pinned yet and how to pin. | keep the ruling, add the sentence | Changing the selector is a behaviour change you ruled on; the sentence is not. |
-| E | **Content-Security-Policy on**, `script-src 'self'`, as the suspending comment in `security.ts:593` recommends. | on | You suspended it on 2026-08-22; turning it back on needs your word. |
+| E | **Content-Security-Policy on**, `script-src 'self'`, styles unrestricted, as the suspending comment in `security.ts:593` recommends. **Your condition:** the lane proves the Composer, Palette, Builder and Config screens still execute commands under the header before it lands. | on, with the proof | You suspended it on 2026-08-22 over style friction; the script half costs nothing and guards agent-written bodies. |
 | F | **The dispatch gate's grammar** requires a lowercase slug after the prefix. | yes | It refuses prompts containing `READ-ONLY` or `SHA-256` today. |
 | G | **The 11 owner-only tasks** (§7.3): each needs your ruling in one line; none can be parked. | see §7.3 for a default ruling per row | Nobody else can rule. |
 | H | **Retire the 11 obsolete tasks and close the 17 done ones** (§7.1, §7.2). | yes | Each has evidence; the session does the writes if you say yes. |
@@ -82,7 +85,7 @@ the rest of the board under the no-deferral ruling; phase 9 is yours; phase 10 i
 | 6 — the web UI: function, accessibility, gates | every functional finding, WCAG conformance, keyboard, reflow, typography, help adoption, gate re-derivation | 55 (§7.6) | 8 |
 | 7 — features | typed SQL on Ask, `init --rewrite-watched`, budget carry, delivery-log report, archive said/ran control, simulator anchoring | 8 (§7.7) | 4 |
 | 8 — documentation | retired rulings, README claims, screenshots in every English chapter, Hebrew edition parity, chapter 10 | 7 + B5 + B14 (§7.8) | 4 |
-| 9 — yours | the stranger test on Windows; every screen looked at on the real corpus (`port/99`); the nine hook events fired on your machine (`swallow/16`) | 3 | your time |
+| 9 — yours | the stranger test on Windows, with one look at the UI; the nine hook events fired on your machine (`swallow/16`) | 2 | your time |
 | 10 — the cut | changelog, version, gates, tag, release | `VERSIONING.md` | 0.5 |
 
 Sizes are lane days with lanes in parallel where files do not collide; wall-clock is longer
@@ -213,19 +216,19 @@ condition is met in the tree.
 
 ### 7.3 Owner-only (11) — your ruling in one line each, recorded in phase 2, done where it lands
 
-| Task | What you must say | Default ruling | Lands in |
+| Task | What you were asked | Your ruling (2026-09-21) | Lands in |
 |---|---|---|---|
-| `port/99` LAST UI TASK | you look at every screen on the real corpus and say done | you do it in phase 9 | 9 |
-| `anchors/12` | answer `OPENQ-does-the-table-mark-or-the-lane-report-mark-win…`, then the rebuild runs on your archive | the table mark wins; rebuild in phase 7 | 7 |
+| `port/99` LAST UI TASK | look at every screen on the real corpus and say done | **close now** on the mechanical work already in `e2e/app.ts`; no screen walk | 2 |
+| `anchors/12` | answer `OPENQ-does-the-table-mark-or-the-lane-report-mark-win…`, then the rebuild runs on your archive | **the lane report mark wins**; rebuild in phase 7 | 7 |
 | `hooks/22` autonomous from the first second | confirm the hooks programme is the finished ground | yes; the survey runs in phase 5 | 5 |
 | `review/10` promoted items have no plan/seq | option 1, 2 or 3 in the item | option 1: `promote` asks `--plan/--seq` | 5 |
-| `rulings/89` in-sync chip | does report 3 overturn your 2026-08-31 ruling | no; retire the task | 2 |
-| `walk/66` ledger projection | live or batch | batch; record the decision, close | 2 |
+| `rulings/89` in-sync chip | does report 3 overturn your 2026-08-31 ruling | no; in-sync stays silent; retire the task | 2 |
+| `walk/66` ledger projection | live or batch | batch; the Decay and Ledger screens say when it was last rebuilt | 2, one phase 6 row |
 | `walk/167` visible confirmation | approved chrome or not | approved; unify both screens | 6 |
-| `walk/14` budget carry from the simulator | still wanted after the 2026-09-07 re-cut | yes; build it | 7 |
+| `walk/14` budget carry from the simulator | still wanted after the 2026-09-07 re-cut | yes; build it, only after a simulation succeeded | 7 |
 | `handover/16` pointer convention | becomes a rule or not | yes; write the rule item | 2 |
-| `swallow/16` stderr disclosures | you fire the nine hook events on your machine and record which show | you do it in phase 9 | 9 |
-| `TASK-scripts-backfill-requests-ts…` | authorise `node scripts/backfill-requests.ts .my_context --apply` | authorise, after B1's repair | 3 |
+| `swallow/16` stderr disclosures | fire the nine hook events on your machine and record which show | yes, you do it in phase 9 | 9 |
+| `TASK-scripts-backfill-requests-ts…` | authorise `node scripts/backfill-requests.ts .my_context --apply` | authorised, after B1's repair, committed alone | 3 |
 
 ### 7.4 Phase 4 — silent failures and disclosures (17)
 
@@ -288,9 +291,10 @@ In the session: the session-start block must carry the rule's **body**, not only
 (decision D). Then `claude plugin details mycontext@mycontext` must list 18 hooks and 1 MCP
 server. Then `mycontext --version` must print `2.0.0`.
 
-Phase 9 also has your two board rows: look at every screen on the real corpus and say done
-(`port/99`), and fire the nine hook events on your machine and record which show a stderr
-disclosure (`swallow/16`). The session gives you the list for each.
+Phase 9 also has your one board row: fire the nine hook events on your machine and record
+which show a stderr disclosure (`swallow/16`). The session gives you the list. (`port/99`, the
+screen walk, was closed on your ruling in phase 2; the session still hands you a running UI so
+the stranger test includes one look at it.)
 
 ---
 

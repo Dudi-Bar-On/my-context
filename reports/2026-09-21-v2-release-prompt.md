@@ -37,10 +37,14 @@ the items named here before your first dispatch, and cite an item by id whenever
   imports** (`CONST-node-24-no-build-step`, `CONST-zero-runtime-dependencies`).
 - **Never edit `.my_context/items/**` by hand**: use `mycontext` (`add`, `edit`, `supersede`,
   `review promote`) or the MCP tools. Never edit `src/rules/entries/` by hand.
-- **Nothing is deferred, and nothing is filed silently.** A finding you make while working is
-  fixed on the spot if it is in a file the lane already holds. Otherwise it is filed as a `task`
-  with `--extra plan=release` and reported in the checkpoint line "filed for 2.0", and the owner
-  says at that checkpoint whether it stays. You never tag anything for a later version.
+- **Nothing is deferred, and nothing is filed silently.** A **bug** a lane finds is always
+  2.0: fixed on the spot, with `superpowers:systematic-debugging`, if it is in a file the lane
+  already holds; otherwise filed as a `task` with `--extra plan=release` and reported in the
+  checkpoint line "filed for 2.0". A lane does not complete while a bug in its own files is
+  open. A finding that is **not a bug** (a design gap, a feature idea, an open question) is not
+  filed; it is counted in the checkpoint line "ideas awaiting the owner" with one line each,
+  and the owner says at that checkpoint whether it joins 2.0 (decision A). You never tag
+  anything for a later version.
 - **Windows and Linux both count.** The owner's machine is Windows; the Ubuntu CI job is the
   Linux evidence and it also runs the browser suite. Every checkpoint is "green on both jobs".
 - **Stop at every checkpoint** and report in the format in §11. Do not proceed past a red one.
@@ -48,32 +52,36 @@ the items named here before your first dispatch, and cite an item by id whenever
   with a file in common run one after the other. `app.js`, `conversations.js` and `styles.css`
   are the three that collide most; phase 6 is ordered around them.
 
-## 1. OWNER ANSWERS (filled by the owner before pasting)
+## 1. OWNER ANSWERS (given by the owner on 2026-09-21, in the session that wrote this prompt)
 
 ```
-A new findings join 2.0 only at a checkpoint, on my word ... yes / no
-B retire the three mockup-parity browser specs ............ yes / no
-C full export is declared non-importable ................... yes / no
-D keep the narrow spare band, add the sentence ............. yes / no
-E Content-Security-Policy on, script-src 'self' ............ yes / no
-F dispatch gate requires a lowercase slug .................. yes / no
+A bugs a lane finds are always 2.0: fixed now if in the lane's own files, otherwise
+  filed as a release task. Only non-bugs (design gaps, feature ideas, open questions)
+  are counted at the checkpoint and join only on my word ................. yes
+B retire the three mockup-parity browser specs ............................. yes
+C full export is declared non-importable ................................... yes
+D keep the narrow spare band, add the sentence ............................. yes
+E Content-Security-Policy on, script-src 'self', styles unrestricted, AND the
+  lane proves every command-executing screen (composer, palette, builder,
+  config) still executes its commands under the header before it lands ..... yes
+F dispatch gate requires a lowercase slug .................................. yes
 G owner-only tasks, one ruling each:
-   port/99 (I look at every screen in phase 9): 
-   anchors/12 (which mark wins; rebuild in phase 7): 
-   hooks/22 (hooks programme is the finished ground; survey in phase 5): 
-   review/10 (option 1, 2 or 3): 
-   rulings/89 (does report 3 overturn 2026-08-31): 
-   walk/66 (ledger projection: live or batch): 
-   walk/167 (visible confirmation: approved chrome or not): 
-   walk/14 (budget carry from the simulator: build it or retire): 
-   handover/16 (pointer convention becomes a rule: yes/no): 
-   swallow/16 (I fire the nine hook events in phase 9): 
-   backfill --apply (authorise after B1's repair): 
-H close the 17 done tasks and retire the 11 obsolete ....... yes / no
+   port/99: close now on the mechanical work; no screen walk in phase 9
+   anchors/12: the LANE REPORT mark wins over the table mark; rebuild in phase 7
+   hooks/22: the hooks programme is finished ground; survey runs in phase 5
+   review/10: option 1, `review promote` asks --plan/--seq
+   rulings/89: report 3 does not overturn 2026-08-31; in-sync stays silent; retire
+   walk/66: batch; the two screens say when the projection was last rebuilt
+   walk/167: the visible confirmation is approved; unify both screens
+   walk/14: still wanted; build the carry, only after a simulation succeeded
+   handover/16: yes, the pointer convention becomes a rule item
+   swallow/16: I fire the nine hook events on my machine in phase 9
+   backfill --apply: authorised, after B1's repair, committed alone
+H close the 17 done tasks and retire the 11 obsolete ....................... yes
 ```
 
-If an answer is blank, use the default from the runbook §2 and §7.3 and say so in your first
-report.
+These are rulings, not defaults. If the owner changes one before pasting, the changed line
+wins; say in your first report which answers you are acting on.
 
 ## 2. First: write the plan, then file the phases
 
@@ -202,9 +210,12 @@ Exit: `mycontext ready` shows the remaining rows only; `npm run check:board` and
 deprecated --yes` with the reason in `--note`. `rulings/84` is retired in favour of decision E.
 
 **2.3 Record the owner's G rulings.** Each becomes a `decision` item citing the task. Where
-the ruling closes the task (`rulings/89` no, `walk/66` batch, `handover/16` yes with the rule
-written), close it now. Where it lands in a later phase (`anchors/12`, `hooks/22`, `review/10`,
-`walk/167`, `walk/14`, `port/99`, `swallow/16`), leave it open and note the phase in the item.
+the ruling closes the task (`rulings/89` no, `walk/66` batch with the "last rebuilt" line
+filed as a phase 6 row, `handover/16` yes with the rule written, `port/99` closed on the
+mechanical work already in `e2e/app.ts`), close it now. Where it lands in a later phase
+(`anchors/12` with the lane-report mark winning, `hooks/22`, `review/10`, `walk/167`,
+`walk/14`, `swallow/16`), leave it open and note the phase in the item. Answer
+`OPENQ-does-the-table-mark-or-the-lane-report-mark-win-when-one` with the owner's ruling.
 
 **2.4 The planless tasks.** After 2.1 and 2.2 none should remain without a plan; confirm with
 `mycontext ready --json` and give any survivor `plan=release`.
@@ -252,9 +263,14 @@ Make `rules verify` say what it proves: "matches the checksum it was last sealed
 
 **3.8 CSP (decision E)**: in `src/ui/security.ts` add
 `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'`
-(the vendored stylesheet and the SVG sprite decide the two exceptions; verify by loading every
-screen in the browser suite with no console CSP error). Update `test/ui/server-e2e.test.ts:89`,
-which asserts the header is absent, and the suspending comment at `security.ts:593`.
+(the vendored stylesheet and the SVG sprite decide the two exceptions; styles stay
+unrestricted on the owner's word so live UI experimenting keeps working; verify by loading every
+screen in the browser suite with no console CSP error). **The owner's condition, part of the
+closing condition:** a browser test executes a real command from the Composer, from the
+Palette, from the Builder and from the Config screen under the header and asserts the server
+ran it; if any of those breaks, fix the policy or the screen, never remove the capability.
+Update `test/ui/server-e2e.test.ts:89`, which asserts the header is absent, and the
+suspending comment at `security.ts:593`.
 
 **3.9 The browser gates (B4, `ui-gates/1`, `rulings/114`, decision B)**: install the pinned
 browser (`npx playwright install chromium`), run `npm run test:e2e`. Retire
@@ -434,9 +450,9 @@ Checkpoint 8.
 You do not run this; you prepare it and wait.
 
 1. Give the owner the runbook §8 commands for the stranger test.
-2. Give the owner the list of twenty screens to look at on the real corpus (`port/99`), with
-   the URL and the credential from a server you start on a port above 47000 with
-   `MYCONTEXT_UI_SESSIONS_DIR` sandboxed. Close `port/99` on the owner's word.
+2. `port/99` was closed in phase 2 on the owner's ruling; there is no screen walk. Do start a
+   server on a port above 47000 with `MYCONTEXT_UI_SESSIONS_DIR` sandboxed and give the owner
+   its URL and credential, so the stranger test can include one look at the UI.
 3. Give the owner the nine hook events and the payload each expects (`swallow/16`), and record
    the owner's answer in the item; make `session-end.ts:48` and `session-start.ts` agree with
    what was observed.
@@ -476,7 +492,8 @@ ran:  npm test → <pass/fail counts>   verify:citations → exit <n>   doctor �
 CI:   windows <green|red|pending>  ubuntu <green|red|pending>  <link>
 board: <rows open before> → <rows open after>
 closed: <task ids closed this phase>
-filed for 2.0: <ids, one line each, or none>   (the owner rules on each before the next phase)
+filed for 2.0: <bug task ids filed this phase, one line each, or none>   (bugs; no ruling needed)
+ideas awaiting the owner: <one line each, not filed, or none>   (the owner says join or drop before the next phase)
 blocked on the owner: <what, or nothing>
 next: <phase n+1 title>
 ```
