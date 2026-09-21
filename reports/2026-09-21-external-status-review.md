@@ -512,3 +512,52 @@ that. Either way the corpus stays the only place a rule lives.
   this session, so pinned items were read from `.my_context/items/` directly and nothing was
   delivered as an index.
 - Perf (`test:perf`) was not run.
+
+---
+
+## 8. The browser suite, as it ran here
+
+Run after the rest of this file was written: `playwright test --project=chromium --reporter=list`
+under Xvfb, one worker (the config's `20%` of this machine's cores), Chromium 1194 standing in
+for the pinned 1234 build, the `chrome` project skipped because Google Chrome is not installed
+here. **Not the two-phase gate**, and not the pinned browser — so this is a reading, not a verdict.
+
+| | Count |
+|---|---|
+| Tests in the `chromium` project | 714 |
+| Passed | **658** |
+| Failed | **49** |
+| Skipped | 7 |
+| Wall time | 1.0 h at one worker |
+
+The 49 failures by file: `strip.spec.ts` 13 · `marks-reach.spec.ts` 4 · `item-pane.spec.ts` 4 ·
+`anchors.spec.ts` 3 · `strip-picker`, `simulate-question`, `doctor-outcome`, `conversations`,
+`cli-help` 2 each · 20 files with 1 each, among them `screen-parity`, `pixel-parity`,
+`tree-parity`, `doctor-settle`, `code-hue`, `chip-hue-authority`.
+
+Read by their first error line, they fall into four kinds, and only one of them is attributable
+to this machine:
+
+- **Environmental, this machine:** `pixel-parity` (launches the absent `chrome` distribution);
+  `cli-help` ×2 (a flag table the library screen draws here and the spec expects absent — most
+  likely the PATH difference again; not proven); the four `marks-reach` timeouts (30 s
+  `waitForSelector` at one worker on a slower machine; not isolated).
+- **Already recorded red on HEAD:** `screen-parity` ("a screen is missing something the design of
+  record draws", 10 entries received against 1 expected) — `ui-gates/1`; `doctor-outcome` and
+  `doctor-settle` — the anti-vacuity guard `CONTINUE-HERE.md` describes, which needs a workspace
+  with one deliberate finding and fails loudly on a clean corpus.
+- **A ledger the strip does not meet:** all 13 `strip.spec.ts` failures share one message — "the
+  terminal status line draws these and the strip never drew one of them in any state this file
+  walks. The strip is a SUPERSET by the owner ruling of 2026-09-01" — 11 items received against 1
+  expected. That is one defect counted thirteen times, and it is either real or the ruling moved;
+  the corpus should say which. No open task names it by that message.
+- **Not classified:** `item-pane` ×4 ("no `button.linkid` rendered"), `anchors` ×3,
+  `strip-picker`, `simulate-question`, `conversations`, `code-hue`, `chip-hue-authority`,
+  `tree-parity`, `live-refresh`, `composer-*`, `preview-*`, `rules-maintenance`, `app-layout`.
+  Each would need the pinned browser and an isolated re-run before it is called a defect; the
+  suite's own rule forbids calling any of them a flake without that.
+
+What this adds to §4: **G1 is wider than the citation gate.** Even once `verify:citations` is
+green, the browser suite is not, and the record already knew about two of its red gates. Phase 0
+should carry a third exit condition — the two-phase gate green on the pinned browser, or every
+remaining red spec named in a task — before Phase 1's freeze is dated.
