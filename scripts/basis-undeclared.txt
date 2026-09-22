@@ -77,7 +77,6 @@ e2e/print.spec.ts
 e2e/ratio-legibility.spec.ts
 e2e/refusal-stale.spec.ts
 e2e/route-race.spec.ts
-e2e/screen-parity.spec.ts
 e2e/served-shape.spec.ts
 e2e/session-picker.spec.ts
 e2e/simulate-question.spec.ts
@@ -86,7 +85,6 @@ e2e/states.spec.ts
 e2e/strip-fields.spec.ts
 e2e/strip-live-refresh.spec.ts
 e2e/strip.spec.ts
-e2e/tree-parity.spec.ts
 e2e/wa-tree.spec.ts
 e2e/watch-feed.spec.ts
 test/cli/ack-all.test.ts

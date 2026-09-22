@@ -70,8 +70,11 @@ export default defineConfig({
    *
    * Deliberately NOT solved by lowering `workers` below: hiding contention
    * costs everyone's wall clock and leaves the next writer to rediscover it.
-   * The cap below is a separate, earlier finding about headed browsers, and it
-   * stays for its own reasons.
+   * The cap below is a separate, earlier finding, made while the suite ran
+   * headed by default, and it stays for its own reasons even now that
+   * headless is the default (see the 2026-09-22 ruling below) — the
+   * per-worker node process `plan:execute seq:5b` spawns is unaffected by
+   * whether Chrome itself has a window.
    */
   globalSetup: './global-setup.ts',
 
@@ -80,11 +83,12 @@ export default defineConfig({
    * **Capped, because the default was buying nothing and costing determinism.**
    *
    * Playwright defaults to half the logical cores — ten on the owner's
-   * twenty-core machine — and this suite runs HEADED by the 2026-08-22 ruling
-   * below. Ten headed Chrome instances is already heavy, and since
-   * `plan:execute seq:5b` every boundary confirm additionally spawns a node
-   * process that copies the whole corpus (618 items in the demo fixture) to a
-   * temporary directory.
+   * twenty-core machine — and this suite ran HEADED by default when this cap
+   * was measured (owner ruling 2026-08-22, since reversed below). Ten headed
+   * Chrome instances was already heavy, and since `plan:execute seq:5b` every
+   * boundary confirm additionally spawns a node process that copies the whole
+   * corpus (618 items in the demo fixture) to a temporary directory — a cost
+   * headless does nothing to shrink.
    *
    * **Measured 2026-08-28, same code, same machine, minutes apart:**
    *
@@ -115,21 +119,30 @@ export default defineConfig({
   retries: 0,
   reporter: [['list']],
 
-  // **HEADED unless this is CI.** Owner ruling, 2026-08-22: "when you use
-  // playwright do not use it headless, i want to see the debug and test
-  // activities you make."
+  // **HEADLESS BY DEFAULT — owner ruling, 2026-09-22, reversing the ruling
+  // below.** The 2026-08-22 ruling this replaces, quoted in full because it
+  // was in force for a month and this project does not overwrite a
+  // superseded instruction in place: "when you use playwright do not use it
+  // headless, i want to see the debug and test activities you make."
   //
-  // This is not a preference about windows. This project's whole current
-  // problem was an agent reporting green numbers over a page nobody had looked
-  // at, and a headless run is that failure with a browser attached — the work
-  // happens where the owner cannot see it, and the only evidence left is a
-  // number I chose to report. Headed, the run is watchable while it happens.
+  // What changed: the suite is now the evidence itself, and B4/`ui-gates/1`/
+  // `rulings/114` are the record of it being driven to a clean, attributable
+  // baseline rather than watched once. A headless local run now matches CI
+  // exactly — the August ruling's own worry, "a headless run is a failure
+  // with a browser attached", pointed at an agent that could still report a
+  // green number nobody looked at; the fix that actually closes that gap is
+  // the two-phase gate naming every red spec (`scripts/e2e-gate.ts`) and the
+  // recorded baseline, neither of which needs a visible window. Headless also
+  // steals no focus on the machine it runs on and is measurably faster with
+  // nothing else to spend the saved time proving.
   //
-  // Keyed on CI rather than hard-coded, because a hosted runner has no display
-  // and would fail to launch. `forbidOnly` above already keys on the same
-  // variable, so this adds no new assumption about the environment.
+  // `MYCONTEXT_E2E_HEADED` is the opt-in for the owner watching by hand: set
+  // it to anything and the suite runs headed again, one variable rather than
+  // an edit here. CI never sets it, so CI's own behaviour is unchanged by
+  // this ruling — `forbidOnly` above already keys on `CI` for the same
+  // reason this does not hard-code the runner.
   use: {
-    headless: process.env['CI'] !== undefined,
+    headless: process.env['MYCONTEXT_E2E_HEADED'] === undefined,
     // Pinned, for the same reason pin-rendering.ts pins the terminal. Dark
     // only as of the visual repaint (2026-08-21): the mockup has no
     // prefers-color-scheme branch left to answer, so 'light' emulation was

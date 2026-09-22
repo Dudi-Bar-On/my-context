@@ -281,4 +281,29 @@ export const test = base.extend<{ app: App }, { server: UiHarness }>({
   },
 });
 
+/**
+ * **A RELOAD THAT SURVIVES, because `page.reload()` DOES NOT.**
+ *
+ * `KNOWN-two-e2e-harness-defects-make-specs-fail-for-reasons-that-have-
+ * nothing-to-do-with-the-product`: the handoff nonce in the URL fragment is
+ * worth ONE browser ONCE, and `page.reload()` replays the SAME `#<nonce>` —
+ * already spent by the load that just happened — so the reloaded page comes
+ * back token-less. `app.js` does fall back to a `sessionStorage`-remembered
+ * token (`rememberedToken()`) when a specific caller stored one, but that
+ * path is not universal across every fixture this suite uses, and a spec
+ * measuring the strip or the shell has no reason to know which one it is on.
+ * Verified against pristine `HEAD` bytes: `e2e/strip-fields.spec.ts` counted
+ * 2 fields against a floor of 10 for exactly this reason — most of the page
+ * never authenticated, not a strip that stopped drawing.
+ *
+ * So a reload goes through here: mint a FRESH nonce and navigate to it
+ * directly, the identical path `app`'s own fixture uses to authenticate the
+ * first time. Never `page.reload()` on a page this suite cares about being
+ * actually logged in afterward.
+ */
+export async function reloadFresh(page: Page, port: number): Promise<void> {
+  const nonce = await mintNonce(port);
+  await page.goto(`http://127.0.0.1:${port}/#${nonce}`);
+}
+
 export { expect };

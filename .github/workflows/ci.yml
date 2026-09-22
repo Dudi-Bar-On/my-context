@@ -163,11 +163,18 @@ jobs:
       #
       # Every other step runs on both runners because the CLI's path handling
       # and terminal rendering are genuinely OS-dependent — `pin-rendering.ts`
-      # exists for exactly that. None of it is in play here: this suite loads
-      # one self-contained HTML file over `file://` and asks what Chromium
-      # drew. Chromium is Chromium. Running it twice doubles a 275 MB download
-      # for no additional signal, and if this repository ever goes private,
-      # Windows minutes bill at 2x (see the note on the matrix above).
+      # exists for exactly that. None of it is in play here: this suite
+      # drives the REAL server — `e2e/global-setup.ts` boots it against a
+      # sandboxed temp workspace and every spec talks to it over `http`, not
+      # `file://`. (It used to load one self-contained HTML mockup instead;
+      # `screen-parity.spec.ts`, `pixel-parity.spec.ts` and `tree-parity.spec.ts`
+      # were the specs that compared the real screens against that mockup, and
+      # ruling B, 2026-09-21 (`DEC-the-mockup-is-a-reference-to-initial-thoughts-and-only-a`)
+      # retired the mockup as a source of truth, so those three specs are gone —
+      # this comment used to describe them and no longer does.) Chromium is
+      # Chromium. Running it twice doubles a 275 MB download for no additional
+      # signal, and if this repository ever goes private, Windows minutes bill
+      # at 2x (see the note on the matrix above).
       #
       # AFTER the cheap checks, never before. The static checkers catch what a
       # browser cannot — EN/HE key parity in both directions, dead translation
@@ -215,7 +222,7 @@ jobs:
       - name: every mermaid fence in the documents parses
         if: matrix.name == 'ubuntu'
         run: npm run check:diagrams
-      - name: browser suite against the mockup
+      - name: browser suite
         if: matrix.name == 'ubuntu'
         run: npm run test:e2e
 

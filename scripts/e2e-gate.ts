@@ -34,8 +34,9 @@
  *     gate green. Anything still failing makes the gate RED — see below.
  *
  * Both phases run with `--reporter=list,json`: `list` is what a person
- * watches (this suite is headed by owner ruling — `playwright.config.ts` —
- * and CI still gets the same reporter), `json` is written to a scratch file
+ * watches whether the run is headless (the default since owner ruling
+ * 2026-09-22, `playwright.config.ts`) or headed via `MYCONTEXT_E2E_HEADED` —
+ * CI always gets the same reporter either way — `json` is written to a scratch file
  * this script reads to name specs by FILE rather than by trusting an exit
  * code alone. `PLAYWRIGHT_JSON_OUTPUT_FILE` redirects it there instead of
  * stdout, so the two reporters do not interleave.

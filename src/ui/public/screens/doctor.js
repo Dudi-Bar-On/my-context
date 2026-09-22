@@ -955,20 +955,51 @@ function commandRow(ctx, repair) {
   return block;
 }
 
+/**
+ * **THE RENDER GENERATION, for the same race `screens/preview.js` named and
+ * fixed on 2026-08-29 — see its own header for the full argument.**
+ *
+ * `app.js`'s `routeGeneration` stops two RENDER-generation.` from
+ * overlapping, but `noteExecuteSettled`'s live-refresh path calls
+ * `mod.render(section, ctx)` DIRECTLY, "never `route()`" (`app.js`, the
+ * live-invalidation subscription's own comment) — precisely so a redraw
+ * after an Execute does not close the pane `route()` would close. That call
+ * is OUTSIDE `routeGeneration`'s reach, and an Execute on this screen fires
+ * both the immediate post-run refresh AND the stream's own debounced one for
+ * the SAME audit records, so two `render()` calls for this section can be in
+ * flight together. `root.replaceChildren()` used to run at the TOP of this
+ * function, before its one `await` — Rule 2 of `preview.js`'s fix explains
+ * why that is exactly backwards: "clearing first is what made a slow render
+ * a blank screen and a fast one a double." Measured here the same way:
+ * `e2e/doctor-outcome.spec.ts`'s real-`ack` test found the acknowledged
+ * row's own command box drawn twice after one run settled.
+ *
+ * So the clear moves to where the ANSWER arrives, and a call whose token has
+ * gone stale by then abandons its render instead of appending to a section
+ * a newer call already owns.
+ */
+let renderGeneration = 0;
+
 export async function render(root, ctx) {
-  root.replaceChildren();
-  screenHead(ctx, root, 'doc.h', 'doc.v', 'doc.sub');
+  const mine = ++renderGeneration;
 
   let data;
   try {
     data = await ctx.api('/api/doctor');
   } catch (error) {
+    if (mine !== renderGeneration) return;
+    root.replaceChildren();
+    screenHead(ctx, root, 'doc.h', 'doc.v', 'doc.sub');
     // Drawn INSTEAD of the three cards, never beside them: a doctor that could
     // not run and a corpus with no findings are opposite facts, and three
     // empty cards would report the good one.
     root.append(errorNote(error.message));
     return;
   }
+  if (mine !== renderGeneration) return;
+
+  root.replaceChildren();
+  screenHead(ctx, root, 'doc.h', 'doc.v', 'doc.sub');
 
   // **THE TALLY, and it is drawn at every count including zero.**
   //

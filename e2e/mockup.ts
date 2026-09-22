@@ -81,9 +81,17 @@ export function declaredMonospace(): number {
  * Read — and a screen that disappears fails at the count.
  *
  * **This is the SHARED set — the screens both sides draw.** `gaps` is in the
- * mockup and not here; `MOCKUP_RAIL` below is the mockup's own twenty-one, and
- * the two lists are checked against each other in `runs.spec.ts` so neither
- * can drift without the other noticing.
+ * mockup and not here; so, since 2026-09-05, are `docs` and `tut` — both
+ * retired from the app (`DEC-the-documentation-and-tutorials-screens-become-
+ * one-list-and`, folded into `library`, `app.js`'s `RETIRED_TO_LIBRARY`) and
+ * named in `RETIRED_FROM_THE_APP` below rather than dropped silently.
+ * `library` is not added in their place: it has no mockup ancestor of its own
+ * — the mockup never drew a merged docs/tutorial/CLI-help screen — so it falls
+ * outside this list's whole reason for existing, which is checking the app
+ * against what the mockup specifies, not enumerating the app's current rail.
+ * `MOCKUP_RAIL` below is the mockup's own twenty-one, and the two lists are
+ * checked against each other in `runs.spec.ts` so neither can drift without
+ * the other noticing.
  */
 export const SCREENS = [
   // Injection — what arrives. `gaps` retired 2026-09-04 (seq:22), folded
@@ -93,14 +101,14 @@ export const SCREENS = [
   'watch', 'ask', 'doctor', 'decay', 'graph', 'status',
   // Change — composed, never run
   'work', 'capture', 'palette', 'config', 'proc', 'port', 'packs',
-  // Read
-  'docs', 'tut', 'learn',
+  // Read. `docs` and `tut` retired 2026-09-05, see the header above.
+  'learn',
 ] as const;
 
 /**
  * **THE EXCEPTION LEDGER: screens the frozen mockup draws that the app retired
- * on purpose.** One entry, named, dated, and carrying the ruling that excuses
- * it.
+ * on purpose.** One entry per screen, named, dated, and carrying the ruling
+ * that excuses it.
  *
  * `gaps` — the mockup's rail lists a Coverage gaps screen; the app has none.
  * That is a MOCKUP-AHEAD difference and its subject is a SCREEN, so under
@@ -114,8 +122,19 @@ export const SCREENS = [
  * written` is why the rail still shows it: the file is not edited to follow a
  * retirement, and a stale rail is what "history" means.
  *
+ * `docs` and `tut` — the mockup's rail lists both under Read; the app has
+ * neither. DECIDED 2026-09-05 by `DEC-the-documentation-and-tutorials-
+ * screens-become-one-list-and`: both folded into `library`. `app.js`'s
+ * `route()` sends a reader still holding `#/docs` or `#/tut` — a bookmark, a
+ * stale link — to `#/library`, exactly as `gaps` is redirected to `coverage`
+ * (`RETIRED_TO_LIBRARY`, `app.js` ~8645). Found live here: `e2e/app-
+ * layout.spec.ts`'s screen sweep reported both "never settled — 0 elements",
+ * because `[data-p="docs"]`/`[data-p="tut"]` no longer exist for a redirected
+ * hash to populate — the sweep was correctly measuring a section that is
+ * never going to appear.
+ *
  * `test/ui/strings-parity.test.ts` carries the same exception for the ten
- * string keys that went with the screen, in the same shape and for the same
+ * string keys that went with `gaps`, in the same shape and for the same
  * ruling. This is the second half of one retirement, not a second decision.
  *
  * **An entry here is not a licence.** It is a claim that a named ruling retired
@@ -124,7 +143,7 @@ export const SCREENS = [
  * is somehow also in `SCREENS`, fails there. A blanket "skip missing screens"
  * would have excused the next screen somebody forgot to build.
  */
-export const RETIRED_FROM_THE_APP: readonly string[] = ['gaps'];
+export const RETIRED_FROM_THE_APP: readonly string[] = ['gaps', 'docs', 'tut'];
 
 /**
  * The mockup's OWN rail, in its own order — all twenty-one, `gaps` included.
