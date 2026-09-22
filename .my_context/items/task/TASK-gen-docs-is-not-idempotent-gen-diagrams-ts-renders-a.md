@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:11"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 3b9d7d8898801c5b
+checksum: da9b93c858fb070b
 plan: release
 seq: "11"
-state: todo
+state: doing
 ---
 
 # gen:docs is not idempotent: gen-diagrams.ts renders a different SVG on every run of the same source

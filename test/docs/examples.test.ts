@@ -1,9 +1,9 @@
-// @basis STD-documentation-is-regenerated-not-edited-to-match, TASK-release-phase-1-the-repository-tells-the-truth
+// @basis STD-documentation-is-regenerated-not-edited-to-match, TASK-release-phase-1-the-repository-tells-the-truth, TASK-the-documented-status-example-carries-the-generating-machine
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
-  cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync,
+  cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -663,6 +663,63 @@ test('a global layer on the generating machine cannot reach a documented example
     removeTree(polluted);
     removeTree(home);
     removeTree(scratch);
+  }
+});
+
+/**
+ * The leak `materializeDocFixture` (`scripts/doc-fixture.ts`) had until
+ * release/14: `.audit/audit.jsonl` and `state/*.seen.jsonl`, under the
+ * committed `test/fixtures/docs-workspace` itself, are what a live hook
+ * writes when a real Claude Code session touches a file under this
+ * checkout's OWN fixture directory — measured here, both carry a `.gitignore`
+ * of `*` (`git ls-files` shows nothing tracked under either), so both are
+ * absent from a fresh clone and present only on a machine where someone
+ * worked the fixture directly. `cpSync` copied them into every materialized
+ * workspace regardless, so `ledger.sessionCount()` (`src/core/ledger.ts`) —
+ * which `mycontext status` prints as `sessionsRecorded` — read one real
+ * session on the generating machine's own disk and zero everywhere else: the
+ * committed `mycontext status` block said "1 session(s) recorded", a fresh
+ * clone's fixture run said "no sessions recorded yet".
+ *
+ * This plants exactly that class of file on the fixture's OWN disk location
+ * — a rotated audit segment and a matching seen-state file, named so they
+ * cannot collide with whatever a maintainer's own machine already left there
+ * — and asserts `runExampleInFixture('status')` does not move. Proved by
+ * removal: reverting `isDerivedFixtureState`'s `.audit`/`state` filtering
+ * (doc-fixture.ts) turns this red, because the planted session becomes the
+ * one difference between the baseline and the polluted run.
+ */
+test('a session recorded on the fixture directory\'s own disk cannot reach a documented example', () => {
+  const auditDir = path.join(
+    REPO_ROOT, 'test', 'fixtures', 'docs-workspace', '.my_context', '.audit');
+  const stateDir = path.join(
+    REPO_ROOT, 'test', 'fixtures', 'docs-workspace', '.my_context', 'state');
+  const plantedAudit = path.join(auditDir, 'audit.19700101T000000000Z-999999.jsonl');
+  const plantedSeen = path.join(stateDir, '00000000-r14-plant__probe-4fefbed4dbba.seen.jsonl');
+  assert.ok(!existsSync(plantedAudit), 'a previous run of this test left its plant behind');
+  assert.ok(!existsSync(plantedSeen), 'a previous run of this test left its plant behind');
+
+  const baseline = runExampleInFixture('status');
+  try {
+    writeFileSync(plantedAudit, `${JSON.stringify({
+      protocol: 'my_context/audit@2', kind: 'injection', op: 'jit',
+      sessionId: '00000000-r14-plant',
+      hook: 'PreToolUse', path: 'docs/prd-candidates-catalogue-and-search.json',
+      injected: [{ id: 'CONST-postgres-pool-capped-at-20', tier: 'jit' }],
+      tokens: 1, note: 'release/14 hermeticity probe', at: '1970-01-01T00:00:00.000Z',
+    })}\n`);
+    writeFileSync(plantedSeen, `${JSON.stringify({
+      protocol: 'mycontext-seen/1', id: 'CONST-postgres-pool-capped-at-20', tier: 'jit',
+      at: '1970-01-01T00:00:00.000Z', checksum: '0000000000000000',
+    })}\n`);
+
+    assert.equal(runExampleInFixture('status'), baseline,
+      "a session recorded on the fixture directory's own disk — not the materialized copy — " +
+      'reached a documented example; isDerivedFixtureState (doc-fixture.ts) no longer filters ' +
+      '.audit/ or state/');
+  } finally {
+    rmSync(plantedAudit, { force: true });
+    rmSync(plantedSeen, { force: true });
   }
 });
 

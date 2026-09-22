@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:14"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 516c61a5efba56da
+checksum: ed171e9d560df576
 plan: release
 seq: "14"
-state: doing
+state: done
 ---
 
 # the documented status example carries the generating machine's session count, so the doc-example fixture is not hermetic

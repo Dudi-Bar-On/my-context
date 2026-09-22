@@ -2936,9 +2936,7 @@ review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
 current text. Read them as diffs with `mycontext review revisions`.
 
-usage: 1 session(s) recorded. 3 normative item(s) not injected in the last 20 session(s) — not
-evidence they are unused, only that they were not selected. See `mycontext decay`.
-  (only 1 session(s) recorded so far, so "cold" mostly means "new")
+usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
 
@@ -2961,14 +2959,15 @@ or reliance, so a brand-new item and an abandoned one look identical here.
 
 <!-- example: decay --summary -->
 ```text
-my_context decay — items not injected in the last 20 session(s). The ledger holds 1 session(s).
+my_context decay — items not injected in the last 20 session(s). The ledger holds 0 session(s).
   "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the
   ledger records injection, not reading or reliance, so a new item, and any item consulted via
   `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
   Do not supersede or deprecate anything on this report alone — verify real usage first.
-  (only 1 session(s) recorded so far, so "cold" mostly means "new")
+  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never
+  injected")
 
-cold 3, warm 2, of which 2 unrestricted. Rows with `mycontext decay` (default) or `--full`.
+cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) or `--full`.
 ```
 <!-- /example -->
 
@@ -3912,9 +3911,7 @@ review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
 current text. Read them as diffs with `mycontext review revisions`.
 
-usage: 1 session(s) recorded. 3 normative item(s) not injected in the last 20 session(s) — not
-evidence they are unused, only that they were not selected. See `mycontext decay`.
-  (only 1 session(s) recorded so far, so "cold" mostly means "new")
+usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
 
