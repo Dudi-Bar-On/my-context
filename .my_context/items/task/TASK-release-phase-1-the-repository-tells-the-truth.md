@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:1"
-  - "state:done"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 247153877c0f1cdc
+checksum: 5413374ec52de5a1
 plan: release
 seq: "1"
-state: done
+state: doing
 ---
 
 # release phase 1 — the repository tells the truth
