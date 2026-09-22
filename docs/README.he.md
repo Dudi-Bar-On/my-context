@@ -1666,6 +1666,13 @@ flowchart LR
 הנעוץ באישור שלכידה נורמטיבית כבר מזכה בו, כך שנעיצה לעולם אינה מאושרת כמילה שנשמעת
 חינמית. <span dir="ltr">`mycontext unpin <id>`</span> מוציאה אותו משם בחזרה.
 
+קורפוס שעדיין לא נעץ שום דבר אומר זאת, באותן מילים, בשני הרגעים שבהם אתה נמצא במצב לפעול
+על כך: מיד אחרי <span dir="ltr">`mycontext init`</span>, ובאישור שמציגה
+<span dir="ltr">`mycontext add`</span> עבור הלכידה הנורמטיבית הראשונה שקורפוס לא-נעוץ יכול
+לבצע —
+<span dir="ltr">`my_context: nothing is pinned yet, so governing items arrive as titles until one is pinned with --always or \`mycontext pin\`.`</span>
+ברגע שמשהו נעוץ, אף אחד משני המקומות לא מדפיס זאת שוב.
+
 ### בדיוק בזמן — אלה שחלים על מה שאתה נוגע בו
 
 `scope` הוא רשימה של תבניות קבצים. כש-Claude עומד לקרוא או לערוך קובץ, my_context מחפש

@@ -14,6 +14,7 @@ import {
   runExampleInFixture, scrubOutput, splitCommand, splitPipeline, toDocumentMarkdown, yearOutDay,
 } from '../../scripts/gen-doc-examples.ts';
 import { canonicalizeNearestExisting } from '../../src/core/paths.ts';
+import { NOTHING_PINNED_SENTENCE } from '../../src/core/pin-sentence.ts';
 import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -950,7 +951,15 @@ test('runExample scrubs the workspace path out of what a command prints', () => 
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-init-'));
   try {
     const out = runExample('init', dir);
-    assert.equal(out, 'my_context: initialized <workspace>/.my_context', out);
+    // Two lines since B13 (owner ruling D, 2026-09-21): `init` now also prints
+    // the first-session sentence right after "initialized" — see
+    // `src/core/pin-sentence.ts`. The scrub is what this test is actually
+    // about, so only the first line is asserted on by value; the second is
+    // pinned by `test/cli/init-pinned-sentence.test.ts` instead, so this file
+    // does not carry a second copy of that wording to drift from it.
+    const [first, second] = out.split('\n');
+    assert.equal(first, 'my_context: initialized <workspace>/.my_context', out);
+    assert.equal(second, NOTHING_PINNED_SENTENCE, out);
   } finally {
     removeTree(dir);
   }

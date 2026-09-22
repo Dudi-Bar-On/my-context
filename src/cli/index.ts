@@ -99,6 +99,7 @@ import {
 import {
   summaryAtCreateRefusal, summaryOmittedRefusal, summaryRequiredAtCreate,
 } from '../core/summary-gate.ts';
+import { NOTHING_PINNED_SENTENCE, nothingPinned } from '../core/pin-sentence.ts';
 import { confirmAction } from './commands/review.ts';
 
 type Emit = (s: string) => void;
@@ -527,6 +528,34 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
   }
 
   out(`my_context: initialized ${root}`);
+  // **B13, owner ruling D (2026-09-21): the first-session sentence.** A fresh
+  // corpus injects nothing at session start — `select`'s pinned tier admits
+  // only `always: true` items — and an empty pinned tier is indistinguishable
+  // from outside a corpus where pinning does not work at all
+  // (`src/core/pin-sentence.ts` owns the sentence and the predicate; both
+  // print sites import it rather than typing it a second time).
+  //
+  // **A bare `init` prints it unconditionally, with no store opened to check.**
+  // `items/` was just created empty a few lines above, so nothing can be
+  // pinned by construction — opening a store here would ONLY confirm what the
+  // write above already guarantees, at the cost of a real side effect: it
+  // creates `.index.db` on disk, which a bare `init` has never done before and
+  // which several tests build their own fixtures on the absence of
+  // (`test/cli/cli.test.ts`, `test/cli/ingest.test.ts` both `mkdirSync` a
+  // directory at that exact path right after `init`, to force `Store.open` to
+  // fail later). `--pack` is the one path that can actually land a pinned
+  // item at `init` time (as a draft — see `nothingPinned`'s own comment on
+  // why that still does not count), so only it pays for the check.
+  if (applied) {
+    const pinCheck = openStore(resolveWorkspace(cwd));
+    try {
+      if (nothingPinned(pinCheck.store.all())) out(NOTHING_PINNED_SENTENCE);
+    } finally {
+      pinCheck.store.close();
+    }
+  } else {
+    out(NOTHING_PINNED_SENTENCE);
+  }
   if (applied) {
     outcomeLines(out, applied.name, applied.outcome);
     emitLoadErrors(applied.errors, out);
@@ -1258,6 +1287,21 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
       // not interactive") would never say WHICH capture it declined — and the
       // non-interactive path is the one a hook or a script takes.
       out(`about to create ${category} "${title}" — active, and governing this project at once.`);
+      // **B13, owner ruling D (2026-09-21): the same first-session sentence
+      // `cmdInit` prints, said again here because a corpus can go a long time
+      // between `init` and its first normative capture.** Checked against
+      // what is on disk NOW, before this capture lands, so a reader deciding
+      // whether to also pass `--always` is told the true state of the corpus
+      // they are about to write to — see `src/core/pin-sentence.ts`, which
+      // both print sites import rather than typing this sentence twice.
+      {
+        const pinCheck = openStore(ws);
+        try {
+          if (nothingPinned(pinCheck.store.all())) out(NOTHING_PINNED_SENTENCE);
+        } finally {
+          pinCheck.store.close();
+        }
+      }
       // The extra sentence a SNAPSHOT earns on a normative capture, and the
       // reason `--file` needs no category restriction of its own. What is
       // being approved is not only this text: it is a rule whose content is a

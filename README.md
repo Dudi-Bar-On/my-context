@@ -1584,6 +1584,12 @@ the pin costs — `add` prints the pinned budget in the confirmation a normative
 already earns, so a pin is never approved as a word that sounds free. `mycontext unpin
 <id>` takes it back out.
 
+A corpus that has pinned nothing yet says so, in the same words, at the two moments you are
+in a position to act on it: right after `mycontext init`, and in the confirmation
+`mycontext add` shows for the first normative capture an unpinned corpus can make —
+`my_context: nothing is pinned yet, so governing items arrive as titles until one is pinned
+with --always or \`mycontext pin\`.` Once anything is pinned, neither site prints it again.
+
 ### Just in time — the ones that apply to what you are touching
 
 `scope` is a list of file patterns, and it is a **restriction**: it narrows the files an item
