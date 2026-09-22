@@ -738,8 +738,8 @@ test('a session recorded on the fixture directory\'s own disk cannot reach a doc
   } finally {
     rmSync(plantedAudit, { force: true });
     rmSync(plantedSeen, { force: true });
-    if (!auditDirExisted) rmSync(auditDir, { recursive: true, force: true });
-    if (!stateDirExisted) rmSync(stateDir, { recursive: true, force: true });
+    if (!auditDirExisted) removeTree(auditDir);
+    if (!stateDirExisted) removeTree(stateDir);
   }
 });
 
