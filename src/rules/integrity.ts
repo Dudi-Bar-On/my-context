@@ -69,7 +69,24 @@ export interface ManifestRow {
   file: string;
   /** The entry's id, so a refusal can name the ENTRY and not only a path. */
   id: string;
-  checksum: string;
+  /**
+   * Absent exactly when `refused` is present (B12).
+   *
+   * A file the parser cannot read must never be SEALED with a checksum: a
+   * checksum only ever proves "unchanged since sealing", and sealing broken
+   * content would let a later `verify` say that about content nobody has
+   * ever read. See `refused`.
+   */
+  checksum?: string;
+  /**
+   * The parser's own refusal, when this file could not be sealed with a
+   * checksum (B12). The row is still WRITTEN — dropping it would make the
+   * manifest agree with a store it cannot describe, and the entry would then
+   * read as `unexpected` rather than as the broken entry it is — but it
+   * carries no checksum, so `verifyManifest` reports it as damage on every
+   * call rather than silently treating unreadable content as verified.
+   */
+  refused?: string;
 }
 
 /**
@@ -126,7 +143,13 @@ export interface Manifest {
   store?: StoreMeta;
 }
 
-export type Damage = 'missing' | 'altered' | 'unexpected';
+/**
+ * `refused` (B12) is a fourth kind of damage, distinct from the other three:
+ * it is not about whether the bytes changed, it is that the row was never
+ * sealed with a checksum in the first place, because the parser could not
+ * read the file when the manifest was last written.
+ */
+export type Damage = 'missing' | 'altered' | 'unexpected' | 'refused';
 
 export interface Problem {
   /** The entry id where one is known, and the file name where it is not. */
@@ -185,6 +208,23 @@ export function verifyManifest(dir: string, sanctionedBy?: Map<string, string>):
   const listed = new Set<string>();
   for (const row of manifest.entries) {
     listed.add(row.file);
+    // B12: a row sealed with `refused` carries no checksum, so it can never
+    // "match" one — it is reported as damage on every call, independent of
+    // what is currently on disk. That is deliberate: the row records what
+    // was true when the store was last sealed, and re-parsing the file here
+    // would make `verifyManifest` a second parser to keep in sync with
+    // `parseEntry` for a question `writeManifest`/`recordWrite` already
+    // answered once, at the only moment that is allowed to change the seal.
+    if (row.refused !== undefined) {
+      problems.push({
+        entry: row.id,
+        why: 'refused',
+        detail: `${row.file} failed to parse when the store was last sealed (${row.refused}). It ` +
+          `carries no checksum and cannot be verified as unchanged. Fix the entry, then regenerate ` +
+          `the manifest.`,
+      });
+      continue;
+    }
     let text: string;
     try {
       text = readFileSync(path.join(dir, row.file), 'utf8');

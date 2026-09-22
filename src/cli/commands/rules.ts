@@ -345,7 +345,12 @@ function cmdRulesVerify(_ws: Workspace, args: string[], out: Emit): number {
   }
 
   if (answer.ok) {
-    out(`my_context: the rule store is intact — every entry matches the checksum that shipped with it.`);
+    // B12: this used to say "matches the checksum that shipped with it",
+    // which reads as a claim about VALIDITY. A checksum only ever proves
+    // unchanged-since-sealing — it says nothing about whether the content it
+    // was computed over ever parsed — so the sentence says exactly that and
+    // no more.
+    out(`my_context: the rule store is intact — every entry matches the checksum it was last sealed with.`);
     out(`  ${dir}`);
     // AFTER the verdict, never before it: the answer to "is this intact" is
     // what the command was asked, and a paragraph above it buries the answer.

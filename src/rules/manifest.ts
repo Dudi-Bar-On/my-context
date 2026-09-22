@@ -67,14 +67,17 @@ export function writeManifest(dir: string, store?: StoreMeta): Manifest {
   for (const file of entryFiles(dir)) {
     const text = readFileSync(path.join(dir, file), 'utf8');
     const parsed = parseEntry(text, path.join(dir, file));
-    entries.push({
-      file,
-      // A file too broken to parse still gets a row: leaving it out would make
-      // the manifest agree with a store it cannot describe, and the entry
-      // would then read as `unexpected` rather than as the broken entry it is.
-      id: 'error' in parsed ? (parsed.id ?? file) : parsed.id,
-      checksum: checksum(text),
-    });
+    // A file too broken to parse still gets a row: leaving it out would make
+    // the manifest agree with a store it cannot describe, and the entry
+    // would then read as `unexpected` rather than as the broken entry it is.
+    // **But it is never sealed with a checksum (B12).** `checksum(text)` is a
+    // hash of bytes nobody has read as an entry; recording it here would let
+    // a later `verify` answer "unchanged" for a row that was broken the day
+    // it was sealed. `refused` carries the parser's own reason instead, and
+    // `verifyManifest` reports any such row as damage on every call.
+    entries.push('error' in parsed
+      ? { file, id: parsed.id ?? file, refused: parsed.error }
+      : { file, id: parsed.id, checksum: checksum(text) });
   }
   /**
    * The store's version and changelog are CARRIED FORWARD, never recomputed.
@@ -156,7 +159,12 @@ export function assertStoreWritable(dir: string): void {
 function sanctioned(dir: string): Map<string, string> {
   const known = new Map<string, string>();
   try {
-    for (const row of readManifest(dir).working ?? []) known.set(row.file, row.checksum);
+    for (const row of readManifest(dir).working ?? []) {
+      // A `refused` working row (B12) has no checksum to sanction — a write
+      // that produced content the parser cannot read is not a checksum
+      // anybody can vouch for.
+      if (row.checksum !== undefined) known.set(row.file, row.checksum);
+    }
   } catch { /* no manifest is its own problem, reported by verifyManifest */ }
   return known;
 }
@@ -201,11 +209,12 @@ function recordWrite(dir: string, file: string, text: string): void {
   let manifest: Manifest;
   try { manifest = readManifest(dir); } catch { return; }
   const parsed = parseEntry(text, path.join(dir, file));
-  const row: ManifestRow = {
-    file,
-    id: 'error' in parsed ? (parsed.id ?? file) : parsed.id,
-    checksum: checksum(text),
-  };
+  // Same rule as `writeManifest` (B12): text that will not parse gets a row
+  // recording WHY, never a checksum — a checksum here would seal broken
+  // content as "verified unchanged".
+  const row: ManifestRow = 'error' in parsed
+    ? { file, id: parsed.id ?? file, refused: parsed.error }
+    : { file, id: parsed.id, checksum: checksum(text) };
   const working = manifest.working ?? [];
   const at = working.findIndex((e) => e.file === file);
   if (at === -1) working.push(row); else working[at] = row;
@@ -399,9 +408,17 @@ export function planPublish(dir: string, options: PublishOptions = {}): PublishP
 
   const wasPublished = new Map(published.map((row) => [row.file, row]));
   const changes: PublishChange[] = [];
+  // B12: named here, not only in the manifest row — a file the parser cannot
+  // read would otherwise become a sealed row with no checksum (writeManifest
+  // below, called at the end of a confirmed publish), and the first `verify`
+  // after that publish would report it as damage against every install that
+  // took it. Naming it HERE, before anything is written, is what makes the
+  // refusal the diff a person sees rather than a fact discovered downstream.
+  const unparseable: string[] = [];
   for (const file of entryFiles(dir)) {
     const text = readFileSync(path.join(dir, file), 'utf8');
     const parsed = parseEntry(text, path.join(dir, file));
+    if ('error' in parsed) unparseable.push(file);
     const id = 'error' in parsed ? (parsed.id ?? file) : parsed.id;
     const before = wasPublished.get(file);
     if (before === undefined) { changes.push({ how: 'added', id, file }); continue; }
@@ -424,7 +441,21 @@ export function planPublish(dir: string, options: PublishOptions = {}): PublishP
    * is a refusal somebody works around.
    */
   const toMove = budget.product.entries.slice(0, 3);
-  const refusal = budget.over
+  /**
+   * **The parse refusal (B12), checked before the budget refusal.**
+   *
+   * This is not the budget refusal and not a second copy of it: publishing an
+   * entry the store's own parser cannot read is a correctness problem, not a
+   * size problem, and it is refused regardless of whether the product tier is
+   * inside budget. The file is named because a refusal that does not say what
+   * to do next is a refusal somebody works around — same reasoning as `toMove`
+   * below, for the other refusal.
+   */
+  const refusal = unparseable.length > 0
+    ? `publishing is refused: ${unparseable.length} ${unparseable.length === 1 ? 'entry does' : 'entries do'} `
+      + `not parse and cannot be sealed with a checksum — ${unparseable.join(', ')}. A row with no `
+      + `checksum can never verify as unchanged. Fix the file(s), or remove them, before publishing.`
+    : budget.over
     ? `publishing is refused: the product tier is ${budget.product.bytes} bytes against a budget `
       + `of ${budget.budgetBytes} — ${budget.overBy} over. Everything in the product tier reaches `
       + `every user's install and is injected there with no exception, so this cannot be enforced `
