@@ -167,6 +167,46 @@ export function digestOf(bytes: Buffer | string): string {
 }
 
 /**
+ * The exact `mermaid.initialize()` config `drawAll` passes into the page.
+ * Exported as data (JSON-serialisable, no functions) rather than left inline,
+ * so `e2e/diagram-determinism.spec.ts` renders with the SAME configuration
+ * object this script uses instead of a second, driftable copy of it — this
+ * project's own recorded chronic failure, named in `CLAUDE.md`, is exactly two
+ * copies of one thing disagreeing after only one of them was updated.
+ *
+ * ── `handDrawnSeed`, AND WHY MERMAID'S OWN DEFAULT DOES NOT PIN IT ─────────
+ *
+ * `TASK-gen-docs-is-not-idempotent-gen-diagrams-ts-renders-a`, measured
+ * 2026-09-22: two runs of this script on an unchanged tree produced two
+ * different SVGs for all six committed diagrams that carry a rounded node
+ * (`git diff --stat` between consecutive runs touched exactly those six files
+ * plus `diagrams.js`). Diffing one byte-for-byte showed the divergence was not
+ * text metrics or element order — every node position and label was identical
+ * — it was the bezier control points of each rounded rectangle's own border
+ * (class `outer-path`), sometimes drawn as one continuous curve and sometimes
+ * as several overlapping ones with the same endpoints.
+ *
+ * `node_modules/mermaid/dist/mermaid.min.js` draws every rounded node border
+ * through rough.js regardless of `look` (`classic` included, not only
+ * `handDrawn`), seeded from mermaid's `handDrawnSeed` config. Mermaid's own
+ * default for that key is `0` — but rough.js's RNG is `this.seed ? lcg(...) :
+ * Math.random()`, and `0` is falsy in JavaScript, so the documented default
+ * silently disables the seed and falls through to `Math.random()` on every
+ * render. `handDrawnSeed` must therefore be set here to a non-zero constant;
+ * leaving it unset (or explicitly `0`) reproduces the bug.
+ *
+ * `theme`, `securityLevel` and `fontFamily` are explained in `drawAll`'s own
+ * docblock below, next to the code that actually reads them.
+ */
+export const MERMAID_CONFIG = {
+  startOnLoad: false,
+  theme: 'default',
+  securityLevel: 'strict',
+  fontFamily: 'system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+  handDrawnSeed: 1,
+} as const;
+
+/**
  * Draws every definition in one Chromium, in order, and returns the SVG text.
  *
  * `securityLevel: 'strict'` is mermaid's own DOMPurify pass.
@@ -212,27 +252,6 @@ export function digestOf(bytes: Buffer | string): string {
  * namespaces out. The result is then parsed BACK as `image/svg+xml` and the
  * script throws on a `parsererror` — a drawing that a browser cannot load is
  * not a drawing, and it must not reach a commit.
- *
- * ── `handDrawnSeed`, AND WHY MERMAID'S OWN DEFAULT DOES NOT PIN IT ─────────
- *
- * `TASK-gen-docs-is-not-idempotent-gen-diagrams-ts-renders-a`, measured
- * 2026-09-22: two runs of this script on an unchanged tree produced two
- * different SVGs for all six committed diagrams that carry a rounded node
- * (`git diff --stat` between consecutive runs touched exactly those six files
- * plus `diagrams.js`). Diffing one byte-for-byte showed the divergence was not
- * text metrics or element order — every node position and label was identical
- * — it was the bezier control points of each rounded rectangle's own border
- * (class `outer-path`), sometimes drawn as one continuous curve and sometimes
- * as several overlapping ones with the same endpoints.
- *
- * `node_modules/mermaid/dist/mermaid.min.js` draws every rounded node border
- * through rough.js regardless of `look` (`classic` included, not only
- * `handDrawn`), seeded from mermaid's `handDrawnSeed` config. Mermaid's own
- * default for that key is `0` — but rough.js's RNG is `this.seed ? lcg(...) :
- * Math.random()`, and `0` is falsy in JavaScript, so the documented default
- * silently disables the seed and falls through to `Math.random()` on every
- * render. `handDrawnSeed` must therefore be set here to a non-zero constant;
- * leaving it unset (or explicitly `0`) reproduces the bug.
  */
 export async function drawAll(definitions: string[]): Promise<string[]> {
   const { chromium } = await import('playwright');
@@ -246,22 +265,12 @@ export async function drawAll(definitions: string[]): Promise<string[]> {
     const out: string[] = [];
     for (const definition of definitions) {
       const id = `mmd-${createHash('sha256').update(definition, 'utf8').digest('hex').slice(0, 12)}`;
-      out.push(await page.evaluate(async ([elementId, source]) => {
+      out.push(await page.evaluate(async ([elementId, source, config]) => {
         const mermaid = (globalThis as unknown as { mermaid: {
           initialize: (config: unknown) => void;
           render: (id: string, definition: string) => Promise<{ svg: string }>;
         } }).mermaid;
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: 'default',
-          securityLevel: 'strict',
-          fontFamily: 'system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
-          // Non-zero on purpose — see this function's docblock. Mermaid's own
-          // default (0) is falsy, so rough.js reads it as "no seed" and draws
-          // every rounded node border with `Math.random()`, which is the whole
-          // of TASK-gen-docs-is-not-idempotent-gen-diagrams-ts-renders-a.
-          handDrawnSeed: 1,
-        });
+        mermaid.initialize(config);
         const { svg } = await mermaid.render(elementId as string, source as string);
         // HTML in, XML out — see this function's docblock.
         const drawn = new DOMParser().parseFromString(svg, 'text/html').querySelector('svg');
@@ -273,7 +282,7 @@ export async function drawAll(definitions: string[]): Promise<string[]> {
           throw new Error(`${elementId}: the drawing is not well-formed XML — ${fault.textContent}`);
         }
         return xml;
-      }, [id, definition]));
+      }, [id, definition, MERMAID_CONFIG] as const));
     }
     return out;
   } finally {
