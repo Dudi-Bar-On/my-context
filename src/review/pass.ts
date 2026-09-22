@@ -533,6 +533,41 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
   // would assign that scalar to THIS transcript's key permanently, which is
   // exactly the unproven cross-transcript assumption `lastReadTo` above
   // already declines to make anywhere else.
+  //
+  // ── DISCLOSED, NOT FIXED: THIS READ-THEN-`writeReport`-RENAME CAN RACE ────
+  //
+  // Two passes over two DIFFERENT transcripts, sharing this workspace, can
+  // interleave: both read this same prior report before either has written,
+  // both merge their own transcript's key into the map they read, and
+  // whichever `writeReport` renames its temp file into place second wins —
+  // carrying only its own transcript's key forward and silently dropping the
+  // other pass's just-written entry. `writeReport`'s tmp-then-rename makes
+  // each WRITE atomic; it does nothing about two reads racing ahead of it.
+  //
+  // **Checked, not assumed: the trigger does not serialise this.**
+  // `review-counter.ts`'s `CounterState` is one record per workspace, holding
+  // whichever session's `calls`/`fires` last touched it (`forSession` resets
+  // it wholesale for a new session id) — that bounds how many times ONE
+  // session's `Stop` may fire, and `resetCounter` spends the ration before the
+  // spawn so a session that cannot spawn does not retry forever. Neither is a
+  // lock: nothing here stops a SECOND session, working the same workspace at
+  // the same moment, from crossing its own gates and calling `spawnPass` while
+  // the first session's child is still running. Two sessions open on one
+  // project is the ordinary case B8's own header names, not a rare one.
+  //
+  // **Tolerated because the loss lands where `lastReadTo` already lands a
+  // transcript it has never seen: at 0.** A dropped entry costs the NEXT pass
+  // over that transcript a redundant re-read from its own start — bounded by
+  // that transcript's current size, per `lastReadTo`'s own fallback — never a
+  // skipped head, because nothing here can make an offset read LARGER than
+  // what a prior pass actually recorded. Wasted work, not lost coverage.
+  //
+  // If this window ever costs more than a re-read — two sessions on one
+  // workspace becoming the common case rather than the occasional one — the
+  // fix is a lock (a lockfile beside `REPORT_FILE`, held across the read and
+  // the rename) rather than a cleverer merge, because a merge still has to
+  // answer what happens when the SAME transcript's key differs between the
+  // two racing reads, and a lock makes that question not arise.
   const priorMap = readPassReport(options.workspace)?.readToByTranscript;
   const readToByTranscript: Record<string, number> = {
     ...(priorMap !== null && priorMap !== undefined && typeof priorMap === 'object'
@@ -787,6 +822,28 @@ function flag(argv: string[], name: string): string | null {
   return value === undefined || value.startsWith('--') ? null : value;
 }
 
+/**
+ * `--ceiling`'s parse, split from `flag`'s own truthiness — B9.
+ *
+ * `Math.max(0, Number(flag(argv, '--ceiling') ?? 0) || NO_QUEUE_CEILING)` read
+ * ABSENCE off `??`'s `0` and then ran that `0` back through `||`, so a
+ * PRESENT `--ceiling 0` produced the identical `0` that absence did and `||`
+ * turned both into `NO_QUEUE_CEILING` — `0` is falsy, and `0 || X` is `X`
+ * whether the `0` came from a real flag or from nothing being there at all.
+ * The two cases were never distinguishable past that point.
+ *
+ * `flag` already answers presence directly — `null` for absent, a string for
+ * present, including `"0"` — so presence is read from THAT rather than
+ * re-derived from whether the parsed number happens to be truthy. Absent
+ * still means NO ceiling; present means what it says, and that now includes
+ * zero, which `core/config.ts`'s own doc comment on `queueCeiling` calls out
+ * as legal: "the queue is full at empty," not a second kill switch.
+ */
+function parseCeiling(argv: string[]): number {
+  const raw = flag(argv, '--ceiling');
+  return raw === null ? NO_QUEUE_CEILING : Math.max(0, Number(raw) || 0);
+}
+
 if (isMainEntry(import.meta.filename, process.argv[1])) {
   const argv = process.argv.slice(2);
   const workspace = flag(argv, '--workspace');
@@ -802,10 +859,12 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       // child never infers a ration from the config: the parent read the
       // config, and a second reader is a second answer.
       maxProposals: Math.max(0, Number(flag(argv, '--max') ?? 0) || 0),
-      // Absent or unparseable means NO ceiling — see `spawnPass`. `--max` is
-      // the flag whose absence must cost a write; this one's absence must not
-      // cost a report.
-      queueCeiling: Math.max(0, Number(flag(argv, '--ceiling') ?? 0) || NO_QUEUE_CEILING),
+      // Absent means NO ceiling — see `spawnPass`. `--max` is the flag whose
+      // absence must cost a write; this one's absence must not cost a report.
+      // Present means what it says, including a present `0` — `parseCeiling`
+      // reads presence off `flag`'s own `null`/string answer rather than off
+      // truthiness, which is what let a present `0` read as absent — B9.
+      queueCeiling: parseCeiling(argv),
       // Absent means NO model, which is `--max`'s direction and for `--max`'s
       // reason: the argument that decides whether a detached process spends
       // tokens must cost nothing when it is lost.
