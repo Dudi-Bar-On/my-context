@@ -42,6 +42,7 @@ import { computeItemChecksum, parseItem, renderItem } from '../../src/core/item.
 import type { Item } from '../../src/core/types.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { writeBundleDirectory } from '../../src/pack/dir-writer.ts';
+import { FULL_EXPORT_REFUSAL } from '../../src/pack/import.ts';
 import { importedDir } from '../../src/pack/imported-audit.ts';
 import {
   comparePaths, CONFIG_NAME, HISTORY_NAME, MANIFEST_NAME, PACK_HISTORY_PROTOCOL,
@@ -910,8 +911,24 @@ test('--name "" is refused as an empty name, not misreported as a full export', 
  * <dir>`, run for real below) rather than a hand-shaped
  * `meta: { kind: 'export' }` object, because the artefact under test is
  * exactly the one thing a hand-built manifest cannot honestly stand in for.
+ *
+ * Pins `FULL_EXPORT_REFUSAL` (`pack/import.ts`) two ways: it must appear in
+ * the output VERBATIM — the same string `cli/index.ts`'s `init --pack` and
+ * `mcp/tools.ts`'s preview tool import and print, so one drift here is a
+ * drift on all three doors — and it must be ONE sentence, which is the
+ * ruling's own requirement and the reason it exists as a constant at all
+ * rather than three surfaces each writing their own version of it.
  */
 test('a full export is refused as non-importable, --name included, and points at --as-pack', () => {
+  // One sentence: one terminal period, or splitting on '. ' yields one piece
+  // — either reading agrees the constant is not the three-sentence refusal
+  // it replaced.
+  const sentences = FULL_EXPORT_REFUSAL.split('. ');
+  assert.equal(sentences.length, 1, `not one sentence: ${JSON.stringify(FULL_EXPORT_REFUSAL)}`);
+  assert.equal((FULL_EXPORT_REFUSAL.match(/\./g) ?? []).length, 1, FULL_EXPORT_REFUSAL);
+  assert.match(FULL_EXPORT_REFUSAL, /archive to copy back/);
+  assert.match(FULL_EXPORT_REFUSAL, /--as-pack/);
+
   const source = project();
   const exported = path.join(scratchDir('myctx-packcli-export-'), 'export');
   const exportResult = run(['export', '--out', exported], source);
@@ -923,8 +940,11 @@ test('a full export is refused as non-importable, --name included, and points at
   const { code, out } = run(['pack', 'import', exported, '--yes', '--name', 'anything'], cwd);
 
   assert.equal(code, 1, out);
-  assert.match(flat(out), /archive to copy back/);
-  assert.match(out, /--as-pack/);
+  // `flat`, not raw `out`: at 142 characters the sentence wraps under the
+  // suite's pinned 100-column budget, and a wrap point trades one space for
+  // one newline — `flat` trades it back, so this still asserts the same
+  // bytes rather than tolerating a reworded one.
+  assert.equal(flat(out).includes(FULL_EXPORT_REFUSAL), true, `constant not printed verbatim: ${out}`);
   assert.equal(/pass --name/i.test(out), false, `still asked for --name: ${out}`);
   nothingImported(cwd);
 });

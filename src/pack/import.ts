@@ -417,20 +417,19 @@ function isObject(value: unknown): value is Record<string, unknown> {
  * 'ingest'` is the third member of a closed union and no fourth was invented
  * for imports — §6m.5 refused that carve-out.
  *
- * Provenance travels only for a full export. A pack has already had those
- * three fields cleared by the exporter, so passing them would be passing
- * `null` three times; an export is the author's own workspace travelling
- * whole, and dropping them there would lose the link to the file each item was
- * captured from.
+ * **No `kind` parameter, and no provenance fields, any more.** Both used to
+ * exist for a full export: `source_file`/`source_anchor`/`source_checksum`
+ * travelled only when `kind === 'export'`, because a pack has already had
+ * those three fields cleared by the exporter. Ruling C (2026-09-21) closed
+ * the only door a `kind: 'export'` plan could reach this function through —
+ * `cmdImport` (cli/commands/pack.ts) and `planPack` (cli/index.ts) both
+ * refuse on the artefact's `manifest.kind` before `planImport` runs — so the
+ * branch was dead code with a parameter to match. Removed rather than kept
+ * as an unreachable no-op: a function nobody can call with the value it
+ * branches on is not documentation, it is a second place to wonder whether
+ * the branch still matters.
  */
-function createInputFor(item: Item, kind: ArtefactKind): CreateInput {
-  const provenance = kind === 'export'
-    ? {
-      sourceFile: item.sourceFile,
-      sourceAnchor: item.sourceAnchor,
-      sourceChecksum: item.sourceChecksum,
-    }
-    : {};
+function createInputFor(item: Item): CreateInput {
   return {
     id: item.id,
     type: item.type,
@@ -446,7 +445,6 @@ function createInputFor(item: Item, kind: ArtefactKind): CreateInput {
     steps: item.steps.map((s) => s.text),
     observations: item.observations.map((o) => ({ ...o, tags: [...o.tags] })),
     relations: item.relations.map((r) => ({ ...r })),
-    ...provenance,
   };
 }
 
@@ -486,6 +484,27 @@ function updateInputFor(item: Item): UpdateInput {
 }
 
 /**
+ * **The one sentence every door a full export reaches says.** Ruling C
+ * (2026-09-21, B10): a full export is an archive to copy back, not something
+ * this product imports; `mycontext export --as-pack` is what writes something
+ * that is.
+ *
+ * Self-contained — one sentence, no artefact path and no "nothing was
+ * imported/created" tail. `cmdImport` (cli/commands/pack.ts), `planPack`
+ * (cli/index.ts) and the MCP `preview_pack_import` tool (mcp/tools.ts) each
+ * refuse on their own artefact's `manifest.kind === 'export'`, before
+ * `planImport` runs, and each of the three completes it differently: an
+ * import says nothing was imported, `init --pack` says nothing was created, a
+ * preview says neither. A constant that tried to say all three would be
+ * wrong on two of them; the path is context each caller already has (the
+ * positional it was given), so repeating it here would be three surfaces
+ * choosing three ways to quote one string instead of sharing one sentence.
+ */
+export const FULL_EXPORT_REFUSAL =
+  'my_context: a full export is an archive to copy back, not something to import — '
+  + '`mycontext export --as-pack` is what makes an importable pack.';
+
+/**
  * Applies a plan to the workspace `ctx` is open on.
  *
  * The stages are in the order the module comment argues for: the merged config
@@ -515,18 +534,15 @@ export function applyImport(
     // given: an item carrying both `source_file` and `source_anchor` whose
     // content already exists here under a different name is reported as
     // already captured (`core/mutate.ts` · `      message: \`my_context: already captured as ${anchored.id}. Nothing changed.\`,` · ~951).
-    // Those two fields travel only on a full export (`createInputFor`,
-    // above) — and ruling C (2026-09-21) refuses a full export before it
-    // reaches here at all: `cmdImport` (cli/commands/pack.ts) refuses on
-    // `artefact.manifest.kind === 'export'`, before `planImport` even runs,
-    // and `planPack` (cli/index.ts) already threw on the same artefact for
-    // carrying no pack name. So this path is closed
-    // at both doors this build has, and the mismatched-id refusal that used
-    // to stand here — naming the other id and asking which corpus was right
-    // about it — no longer has an artefact that can reach it. Removed rather
-    // than left to rot: INV-nothing-is-dropped-silently is about a live
-    // silence, not a branch nothing can still walk into.
-    createItem(writing, createInputFor(item, plan.kind));
+    // Those two fields no longer travel through `createInputFor` at all — see
+    // its own comment — because the only plan that ever carried them was a
+    // full export's, and ruling C (2026-09-21) refuses a full export before
+    // it reaches here. So the mismatched-id refusal that used to stand here
+    // — naming the other id and asking which corpus was right about it — no
+    // longer has an artefact that can reach it. Removed rather than left to
+    // rot: INV-nothing-is-dropped-silently is about a live silence, not a
+    // branch nothing can still walk into.
+    createItem(writing, createInputFor(item));
     created.push(item.id);
   }
   const imported = [...created, ...plan.buckets.identical.map((i) => i.id)];

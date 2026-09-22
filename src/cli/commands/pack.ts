@@ -6,7 +6,7 @@ import {
   collisionJson, illegibleExisting, renderCollisionReport, type CollisionReport,
 } from '../../pack/collide.ts';
 import {
-  applyImport, planImport, type ImportOutcome, type ImportPlan,
+  applyImport, FULL_EXPORT_REFUSAL, planImport, type ImportOutcome, type ImportPlan,
 } from '../../pack/import.ts';
 import { SUBCOMMAND_FLAGS } from '../../core/command-flags.ts';
 import { readImportRecords, type ImportRecord } from '../../pack/imported-audit.ts';
@@ -549,12 +549,17 @@ function cmdImport(
     // refuse it anyway on THAT, unrelated to what this refusal is about. A
     // reader told "a full export is not importable" must not instead be told
     // it declares a category twice.
+    //
+    // `FULL_EXPORT_REFUSAL` (pack/import.ts) is the one sentence every door a
+    // full export reaches says; it carries no artefact path and no "nothing
+    // was X" tail of its own, because those differ per door. This one's
+    // convention — every refusal in this file ends on "Nothing was
+    // imported." — is added here, in the same paragraph, rather than as a
+    // second `say` call: every other refusal in this command reads as one
+    // paragraph ending on that sentence, and two calls would print it as a
+    // visually separate line instead.
     if (artefact.manifest.kind === 'export') {
-      say(out,
-        `my_context: ${JSON.stringify(source)} is a full export, and a full export is an `
-        + 'archive to copy back — with `cp`, `git clone`, or however it reached you — not '
-        + 'something this command imports. `mycontext export --as-pack` is what writes '
-        + 'something `pack import` reads. Nothing was imported.');
+      say(out, `${FULL_EXPORT_REFUSAL} Nothing was imported.`);
       return 1;
     }
 
