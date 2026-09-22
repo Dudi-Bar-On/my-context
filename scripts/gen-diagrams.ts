@@ -212,8 +212,29 @@ export function digestOf(bytes: Buffer | string): string {
  * namespaces out. The result is then parsed BACK as `image/svg+xml` and the
  * script throws on a `parsererror` — a drawing that a browser cannot load is
  * not a drawing, and it must not reach a commit.
+ *
+ * ── `handDrawnSeed`, AND WHY MERMAID'S OWN DEFAULT DOES NOT PIN IT ─────────
+ *
+ * `TASK-gen-docs-is-not-idempotent-gen-diagrams-ts-renders-a`, measured
+ * 2026-09-22: two runs of this script on an unchanged tree produced two
+ * different SVGs for all six committed diagrams that carry a rounded node
+ * (`git diff --stat` between consecutive runs touched exactly those six files
+ * plus `diagrams.js`). Diffing one byte-for-byte showed the divergence was not
+ * text metrics or element order — every node position and label was identical
+ * — it was the bezier control points of each rounded rectangle's own border
+ * (class `outer-path`), sometimes drawn as one continuous curve and sometimes
+ * as several overlapping ones with the same endpoints.
+ *
+ * `node_modules/mermaid/dist/mermaid.min.js` draws every rounded node border
+ * through rough.js regardless of `look` (`classic` included, not only
+ * `handDrawn`), seeded from mermaid's `handDrawnSeed` config. Mermaid's own
+ * default for that key is `0` — but rough.js's RNG is `this.seed ? lcg(...) :
+ * Math.random()`, and `0` is falsy in JavaScript, so the documented default
+ * silently disables the seed and falls through to `Math.random()` on every
+ * render. `handDrawnSeed` must therefore be set here to a non-zero constant;
+ * leaving it unset (or explicitly `0`) reproduces the bug.
  */
-async function drawAll(definitions: string[]): Promise<string[]> {
+export async function drawAll(definitions: string[]): Promise<string[]> {
   const { chromium } = await import('playwright');
   const bundle = readFileSync(
     path.join(REPO, 'node_modules', 'mermaid', 'dist', 'mermaid.min.js'), 'utf8');
@@ -235,6 +256,11 @@ async function drawAll(definitions: string[]): Promise<string[]> {
           theme: 'default',
           securityLevel: 'strict',
           fontFamily: 'system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif',
+          // Non-zero on purpose — see this function's docblock. Mermaid's own
+          // default (0) is falsy, so rough.js reads it as "no seed" and draws
+          // every rounded node border with `Math.random()`, which is the whole
+          // of TASK-gen-docs-is-not-idempotent-gen-diagrams-ts-renders-a.
+          handDrawnSeed: 1,
         });
         const { svg } = await mermaid.render(elementId as string, source as string);
         // HTML in, XML out — see this function's docblock.
