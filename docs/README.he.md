@@ -2704,62 +2704,73 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 What may be changed on a `rule`, and by which command.
 
 Every `normative`-tier item:
-┌────────────┬───────────┬───────────────────────┬────────────────────────┬────────────────────────┐
-│ name       │ stored as │ values                │ how to change it       │ what it is             │
-├────────────┼───────────┼───────────────────────┼────────────────────────┼────────────────────────┤
-│ title      │ field     │ free text             │ mycontext edit <id>    │ The one-line name.     │
-│            │           │                       │ --title "…"            │ Changing it does not   │
-│            │           │                       │                        │ change the id.         │
-│ body       │ field     │ free text             │ mycontext edit <id>    │ What the item actually │
-│            │           │                       │ --body "…" | --file    │ says. On a governing   │
-│            │           │                       │ <path>                 │ item this is gated and │
-│            │           │                       │                        │ previewed.             │
-│ summary    │ field     │ free text             │ mycontext edit <id>    │ One plain sentence     │
-│            │           │                       │ --summary "…"          │ saying what this item  │
-│            │           │                       │                        │ IS and why it matters, │
-│            │           │                       │                        │ for a reader who does  │
-│            │           │                       │                        │ NOT know this codebase │
-│            │           │                       │                        │ - plain words, no ids, │
-│            │           │                       │                        │ no paths, no numbers.  │
-│            │           │                       │                        │ Max 250 chars; the     │
-│            │           │                       │                        │ body keeps the         │
-│            │           │                       │                        │ precision.             │
-│            │           │                       │                        │ `--summary=` removes   │
-│            │           │                       │                        │ it.                    │
-│ scope      │ field     │ free text             │ mycontext edit <id>    │ The globs this         │
-│            │           │                       │ --scope "a/**,b/**"    │ governs. Empty means   │
-│            │           │                       │                        │ everywhere, unless the │
-│            │           │                       │                        │ category sets          │
-│            │           │                       │                        │ scopePolicy required.  │
-│ tags       │ tag       │ free text             │ mycontext edit <id>    │ REPLACES the whole     │
-│            │           │                       │ --tags "a,b"           │ list. Read the current │
-│            │           │                       │                        │ tags back first or the │
-│            │           │                       │                        │ others are dropped.    │
-│ status     │ field     │ draft, active,        │ mycontext edit <id>    │ Whether it governs.    │
-│            │           │ validated,            │ --status <status>      │ Moving a normative     │
-│            │           │ deprecated,           │                        │ item into active or    │
-│            │           │ superseded            │                        │ validated is gated and │
-│            │           │                       │                        │ previewed.             │
-│ severity   │ field     │ hard, soft            │ mycontext harden <id>  │ Binding or advisory.   │
-│            │           │                       │ | mycontext soften     │ `edit --severity` is   │
-│            │           │                       │ <id>                   │ the same change under  │
-│            │           │                       │                        │ another name.          │
-│ always     │ field     │ true, false           │ mycontext pin <id> |   │ Injected at every      │
-│            │           │                       │ mycontext unpin <id>   │ session start. `edit   │
-│            │           │                       │                        │ --always=true` is the  │
-│            │           │                       │                        │ same change under      │
-│            │           │                       │                        │ another name.          │
-│ continuity │ field     │ true, false           │ mycontext edit <id>    │ Re-delivered on every  │
-│            │           │                       │ --continuity[=false]   │ session start and      │
-│            │           │                       │                        │ after every            │
-│            │           │                       │                        │ compaction, against    │
-│            │           │                       │                        │ its own budget. For    │
-│            │           │                       │                        │ what the NEXT session  │
-│            │           │                       │                        │ needs in order not to  │
-│            │           │                       │                        │ start over — a pointer │
-│            │           │                       │                        │ plus a bounded digest, │
-│            │           │                       │                        │ never a document.      │
-└────────────┴───────────┴───────────────────────┴────────────────────────┴────────────────────────┘
+┌─────────────┬───────────┬───────────────────────┬───────────────────────┬────────────────────────┐
+│ name        │ stored as │ values                │ how to change it      │ what it is             │
+├─────────────┼───────────┼───────────────────────┼───────────────────────┼────────────────────────┤
+│ title       │ field     │ free text             │ mycontext edit <id>   │ The one-line name.     │
+│             │           │                       │ --title "…"           │ Changing it does not   │
+│             │           │                       │                       │ change the id.         │
+│ body        │ field     │ free text             │ mycontext edit <id>   │ What the item actually │
+│             │           │                       │ --body "…" | --file   │ says. On a governing   │
+│             │           │                       │ <path>                │ item this is gated and │
+│             │           │                       │                       │ previewed.             │
+│ summary     │ field     │ free text             │ mycontext edit <id>   │ One plain sentence     │
+│             │           │                       │ --summary "…"         │ saying what this item  │
+│             │           │                       │                       │ IS and why it matters, │
+│             │           │                       │                       │ for a reader who does  │
+│             │           │                       │                       │ NOT know this codebase │
+│             │           │                       │                       │ - plain words, no ids, │
+│             │           │                       │                       │ no paths, no numbers.  │
+│             │           │                       │                       │ Max 250 chars; the     │
+│             │           │                       │                       │ body keeps the         │
+│             │           │                       │                       │ precision.             │
+│             │           │                       │                       │ `--summary=` removes   │
+│             │           │                       │                       │ it.                    │
+│ scope       │ field     │ free text             │ mycontext edit <id>   │ The globs this         │
+│             │           │                       │ --scope "a/**,b/**"   │ governs. Empty means   │
+│             │           │                       │                       │ everywhere, unless the │
+│             │           │                       │                       │ category sets          │
+│             │           │                       │                       │ scopePolicy required.  │
+│ tags        │ tag       │ free text             │ mycontext edit <id>   │ REPLACES the whole     │
+│             │           │                       │ --tags "a,b"          │ list. Read the current │
+│             │           │                       │                       │ tags back first or the │
+│             │           │                       │                       │ others are dropped.    │
+│ status      │ field     │ draft, active,        │ mycontext edit <id>   │ Whether it governs.    │
+│             │           │ validated,            │ --status <status>     │ Moving a normative     │
+│             │           │ deprecated,           │                       │ item into active or    │
+│             │           │ superseded            │                       │ validated is gated and │
+│             │           │                       │                       │ previewed.             │
+│ severity    │ field     │ hard, soft            │ mycontext harden <id> │ Binding or advisory.   │
+│             │           │                       │ | mycontext soften    │ `edit --severity` is   │
+│             │           │                       │ <id>                  │ the same change under  │
+│             │           │                       │                       │ another name.          │
+│ always      │ field     │ true, false           │ mycontext pin <id> |  │ Injected at every      │
+│             │           │                       │ mycontext unpin <id>  │ session start. `edit   │
+│             │           │                       │                       │ --always=true` is the  │
+│             │           │                       │                       │ same change under      │
+│             │           │                       │                       │ another name.          │
+│ continuity  │ field     │ true, false           │ mycontext edit <id>   │ Re-delivered on every  │
+│             │           │                       │ --continuity[=false]  │ session start and      │
+│             │           │                       │                       │ after every            │
+│             │           │                       │                       │ compaction, against    │
+│             │           │                       │                       │ its own budget. For    │
+│             │           │                       │                       │ what the NEXT session  │
+│             │           │                       │                       │ needs in order not to  │
+│             │           │                       │                       │ start over — a pointer │
+│             │           │                       │                       │ plus a bounded digest, │
+│             │           │                       │                       │ never a document.      │
+│ source_file │ field     │ free text             │ mycontext edit <id>   │ The file this item was │
+│             │           │                       │ --detach-source --yes │ snapshotted from, and  │
+│             │           │                       │                       │ its checksum — set at  │
+│             │           │                       │                       │ capture, never         │
+│             │           │                       │                       │ writable after. The    │
+│             │           │                       │                       │ one supported edit     │
+│             │           │                       │                       │ clears both: for a     │
+│             │           │                       │                       │ source that no longer  │
+│             │           │                       │                       │ exists, or was         │
+│             │           │                       │                       │ recorded outside the   │
+│             │           │                       │                       │ repository.            │
+└─────────────┴───────────┴───────────────────────┴───────────────────────┴────────────────────────┘
 
 And on a `rule` in particular:
 ┌───────────┬───────────┬──────────┬───────────────────────────────┬───────────────────────────────┐
@@ -4597,6 +4608,10 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
   Re-delivered on every session start and after every compaction, against its
   own budget. For what the NEXT session needs in order not to start over — a
   pointer plus a bounded digest, never a document.
+- **`source_file`** — a field; free text; `mycontext edit <id> --detach-source --yes`
+  The file this item was snapshotted from, and its checksum — set at capture,
+  never writable after. The one supported edit clears both: for a source that
+  no longer exists, or was recorded outside the repository.
 
 **Every `rationale`-tier item:**
 
@@ -4626,6 +4641,10 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
   Accepted on this tier, unlike severity and always: the continuity tier is not
   a governance tier and never consults isNormative, so a reference can carry
   it.
+- **`source_file`** — a field; free text; `mycontext edit <id> --detach-source --yes`
+  The file this item was snapshotted from, and its checksum — set at capture,
+  never writable after. The one supported edit clears both: for a source that
+  no longer exists, or was recorded outside the repository.
 
 **`contract`** — the `normative` rules above, and 3 of its own:
 

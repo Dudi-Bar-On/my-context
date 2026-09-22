@@ -829,6 +829,16 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
     unlink: '--unlink <relation> <target> takes TWO operands. This model is one value per flag, '
       + 'so a def advertising it would compose `--unlink rel` and lose the target silently — '
       + 'the one failure the whole composed-and-shown design exists to prevent.',
+    // Added 2026-09-22 with the outside-repository guard (`escapesRoot`,
+    // paths.ts) and the corpus repair it made possible to detect.
+    'detach-source': '--detach-source clears source_file and source_checksum, both, through '
+      + 'the ordinary edit write path. Not offered for `summary-unchanged`\'s reason, directly '
+      + 'above: it is a switch that must be a DELIBERATE act, and a checkbox beside a body '
+      + 'textarea is the least deliberate control there is. It is also refused outright '
+      + 'alongside `--body` and `--unlink` in the same call (`cmdEdit`, edit.ts), which this '
+      + 'flag-list model has no way to express. When the palette does offer it, it belongs on '
+      + 'its own narrow "detach this item\'s source" control, and this row must move rather '
+      + 'than stand over the opposite.',
   },
   'lesson-accept': {
     // 2026-09-12: `lesson-accept` became the fifth AUTHORED surface of the

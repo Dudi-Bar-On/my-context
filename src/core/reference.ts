@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { Budgets } from './config.ts';
-import { relPosix } from './paths.ts';
+import { escapesRoot, relPosix } from './paths.ts';
 import { estimateTokens } from './select.ts';
 import { checksum } from './slug.ts';
 import { normalizeEol } from './text.ts';
@@ -233,7 +233,16 @@ export function readSnapshot(repoRoot: string, cwd: string, target: string): Sna
   // `source_file` that climbs out of the repository names something `doctor`
   // will never verify, so the item's provenance would be permanently
   // unconfirmable — and capture is the one moment where saying so is cheap.
-  if (rel === '' || rel === '..' || rel.startsWith('../')) {
+  //
+  // `escapesRoot` (paths.ts), not the three-clause check this used to spell
+  // inline: `path.relative` across two Windows drives returns the TARGET,
+  // absolute (`C:/x/y.md`), which is none of `''`, `'..'` or a `'../'` prefix
+  // — so the inline check let 84 items in this corpus record a `source_file`
+  // outside the repository, each one unconfirmable by `doctor` from the day
+  // it was captured. `escapesRoot` additionally asks both flavours'
+  // `isAbsolute`, so the refusal fires on every host regardless of which
+  // platform captured the item.
+  if (escapesRoot(rel)) {
     throw new SnapshotError(
       `my_context: ${absolute} is outside this repository (${repoRoot}), and a reference records ` +
       `its source as a repository-relative path so \`mycontext doctor\` can check it for drift. ` +

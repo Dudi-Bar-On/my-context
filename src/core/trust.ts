@@ -670,6 +670,26 @@ export const UPDATE_FIELD_POLICY = {
    * which reads this class as well as `gated`.
    */
   request: 'documentation',
+  /**
+   * **The second `documentation` field, and it earns the class on the same
+   * two questions `request`'s comment poses.** `content` is "it changes what
+   * the agent is TOLD" — `source_file`/`source_checksum` are never emitted by
+   * `renderItemBlock` or `renderIndexLine` (grepped: neither name appears in
+   * `render-item.ts`), so no agent is ever told them and there is no text
+   * here for a staged revision to carry. `gated` is "it changes whether,
+   * where or how forcefully the item is injected" — `select` never reads
+   * `sourceFile`/`sourceChecksum`, only `isSnapshot` (reference.ts) does, and
+   * that predicate feeds `doctor`'s drift check and `mycontext refresh`, not
+   * injection. So `detachSource` is neither: it is a fact about WHERE an
+   * item's body came from, recorded so tooling outside injection can act on
+   * it, which is exactly what `documentation` was carved out to name.
+   *
+   * `detachSource` is `boolean`, not the fields it clears — see `UpdateInput`
+   * for why the flag is what travels rather than a literal `sourceFile: null`
+   * patch. `DOCUMENTATION_READERS.detachSource` is the predicate for whether
+   * this input actually MOVES anything, same shape as `request`'s.
+   */
+  detachSource: 'documentation',
   // `summaryUnchanged` is excluded alongside `id` and `origin`, and the
   // exclusion is this table's own rule rather than an exemption from it: the
   // header says "every field of `UpdateInput` that names ITEM DATA", and those
@@ -841,6 +861,13 @@ const DOCUMENTATION_READERS: Record<
   request: (item, input) => (
     input.request !== undefined && input.request.trim() !== (item.request ?? '')
   ),
+  // An echo is not a change here either: `--detach-source` on an item that
+  // was already detached (or never had a source) moves nothing. `cmdEdit`
+  // (the only caller — `update_item`'s MCP schema does not expose this field,
+  // so no non-human caller can construct one) refuses the no-source case
+  // outright before `updateItem` is ever reached, but this predicate is
+  // asked independently of that refusal and has to be correct on its own.
+  detachSource: (item, input) => input.detachSource === true && item.sourceFile !== null,
 };
 
 /**

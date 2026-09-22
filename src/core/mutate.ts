@@ -1368,6 +1368,37 @@ export interface UpdateInput {
    * no injected surface and no decision at all.
    */
   request?: string;
+  /**
+   * **Set `sourceFile` and `sourceChecksum` to `null`, through the ordinary
+   * write path — the repair for an item whose source escaped the repository
+   * before `escapesRoot` (paths.ts) existed to refuse it.**
+   *
+   * A boolean rather than `sourceFile: null` / `sourceChecksum: null` as two
+   * ordinary optional fields, and the asymmetry is deliberate: those two
+   * fields are CREATE-ONLY everywhere else in this codebase (`CreateInput`
+   * carries them; `UpdateInput` never has, because nothing before this needed
+   * to CHANGE where an item's source claims to be, only to CLEAR it). Adding
+   * `sourceFile?: string | null` here would read as "an edit may also
+   * rewrite provenance to point somewhere else", which is not a capability
+   * this project offers — capturing FROM a new file is `mycontext add --file`
+   * on a fresh item, not a rewrite of an existing one's history. A flag that
+   * can only ever mean "detach" says exactly the one thing this surface does.
+   *
+   * `true` is the only meaningful value; `false` and absent are the same
+   * "leave it alone" — see `DOCUMENTATION_READERS.detachSource` (trust.ts),
+   * which is what makes an echoed `true` (already detached, or never had a
+   * source) read as no change.
+   *
+   * Classified `documentation` in `UPDATE_FIELD_POLICY` (trust.ts), beside
+   * `request`: neither field is emitted by `renderItemBlock`/`renderIndexLine`
+   * and neither is read by `select`, so this changes nothing an agent is
+   * told and nothing about whether, where or how forcefully the item is
+   * injected — the two questions `content` and `gated` answer. What it DOES
+   * change is what `doctor`'s drift check (`isSnapshot`, reference.ts) and
+   * `mycontext refresh` have to say about the item, which is the whole
+   * reason the field exists.
+   */
+  detachSource?: boolean;
   origin?: Origin;
 }
 
@@ -2004,6 +2035,21 @@ export function updateItem(
     }
   }
   if (update.extra !== undefined) item.extra = { ...item.extra, ...update.extra };
+  // `--detach-source` (`UpdateInput.detachSource`). Both fields together,
+  // always — there is no route that clears one and leaves the other, because
+  // a `sourceChecksum` with no `sourceFile` names nothing to check drift
+  // against, and a `sourceFile` with no `sourceChecksum` is already what
+  // `isSnapshot` (reference.ts) treats as "not a snapshot" but `doctor` still
+  // has a path (`checkSourceDrift`) that tries to resolve the name. Clearing
+  // both is the only state that stops every downstream reader from treating
+  // this item as claiming a source at all. `sourceAnchor` is untouched: it is
+  // null on every snapshot this repair targets (`isSnapshot` requires it), and
+  // an ingested item's anchor is a different provenance shape this flag was
+  // not built to touch — see `UpdateInput.detachSource`.
+  if (update.detachSource === true) {
+    item.sourceFile = null;
+    item.sourceChecksum = null;
+  }
 
   // **LAST of the assignments, and the position is the mechanism.**
   //
