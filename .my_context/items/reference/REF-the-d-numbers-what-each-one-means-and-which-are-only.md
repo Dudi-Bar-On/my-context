@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a version a program can read was added on 2026-09-16 so no progress report has to guess at the words.
-summary_of: 38d0daf1e27a4e21
+summary_of: 2839b9dc37a9fb73
 summary_was:
   - 2026-09-16 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; eleven more were added on 2026-09-13 from the consolidated review findings.
   - 2026-09-13 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D52 widened on 2026-09-13 to the log that records what was delivered.
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 3ecd2bd714608a4c
+checksum: 1b5348c23c9a8b95
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -390,7 +390,7 @@ D42    | open          | recall/*
 D43    | not-filed     | -
 D44    | open          | port/93, port/98, walk/4, walk/15, walk/55, ui-gates/1, ui2/5r, walk/152, walk/153, walk/154, walk/155, walk/156, walk/157, walk/158, walk/159, walk/160
 D45    | open          | walk/11, walk/12, walk/32, walk/33, ui2/10p, walk/161, walk/162
-D46    | open          | screens/24, walk/57, walk/89, walk/139, walk/145, walk/146, walk/147, walk/148, walk/149, walk/150, walk/151
+D46    | open          | screens/24, walk/57, walk/89, walk/139, walk/145, walk/146, walk/147, walk/148, walk/149, walk/151
 D47    | open          | walk/43, walk/102, walk/105, walk/163, walk/164
 D48    | open          | budget/6, ui2/13, walk/14, walk/18, walk/106, walk/165
 D49    | open          | walk/8, walk/59, ui1/17b

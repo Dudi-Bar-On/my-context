@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:2"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 3351caa4c26dde0b
+checksum: d488497989b3967f
 plan: release
 seq: "2"
-state: doing
+state: done
 ---
 
 # release phase 2 — the board says what is left
