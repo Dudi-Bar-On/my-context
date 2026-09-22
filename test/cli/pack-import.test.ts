@@ -895,19 +895,37 @@ test('--name "" is refused as an empty name, not misreported as a full export', 
   nothingImported(cwd);
 });
 
-test('the same gate guards --name on the full-export path, which cannot go without one', () => {
-  const cwd = project();
-  // A whole-workspace export carries no name, so `--name` is not an override
-  // here but the only name there is — and it is the one nothing screened.
-  const source = artefact({
-    items: newItems(), meta: { kind: 'export', name: null, version: null },
-  });
+/**
+ * Rests on TASK-release-phase-3-the-defects and INV-nothing-is-dropped-silently.
+ * (Not an `@basis` file header: this file predates
+ * RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none and is
+ * baselined in `scripts/basis-undeclared.txt`; a header declaration would
+ * claim every other test here too, which this comment does not.)
+ *
+ * Ruling C (2026-09-21, B10): a full export is an archive to copy back, not
+ * something `pack import` reads, and `--as-pack` at export time is what
+ * makes an importable pack. The withdrawn behaviour let `--name` stand in
+ * for the name an export does not carry — this is the replacement, and it
+ * is built against a REAL export projection (`mycontext export --out
+ * <dir>`, run for real below) rather than a hand-shaped
+ * `meta: { kind: 'export' }` object, because the artefact under test is
+ * exactly the one thing a hand-built manifest cannot honestly stand in for.
+ */
+test('a full export is refused as non-importable, --name included, and points at --as-pack', () => {
+  const source = project();
+  const exported = path.join(scratchDir('myctx-packcli-export-'), 'export');
+  const exportResult = run(['export', '--out', exported], source);
+  assert.equal(exportResult.code, 0, exportResult.out);
 
-  const { code, out } = run(['pack', 'import', source, '--yes', '--name', `a${RLO}b`], cwd);
+  const cwd = project();
+  // `--name` is supplied anyway — the point is that it no longer rescues a
+  // full export. The old refusal asked for one; this one does not read it.
+  const { code, out } = run(['pack', 'import', exported, '--yes', '--name', 'anything'], cwd);
 
   assert.equal(code, 1, out);
-  assert.match(out, /U\+202E/);
-  assert.equal(out.includes(RLO), false, `the refusal printed U+202E itself`);
+  assert.match(flat(out), /archive to copy back/);
+  assert.match(out, /--as-pack/);
+  assert.equal(/pass --name/i.test(out), false, `still asked for --name: ${out}`);
   nothingImported(cwd);
 });
 

@@ -44,9 +44,17 @@ import { confirmAction, readLineSync } from './review.ts';
  *   1. the subcommand, then the flags, then the positional — all before the
  *      corpus is opened, so a typo is never read as one of the checks below
  *      deciding something;
- *   2. read and verify the artefact, then plan the import — `planImport` is
- *      pure, so everything it refuses is refused with nothing written;
- *   2b. `--name`, through the two refusals every other pack name takes. It is
+ *   2. read and verify the artefact;
+ *   2a. a full export is refused outright, on the artefact itself and before
+ *      `planImport` runs — ruling C (2026-09-21): it is an archive to copy
+ *      back, not something this command imports, and `--as-pack` at export
+ *      time is what makes an importable pack. Checked before planning so a
+ *      real export's own unprojected `config.json` — which `planImport`
+ *      would usually refuse anyway, on unrelated grounds — never gets to
+ *      answer for why the wrong artefact was handed here;
+ *   2b. plan the import — `planImport` is pure, so everything it refuses is
+ *      refused with nothing written;
+ *   2c. `--name`, through the two refusals every other pack name takes. It is
  *      before the report and not after it because the report's own first line
  *      PRINTS the name — see `refuseOverrideName`;
  *   3. print the collision report, **always**. Not "unless `--yes`": the
@@ -62,7 +70,7 @@ import { confirmAction, readLineSync } from './review.ts';
  * ## Why gate 5 does not go through `confirmAction` as it stands
  *
  * `confirmAction` returns true on `--yes`
- * (`cli/commands/review.ts` · `  if (hasFlag(args, 'yes')) return true;` · ~867),
+ * (`cli/commands/review.ts` · `  if (hasFlag(args, 'yes')) return true;` · ~877),
  * which is exactly right for gate 4 and exactly wrong for gate 5. §6n.7 asks
  * for an approval that is explicit and SEPARATE from choosing the pack, and
  * `--yes` is consent to the import the user described — not to replacing a
@@ -343,7 +351,7 @@ export function outcomeLines(
  * This is `ui/security.ts`'s field rule applied to a LIST instead of to a
  * string: bound what is shown, and mark the truncation VISIBLY so it cannot be
  * mistaken for the whole of what arrived
- * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~354).
+ * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~395).
  */
 const NAME_FINDING_MAX = 4;
 
@@ -369,7 +377,7 @@ const NAME_FINDING_MAX = 4;
  * only the part whose length somebody else chose.
  *
  * 256, the number this codebase already settled on for exactly this job
- * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~354), and
+ * (`ui/security.ts` · `export const REFUSAL_VALUE_MAX = 256;` · ~395), and
  * comfortably above the longest value that could legally have been a name: 64
  * code points quote to at most 128 characters here, because the screen runs
  * first and has already refused every code point `JSON.stringify` would expand
@@ -530,6 +538,26 @@ function cmdImport(
     // places to change the day this command learns to fetch a URL.
     const origin = path.resolve(cwd, source);
     const artefact = readArtefact(origin);
+
+    // Ruling C (2026-09-21): a full export is an archive to copy back, not
+    // something this command imports, and `--name` cannot rescue it — the
+    // withdrawn behaviour let `--name` stand in for the name an export does
+    // not carry, exactly the read this ruling reverses. Checked on the
+    // artefact itself, before `planImport` ever runs: a full export's own
+    // `config.json` is the workspace's, unprojected — every category's full
+    // definition, `profile`, `budgets` — and `planImport` would usually
+    // refuse it anyway on THAT, unrelated to what this refusal is about. A
+    // reader told "a full export is not importable" must not instead be told
+    // it declares a category twice.
+    if (artefact.manifest.kind === 'export') {
+      say(out,
+        `my_context: ${JSON.stringify(source)} is a full export, and a full export is an `
+        + 'archive to copy back — with `cp`, `git clone`, or however it reached you — not '
+        + 'something this command imports. `mycontext export --as-pack` is what writes '
+        + 'something `pack import` reads. Nothing was imported.');
+      return 1;
+    }
+
     const plan = planImport(artefact, {
       existing: (id) => ctx.store.get(id),
       rawConfig: rawWorkspaceConfig(root),
@@ -550,14 +578,10 @@ function cmdImport(
     }
 
     const name = override ?? plan.pack;
-    if (name === null || name === '') {
-      say(out,
-        `my_context: ${JSON.stringify(source)} is a full export and carries no pack name, so `
-        + 'there is nothing to file its history and its membership list under. Pass --name '
-        + '<text> to say what to call it here. A name invented on your behalf would be the one '
-        + 'name `mycontext pack list` shows you and nobody chose. Nothing was imported.');
-      return 1;
-    }
+    /* c8 ignore next 2 -- unreachable: `refuseMeta` (pack/manifest.ts) refuses a `kind: 'pack'`
+       artefact with no name, and a `kind: 'export'` one already returned above. Kept only so
+       `name` narrows to `string` for every use below. */
+    if (name === null) throw new Error('my_context: a pack plan carried no name — unreachable.');
 
     const dryRun = hasFlag(args, 'dry-run');
     // Always, and regardless of `--yes`: see the module comment.

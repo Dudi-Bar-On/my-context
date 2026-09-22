@@ -2899,7 +2899,7 @@ moves no count of what governs.
 | Command | What it does |
 |---|---|
 | `mycontext export --out <path>` | write this corpus to a path outside the workspace, as a directory (the default) or as one ZIP with `--format zip`. `--as-pack --pack-name <name> --pack-version <text>` projects it for a stranger; `--type`, `--status` and `--tag` narrow what goes; `--no-history` withholds the mutation records; `--dry-run` prints the preview and writes nothing. It refuses a destination that already holds anything, and it never writes inside `.my_context/`. [What travels, and what does not](#handing-the-corpus-on--mycontext-export) |
-| `mycontext pack import <path>` | read an artefact somebody else wrote and land its items here **as drafts** — nothing it brings in governs anything until you promote it. It prints a collision report before it asks anything, on every path including `--yes`; `--name <text>` files it under a name you choose, `--dry-run` writes nothing, and `--overwrite-changed` answers the **second** confirmation, the one `--yes` deliberately does not. [Two questions, not one](#bringing-one-in--mycontext-pack-import) |
+| `mycontext pack import <path>` | read a pack somebody else wrote and land its items here **as drafts** — nothing it brings in governs anything until you promote it. It prints a collision report before it asks anything, on every path including `--yes`; `--name <text>` files it under a name you choose, `--dry-run` writes nothing, and `--overwrite-changed` answers the **second** confirmation, the one `--yes` deliberately does not. [Two questions, not one](#bringing-one-in--mycontext-pack-import) |
 | `mycontext pack list` | every pack imported here: its version, how many items it brought, when, and where from. It is what `mycontext review promote --all --pack <name>` reads |
 
 <!-- example: status -->
@@ -3529,10 +3529,16 @@ no version check over the network, because this product makes no network request
 document is also where "updating a pack" is described, since the only way to do it is to import
 the newer artefact again.
 
-`mycontext pack import <path>` reads an artefact somebody else wrote — a directory or a ZIP
-— and lands its items in this workspace **as drafts**. That is true of every item in every
+`mycontext pack import <path>` reads a pack somebody else wrote — a directory or a ZIP —
+and lands its items in this workspace **as drafts**. That is true of every item in every
 pack, on both tiers: an item that was `active` in the author's corpus arrives `draft` in
 yours, and governs nothing until you promote it.
+
+**A full export is refused outright, before anything else about it is even read.** It is an
+archive to copy back — with `cp`, `git clone`, or however it reached you — not something this
+command imports. `mycontext export --as-pack` (above) is what projects a corpus into
+something `pack import` reads; a plain `mycontext export` writes the other kind, and this is
+the command that will not take one, `--name` included.
 
 **The manifest is verified before anything is parsed, and a failure is a refusal.** An
 artefact whose bytes did not arrive intact is not partially imported, and there is
@@ -3571,7 +3577,8 @@ declares, which is how two packs that call themselves the same thing get told ap
 name** in `mycontext pack list` rather than only by where each came from. It is not what
 keeps their records apart: an import is filed under its name *and* the artefact location this
 workspace read it from, so neither can land on the other's membership record whether or not
-you pass it. It is also **required** for a full export, which carries no name at all.
+you pass it. A full export never reaches this flag at all: it carries no name and is refused
+outright before `--name` is even considered — see above.
 
 **`mycontext init --pack <path>` founds a workspace from an artefact in one command.** It is
 the same implementation reached from the one command that runs *before* a workspace exists:
@@ -3591,8 +3598,9 @@ A pack `init` refuses leaves **no `.my_context/` behind at all** — the plannin
 nothing, so a bad artefact is rejected before a directory exists. A failure after that point
 removes what it made and says which of the two happened, because "initialized" is not a word
 this command prints for a corpus that is not there. `init` takes no `--name`, so a full
-export — which carries none — is refused there and pointed at
-`mycontext pack import <path> --name <text>`.
+export — which carries none — is refused there too, the same artefact `mycontext pack
+import` also will not take: run `mycontext export --as-pack` first to write something either
+command can found a workspace from.
 
 **A pack's history is filed apart from yours, and what could not be read is counted.** Its
 mutation records land under `.audit/imported/<pack>/` — a directory your own log's
@@ -4157,9 +4165,9 @@ a workspace exists.
 
 | Flag | What it does | Where it works |
 |---|---|---|
-| `--name <text>` | what to call the pack **here**: the directory its history is filed under, and the name `mycontext pack list` shows. It defaults to the name the pack's own manifest declares, and is **required** for a full export, which carries none. Two packs that call themselves the same thing are kept apart without it — each import is filed under its name *and* where it was read from — so this is how you tell them apart by name rather than by source | `pack import` |
+| `--name <text>` | what to call the pack **here**: the directory its history is filed under, and the name `mycontext pack list` shows. It defaults to the name the pack's own manifest declares. A full export carries no name and never reaches this flag: it is refused outright before `--name` is considered. Two packs that call themselves the same thing are kept apart without it — each import is filed under its name *and* where it was read from — so this is how you tell them apart by name rather than by source | `pack import` |
 | `--overwrite-changed` | the answer to the **second** confirmation — replace the items you had changed with the pack's versions. It is separate from `--yes` deliberately, and `--yes` does not imply it: consent to an import is not consent to replacing a rule you wrote. Each replaced item lands `draft` and its previous version stays in the audit log. On a pack with nothing in the `changed` bucket it is accepted and does nothing, so a script that imports the same pack repeatedly does not have to know in advance whether this run collides. On `mycontext init` it is **refused**, with a message naming `pack import`: a corpus that does not exist yet has nothing to overwrite, and a flag accepted where it can do nothing is the silent swallow every refusal here exists to stop | `pack import` |
-| `--pack <path>` | found this workspace from an artefact, in the same command that creates it. It is the only flag `mycontext init` accepts, and everything else — a positional, `--global`, `--yes`, `--overwrite-changed` — is still refused by name. It asks nothing and takes no `--name`, so a full export is refused there and pointed at `pack import` | `init` |
+| `--pack <path>` | found this workspace from an artefact, in the same command that creates it. It is the only flag `mycontext init` accepts, and everything else — a positional, `--global`, `--yes`, `--overwrite-changed` — is still refused by name. It asks nothing and takes no `--name`, so a full export is refused there too, the same artefact `pack import` also will not take | `init` |
 | `--pack <name>` | on `review promote`, which pack's drafts `--all` promotes — a **name**, not a path: the one `mycontext pack list` shows, which is the name the pack was filed under here. A name no import record carries is refused and points at that command; `--pack` without `--all` is refused too, rather than accepted where nothing would read it | `review promote` |
 | `--source <path>` | which import of that pack, when two packs imported here call themselves the same name. It is matched against the source `mycontext pack list` prints, byte for byte and with nothing resolved, and an ambiguity is refused with the candidates listed rather than resolved by guessing | `review promote` |
 

@@ -30,7 +30,7 @@
  *
  * The plan's Task 12 lists the merged config as step 3, after the creates. It
  * cannot be: `createItem` resolves an item's category out of `ctx.config`
- * (`core/mutate.ts` · `function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {` · ~233),
+ * (`core/mutate.ts` · `function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {` · ~339),
  * so a pack that DEFINES a category — the half §6n.1 restored — would have
  * every one of its items refused as an unknown type before the config that
  * declares them was ever written. So the merged config is written and adopted
@@ -50,7 +50,7 @@
  * ## Nothing in `identical` is applied
  *
  * The creator's explicit-id branch already treats identical content as a no-op
- * duplicate (`core/mutate.ts` · `if (itemContentHash(explicitExisting) === hash) return duplicateOf(explicitExisting);` · ~928),
+ * duplicate (`core/mutate.ts` · `if (itemContentHash(explicitExisting) === hash) return duplicateOf(explicitExisting);` · ~986),
  * so re-running an import with nothing approved is idempotent by construction
  * rather than by a flag. Those ids are still MEMBERS of the pack — they are in
  * `imported` and in the import record — because `review promote --all --pack`
@@ -275,9 +275,9 @@ function duplicateIds(items: readonly Item[]): string[] {
  * HERE from today and the pack's own history carries the original dates.
  *
  * A ticked step is reported for a harder reason. `normalizeSteps`
- * (`core/validate.ts` · `export function normalizeSteps(steps: string[]): Step[] {` · ~614)
+ * (`core/validate.ts` · `export function normalizeSteps(steps: string[]): Step[] {` · ~722)
  * sets `checked: false` on every entry, and `checked` is part of the content
- * hash (`core/content-hash.ts` · `function canonicalStep(s: Step): Step {` · ~43),
+ * hash (`core/content-hash.ts` · `function canonicalStep(s: Step): Step {` · ~45),
  * so an arriving procedure with a ticked box lands unticked AND buckets
  * `changed` against its own pack on the next import — differing in `steps`,
  * which has no write path, so it is then reported as not overwritable forever.
@@ -464,7 +464,7 @@ function createInputFor(item: Item, kind: ArtefactKind): CreateInput {
  * would let pack content govern with no review at all.
  *
  * `extra` MERGES rather than replaces (`core/mutate.ts` ·
- * `  if (update.extra !== undefined) item.extra = { ...item.extra, ...update.extra };` · ~878),
+ * `  if (update.extra !== undefined) item.extra = { ...item.extra, ...update.extra };` · ~2037),
  * so a key the local item carries and the pack does not survives the
  * overwrite. That is `updateItem`'s own semantics and this does not work
  * around them; the consequence is that such an item can still bucket `changed`
@@ -511,22 +511,22 @@ export function applyImport(
 
   const created: string[] = [];
   for (const item of plan.buckets.new) {
-    const result = createItem(writing, createInputFor(item, plan.kind));
     // `createItem` has one path that returns an id other than the one it was
     // given: an item carrying both `source_file` and `source_anchor` whose
     // content already exists here under a different name is reported as
-    // already captured (`core/mutate.ts` · `      message: \`my_context: already captured as ${anchored.id}. Nothing changed.\`,` · ~467).
-    // Reachable only from a full export, and refused rather than absorbed: the
-    // outcome's four lists are keyed on the pack's own ids, so quietly
-    // substituting one would make every count in the report describe an item
-    // the pack does not contain.
-    if (result.id !== item.id) {
-      refuse(`this artefact's ${JSON.stringify(item.id)} is already captured here as `
-        + `${JSON.stringify(result.id)} — the same content, from the same source passage, under `
-        + 'a different id. The two corpora allocated the id family differently and nothing here '
-        + 'can decide which of them names the same item; that is a judgement about meaning. '
-        + `Remove ${JSON.stringify(item.id)} from the artefact, or rename it.`);
-    }
+    // already captured (`core/mutate.ts` · `      message: \`my_context: already captured as ${anchored.id}. Nothing changed.\`,` · ~951).
+    // Those two fields travel only on a full export (`createInputFor`,
+    // above) — and ruling C (2026-09-21) refuses a full export before it
+    // reaches here at all: `cmdImport` (cli/commands/pack.ts) refuses on
+    // `artefact.manifest.kind === 'export'`, before `planImport` even runs,
+    // and `planPack` (cli/index.ts) already threw on the same artefact for
+    // carrying no pack name. So this path is closed
+    // at both doors this build has, and the mismatched-id refusal that used
+    // to stand here — naming the other id and asking which corpus was right
+    // about it — no longer has an artefact that can reach it. Removed rather
+    // than left to rot: INV-nothing-is-dropped-silently is about a live
+    // silence, not a branch nothing can still walk into.
+    createItem(writing, createInputFor(item, plan.kind));
     created.push(item.id);
   }
   const imported = [...created, ...plan.buckets.identical.map((i) => i.id)];

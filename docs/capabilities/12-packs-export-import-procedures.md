@@ -84,8 +84,13 @@ once per transaction appears a million times per month.
 **Import mechanics, from `src/cli/commands/pack.ts` and `src/pack/`.** The
 command file's own doc comment (quoted, not paraphrased — it states the order
 precisely) lays out six steps: parse the subcommand and flags before the corpus
-is opened; read and verify the artefact and run `planImport` — which is pure,
-so "everything it refuses is refused with nothing written"; resolve `--name`
+is opened; read and verify the artefact; refuse it outright if it is a full
+export — ruling C (2026-09-21, B10): an export is an archive to copy back, not
+something this command imports, and `mycontext export --as-pack` is what makes
+an importable pack, checked on the artefact itself so a real export's own
+unprojected `config.json` never gets blamed for a refusal that is really about
+its kind — and otherwise run `planImport`, which is pure, so "everything it
+refuses is refused with nothing written"; resolve `--name`
 through `refusePackName`'s two refusals; **always** print the collision
 report — sorting arriving items into `new` / `changed` / `identical` buckets,
 because a non-interactive refusal would otherwise never say what it declined;
