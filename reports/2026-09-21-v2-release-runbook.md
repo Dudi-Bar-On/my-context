@@ -78,13 +78,13 @@ the rest of the board under the no-deferral ruling; phase 9 is yours; phase 10 i
 | Phase | Closes | Tasks | Lane days (estimate) |
 |---|---|---|---|
 | 1 — the repository tells the truth | CI green, fresh-clone green, cleanup | B1, B2, B3, B15 + cleanup | 2 |
-| 2 — the board says what is left | 18 done closed, 12 obsolete retired, your 11 rulings recorded | §7.1, §7.2, §7.3 | 0.5 |
+| 2 — the board says what is left | 18 done closed, 11 obsolete retired, your 11 rulings recorded | §7.1, §7.2, §7.3 | 0.5 |
 | 3 — the defects | the six board blockers and nine review defects | B4 to B14 | 2 |
 | 4 — silent failures and disclosures | every "could not measure" or swallowed error says so | 17 (§7.4) | 2 |
 | 5 — CLI, store, types and hygiene | flag vocabulary, closed-set types, store changelog, perf percentiles, lane safety | 29 (§7.5) | 3 |
 | 6 — the web UI: function, accessibility, gates | every functional finding, WCAG conformance, keyboard, reflow, typography, help adoption, gate re-derivation | 56 (§7.6) | 8 |
 | 7 — features | typed SQL on Ask, `init --rewrite-watched`, budget carry, delivery-log report, archive said/ran control, simulator anchoring | 8 (§7.7) | 4 |
-| 8 — documentation | retired rulings, README claims, screenshots in every English chapter, Hebrew edition parity, chapter 10 | 7 + B5 + B14 (§7.8) | 4 |
+| 8 — documentation | retired rulings, README claims, screenshots in every English chapter, Hebrew edition parity, chapter 10, the capture screen’s false reason | 8 + B5 + B14 (§7.8) | 4 |
 | 9 — yours | the stranger test on Windows, with one look at the UI; the nine hook events fired on your machine (`swallow/16`) | 2 | your time |
 | 10 — the cut | changelog, version, gates, tag, release | `VERSIONING.md` | 0.5 |
 
@@ -212,7 +212,7 @@ numbers.** The arithmetic now reads 158 in the eight buckets below plus the 6 bl
 | `TASK-a-shared-item-id-across-ops-leaves-watch-model…` | `test/ui/watch-model.test.ts:213-218` |
 | `TASK-the-palette-does-not-offer-review-promote-all-pack…` | the withholding IS the decision and it is pinned: `FLAGS_NOT_OFFERED['review promote']` at `test/ui/palette-lib.test.ts:730-741` carries `all`, `pack` and `source` with their reasons; `src/ui/public/lib/palette-defs.js:208` points at it |
 
-### 7.2 Obsolete (12) — phase 2 retires them, naming the successor
+### 7.2 Obsolete (11) — phase 2 retires them, naming the successor
 
 | Task | Why |
 |---|---|
@@ -226,7 +226,6 @@ numbers.** The arithmetic now reads 158 in the eight buckets below plus the 6 bl
 | `walk/150` loading label | duplicate of `walk/139`, which is in phase 6 |
 | `TASK-58-of-its-rows…` and its `-2` twin | duplicate: `rulings/71` done + `rulings/82` in phase 7 |
 | `TASK-d33-s-gate…` | its own backfill says it names no surface |
-| `TASK-the-mockup-gives-a-true-conclusion-a-false-reason…` | the same disposition as `ui2/5r` two rows above and for the same reason — the mockup is frozen (`DEC-the-mockup-is-a-frozen-reference…`), so its `cap.nosim` text cannot be corrected. **The conclusion it draws is TRUE; only the reason is stale.** If you would rather the reason were fixed despite the freeze, this belongs in phase 8 instead and the freeze needs an exception recorded |
 
 ### 7.3 Owner-only (11) — your ruling in one line each, recorded in phase 2, done where it lands
 
@@ -285,12 +284,27 @@ shows what it was, `rulings/82` a reporting surface for the delivery log, `seman
 said/ran control on Conversations and the `tool_result` cap, `walk/141` Ask and Capture
 reviewed as they are now; plus `anchors/12` and `walk/14` per G.
 
-### 7.8 Phase 8 — documentation (7 + B5 + B14)
+### 7.8 Phase 8 — documentation (8 + B5 + B14)
 
 `rulings/101` screenshots in every English chapter and system document (the shot list the
 Hebrew edition follows), `docsys/11`, `library/6`, `rulings/67`, `rulings/79`, `rulings/111`,
 `walk/143`, plus B5 (retired rulings cited as live) and B14 (README claims), and chapter 10
 line 453.
+
+**`TASK-the-mockup-gives-a-true-conclusion-a-false-reason…` — owner ruling 2026-09-22: “fix the
+reason despite the freeze, it belongs in phase 8.”** It is not a mockup edit and the freeze does
+not reach it: the sentence SHIPS, at `src/ui/public/strings/en.js:1788` with its `he.js` twin, and
+it tells a user *“no similarity metric exists in this product”* when `overlapScore` does exist —
+`src/core/overlap.ts:106,126` (jaccard, `max(jaccard, containment * 0.8)`), behind
+`POST /api/overlap`, and `capture-model.ts` says so in its own header. **The CONCLUSION is
+owner-ruled and does not move** (`DEC-the-capture-screen-shows-a-scope-match-and-never-a-score`);
+only the justification does. The replacement is already written in the task and is the stronger
+sentence, because it survives the metric existing: a metric exists and is deliberately not
+rendered, because it has never been validated against a person’s judgement of whether two items
+are the same rule, and an unvalidated order shown at capture time invites a trust it has not
+earned. **Both string tables move in the same commit** — `strings-parity` compares the key sets in
+both directions. The task also records that the freeze itself ended on 2026-08-25 (“give the
+mockup a data-t and ship it”), so no exception is needed and none should be written.
 
 ---
 
