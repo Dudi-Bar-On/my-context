@@ -14,22 +14,65 @@ Repository at `acd574ce`. Written to be correlated with
 
 ---
 
-## 1. The three totals do not agree, and that is the first thing to reconcile
+## 1. Reconciled against the runbook — three items are genuinely uncovered, not six
 
-| source | count | |
+**This section replaces an earlier version of itself that was wrong, and the correction is the
+point.** It read: *"154 against 160 is NOT explained, and it is the gap worth your attention."* It is
+explained. The six are blockers.
+
+### The arithmetic
+
+| | count | |
 |---|---|---|
-| the runbook’s headline (§7) | **160** | "the triage of the 160 open tasks" |
-| the runbook’s own eight buckets, summed | **154** | 17 + 11 + 11 + 17 + 28 + 55 + 8 + 7 |
-| the board, live today | **155** | `check-board`: 137 under subjects + 18 orphans |
+| open work items, live today | **155** | `check-board`: 140 with a plan/seq + 15 without |
+| the runbook's headline (§7) | 160 | true on 2026-09-21 |
+| the runbook's eight §7 buckets, summed | 154 | 17+11+11+17+28+55+8+7 |
 
-**155 against the runbook’s 160 is explained and benign.** Five items were marked done today —
-`rulings/101`, `/109`, `/111`, `/112`, `/113` — all of which shipped on 2026-09-17 and had never been
-advanced. They were legitimately open when the runbook was written. 160 − 5 = 155.
+**160 → 155** is five items marked done today (`rulings/101`, `/109`, `/111`, `/112`, `/113`), all of
+which shipped 2026-09-17 and had never been advanced.
 
-**154 against 160 is NOT explained, and it is the gap worth your attention before the runbook runs.**
-Six tasks are in the headline and in no bucket. The runbook’s stated intention is to close every open
-issue systematically; a task in no bucket is in no phase, and a task in no phase is not closed by
-running the plan. **Reconcile the buckets to the board before phase 2, not after.**
+**160 → 154** is six items that live in §4's BLOCKER table rather than §7's triage, because §7
+triages what phases 4–8 do and the blockers are closed in phases 1 and 3:
+
+    rulings/47  = B2    26 broken citations, CI red since 2026-08-21
+    ui-gates/1  = B4    two browser gates red on HEAD
+    rulings/114 = B4    the 46 unbaselined browser failures
+    rulings/115 = B5    thirteen sites citing retired items as live rulings
+    hooks/35    = B6    "mycontext --version" is "unknown command"
+    walk/146    = B7    status_report drops every could-not-measure disclosure
+
+**Every one of the 155 was then checked by hand against the runbook.** Two matching methods failed
+before one worked, and both failures are recorded here because the next person will hit them: §7
+writes the WCAG items as a RANGE — "`wcag/1` to `wcag/9`" — so an exact-id search reports seven false
+gaps; and it names id-less items BY TITLE, "…and its `-2` twin", which an id search cannot see at
+all. **The runbook is more thorough than either method could detect.**
+
+### What is actually not covered — three items
+
+All three are `status: active, state: todo`, and none is named or described anywhere in the runbook:
+
+  - **`TASK-the-mockup-gives-a-true-conclusion-a-false-reason-a`** — a design note gives a correct
+    decision a reason that is no longer true, and the honest reason would be the stronger one.
+  - **`TASK-the-palette-does-not-offer-review-promote-all-pack-on`** — a bulk approval option is
+    deliberately left out, because approving is a person's act. **Probably a record rather than
+    work**, but it is filed as a task and the runbook closes tasks.
+  - **`TASK-the-tier-ribbon-needs-per-line-index-costs-and-an-ordered`** — one of the required charts
+    cannot be drawn, because two facts it needs are never sent to the page.
+
+And one more, covered only by a phase DESCRIPTION and never named:
+`TASK-five-perf-files-index-the-percentile-one-rank-high-and-their` — phase 5's line says "perf
+percentiles", which is the subject; the item is not in §7.5's list of 28.
+
+**Recommendation: add these four to §7 before phase 2 runs.** Three of them have no id for the
+runbook to cite, which is exactly why they were missed — `review/10` ("a promoted item arrives with
+no plan, no seq and no priority") is the item about that, and it is itself open.
+
+### One more thing the reconciliation turned up
+
+**Three pairs of items share a title, distinguished only by a `-2` suffix** — the lane-still rows,
+the `parseItem` casts, and the contradiction-scope pair. The runbook handles this correctly by
+writing "and its `-2` twin". Whether they are duplicates, or two findings that collided on a title,
+is not established here.
 
 ---
 
