@@ -16,17 +16,17 @@ tags:
   - v2
   - "plan:rulings"
   - "seq:113"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
 valid_until: null
-checksum: 97cf6989531e3c52
+checksum: 558340bb2f531fa6
 plan: rulings
 seq: "113"
-state: todo
+state: done
 priority: "1"
 ---
 
