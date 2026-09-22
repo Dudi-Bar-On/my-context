@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
-checksum: a70ef1007771b01a
+checksum: a5a70f84ad2ac29a
 plan: walk
 seq: "139"
 state: todo
@@ -64,6 +64,9 @@ forbids it — "on exit the server closes the stream and the page says so, and d
 auto-reconnect. Silent reconnection would reintroduce the daemon by another name" — and that case
 already has its own shipped answer in the `#exited` banner. This item is about a read in flight
 against a server that IS answering.
+
+## Relations
+- supersedes [[TASK-the-loading-state-is-a-correct-terminal-sounding-label-held]]
 
 ## Request
 

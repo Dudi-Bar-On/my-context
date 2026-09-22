@@ -2,11 +2,11 @@
 id: TASK-d33-s-gate-which-you-commissioned-and-which-landed-on
 type: task
 title: D33's gate — which you commissioned and which landed on — matched my D-map change against…
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: D33's gate — which you commissioned and which landed on — matched my D-map change against RULE-a-task-is-not-done-until-its-state-says-done and stopped the write.
-summary_of: 093538ebbe97ac84
+summary_of: aabb87fd515e24b1
 scope: []
 tags:
   - review-pass
@@ -19,8 +19,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
-valid_until: null
-checksum: 69a429a5956a7bed
+valid_until: 2026-09-22
+checksum: 1b69774a7f6783fe
 ---
 
 # D33's gate — which you commissioned and which landed on — matched my D-map change against…
@@ -38,3 +38,5 @@ Evidence: 595db3b1-a481-4553-b4c0-7248c31b2655.jsonl record 39400.
 
 What was observed, quoted as evidence rather than as the content of this proposal:
 "The contradiction gate refused my own edit. D33's gate — which you commissioned and which landed on 2026-09-08 — matched my D-map change against RULE-a-task-is-not-done-until-its-state-says-done and stopped the write. It was also honest about its own limits: the match is lexical, two items that agree score exactly as high as two that conflict, and there's no model in the product to tell them…"
+
+Retired 2026-09-22 (release phase 2, owner ruling H, runbook §7.2): its own backfill says it names no surface.

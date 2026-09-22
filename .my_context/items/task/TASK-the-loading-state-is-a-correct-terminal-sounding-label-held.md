@@ -2,7 +2,7 @@
 id: TASK-the-loading-state-is-a-correct-terminal-sounding-label-held
 type: task
 title: the loading state is a correct terminal-sounding label, held for up to seven seconds
-status: active
+status: superseded
 severity: soft
 always: false
 summary: While data is loading the screen says it has not been read, which reads as a final answer rather than a wait.
@@ -23,8 +23,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
-valid_until: null
-checksum: 14660ca729447076
+valid_until: 2026-09-22
+checksum: 08590e27c84b50e9
 plan: walk
 seq: "150"
 state: todo
@@ -40,3 +40,6 @@ WHAT WAS MEASURED. The loading state is the two words "not read yet", held for a
 WHY IT IS A DEFECT RATHER THAN A WORDING PREFERENCE. "Not read yet" is a CORRECT STATE LABEL in this product's vocabulary -- it is one of the three states the measurement vocabulary distinguishes, and both UI reviews named that vocabulary the project's signature. Used as a loading state it reads as a TERMINAL CONDITION: the user concludes nothing will arrive.
 
 THE SUBJECT. D46 is "absent is not zero -- a blank says why it is blank". Here the blank says why, and says the wrong why.
+
+## Relations
+- superseded_by [[TASK-a-screen-shows-the-words-not-read-yet-for-over-a-second]]

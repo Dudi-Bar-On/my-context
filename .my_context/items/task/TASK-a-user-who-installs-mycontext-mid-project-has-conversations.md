@@ -16,17 +16,17 @@ tags:
   - recall
   - "plan:anchors"
   - "seq:13"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-16
 valid_until: null
-checksum: fc3c74fa653209a6
+checksum: 1b00506d5740709a
 plan: anchors
 seq: "13"
-state: todo
+state: done
 priority: "1"
 ---
 

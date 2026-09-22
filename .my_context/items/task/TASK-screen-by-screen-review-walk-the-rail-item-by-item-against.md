@@ -2,11 +2,11 @@
 id: TASK-screen-by-screen-review-walk-the-rail-item-by-item-against
 type: task
 title: "SCREEN-BY-SCREEN REVIEW: walk the rail item by item against the mockup and fix"
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Walk every screen against the design side by side and fix what differs, once they all exist and while the sample data still shows everything.
-summary_of: 324deb6feee0f77f
+summary_of: 9f31b6b6eed00957
 acknowledged:
   - body_disagrees_with_meta@1ba412572c27844b
 scope: []
@@ -22,8 +22,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
-valid_until: null
-checksum: a48bb210b91683a8
+valid_until: 2026-09-22
+checksum: 17213b3be6b37adb
 state: todo
 plan: port
 seq: "98"
@@ -236,3 +236,5 @@ It does not close on "21 screens were walked" -- that happened, and the account 
 CONDITION 2 NOW HAS A NAMED OWNER FOR ITS LARGEST REMAINING PART: plan:port seq:94, the fixture that mirrors the mockup s scene. Four separate findings during this walk turned out to be the fixture rather than the code, and until seq:94 lands every divergence carries that ambiguity.
 
 CONDITION 3 IS WHAT plan:walk seq:23 -- this reconciliation -- exists to close.
+
+Retired 2026-09-22 (release phase 2, owner ruling H, runbook §7.2): the 1:1 bar against the mockup was retired; its condition 3 was walk/23, which is done.

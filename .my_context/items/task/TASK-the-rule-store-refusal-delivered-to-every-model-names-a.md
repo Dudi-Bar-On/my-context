@@ -16,17 +16,17 @@ tags:
   - dead-remedy
   - "plan:walk"
   - "seq:161"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 54152bd34c3e0bd8
+checksum: e02a28dde925ec10
 plan: walk
 seq: "161"
-state: todo
+state: done
 priority: "2"
 ---
 

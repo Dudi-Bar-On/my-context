@@ -20,17 +20,17 @@ tags:
   - ui
   - "plan:semantic"
   - "seq:17"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
 valid_until: null
-checksum: acfed2e5bc5210c9
+checksum: 438bf7030a4cb4bd
 plan: semantic
 seq: "17"
-state: todo
+state: done
 priority: "1"
 ---
 

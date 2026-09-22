@@ -15,14 +15,19 @@ scope:
 tags:
   - v2
   - store
-  - "plan:rulings"
+  - "plan:release"
+  - "seq:19"
+  - "state:todo"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-12
 valid_until: null
-checksum: b2ef6aeb3654e3dd
+checksum: 39c8bdbe79cee816
+plan: release
+seq: "19"
+state: todo
 ---
 
 # the audit log still records two session ids that never existed

@@ -15,13 +15,15 @@ tags:
   - v2
   - statusline
   - test-debt
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
 valid_until: null
-checksum: c735bdc7cf3fd946
+checksum: 4d1a20673e744485
+state: done
 ---
 
 # a shared item id across ops leaves watch-model.test.ts asserting a sum the new per-item dedupe correctly no longer gives

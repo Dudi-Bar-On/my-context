@@ -15,13 +15,15 @@ tags:
   - unconfirmed
   - "rec:promote"
   - "rec-backfilled:2026-09-15"
+  - "state:done"
 origin: review
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: af66cc14b76ef587
+checksum: 0f56ff7e72a09bc6
+state: done
 ---
 
 # parseItem casts Status/Severity/Origin out of frontmatter with no check —…

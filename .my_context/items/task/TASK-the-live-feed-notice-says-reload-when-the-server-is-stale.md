@@ -12,13 +12,15 @@ tags:
   - ui
   - live
   - disclosure
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
-checksum: 782b4482ec74b369
+checksum: eb87a83268b3680d
+state: done
 ---
 
 # The live-feed notice says reload when the server is stale, and reload cannot help
