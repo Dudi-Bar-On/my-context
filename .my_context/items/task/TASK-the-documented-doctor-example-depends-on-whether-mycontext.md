@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:15"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 201b9d43c02d6fe4
+checksum: 191923a813413ba0
 plan: release
 seq: "15"
-state: doing
+state: done
 ---
 
 # the documented doctor example depends on whether mycontext is on the host's PATH, so the doc fixture leaks the host a second way

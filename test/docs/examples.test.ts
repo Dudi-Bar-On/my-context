@@ -1,4 +1,4 @@
-// @basis STD-documentation-is-regenerated-not-edited-to-match, TASK-release-phase-1-the-repository-tells-the-truth, TASK-the-documented-status-example-carries-the-generating-machine
+// @basis STD-documentation-is-regenerated-not-edited-to-match, TASK-release-phase-1-the-repository-tells-the-truth, TASK-the-documented-status-example-carries-the-generating-machine, TASK-the-documented-doctor-example-depends-on-whether-mycontext
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -742,6 +742,55 @@ test('a session recorded on the fixture directory\'s own disk cannot reach a doc
     if (!stateDirExisted) rmSync(stateDir, { recursive: true, force: true });
   }
 });
+
+/**
+ * The other leak `runExample`'s child had until release/15, measured on the
+ * Ubuntu job of CI run 35719545257: `mycontext doctor`'s `cli_on_path` check
+ * (`src/doctor/cli-on-path.ts`) answers a question about the MACHINE, not
+ * the corpus — whether `mycontext` resolves on PATH at all, and if so, to
+ * this checkout. `runOne`'s child used to inherit the host's own PATH
+ * verbatim, so a runner that never ran `npm link` printed
+ * `cli_not_on_path [warn]` in the generated block while a maintainer's own
+ * linked machine printed 0 findings — the documented `doctor` block was a
+ * fact about whether the GENERATING machine happened to have the package
+ * linked, exactly the release/14 shape one level over.
+ *
+ * `hermeticPath` (`scripts/gen-doc-examples.ts`) is the fix: it prepends a
+ * temp directory whose `mycontext`/`mycontext.cmd` resolve, by
+ * `readShimTarget`'s own reading, to this checkout's real CLI, ahead of a
+ * host PATH with every foreign `mycontext` shim already scrubbed out of it.
+ * This proves it holds regardless of what the HOST PATH itself carries: run
+ * once against the real host PATH, then again with every directory that
+ * holds a `mycontext`/`mycontext.cmd` of ANY kind — matching or not —
+ * stripped out of a copy of it, simulating "not on the host PATH at all",
+ * the CI condition. (Stricter than `scrubForeignMycontextShims`, which keeps
+ * a shim that already matches this checkout — production doesn't need it
+ * removed, since its own prepended shim would shadow it harmlessly either
+ * way, but this test wants to prove the fixture doesn't depend on the host
+ * having one at all, matching or not.)
+ */
+test('runExampleInFixture(\'doctor\') does not depend on whether the host PATH carries a mycontext',
+  () => {
+    const savedPath = process.env.PATH;
+    try {
+      const withHostPath = runExampleInFixture('doctor');
+      assert.doesNotMatch(withHostPath, /cli_not_on_path|cli_path_mismatch/, withHostPath);
+
+      const delimiter = process.platform === 'win32' ? ';' : ':';
+      const stripped = (savedPath ?? '').split(delimiter).filter((dir) => {
+        if (dir === '') return true;
+        return !['mycontext', 'mycontext.cmd'].some((name) => existsSync(path.join(dir, name)));
+      }).join(delimiter);
+      process.env.PATH = stripped;
+
+      assert.equal(runExampleInFixture('doctor'), withHostPath,
+        "`mycontext doctor` in a generated example moved when every mycontext already on the " +
+        'host PATH was removed — the doc fixture is not hermetic against the host\'s own PATH');
+    } finally {
+      if (savedPath === undefined) delete process.env.PATH;
+      else process.env.PATH = savedPath;
+    }
+  });
 
 /**
  * `supportsUnicode` gives `MYCONTEXT_ASCII` precedence over

@@ -30,7 +30,9 @@
  * whose own fence would close its block, and says which fence to widen to.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -40,6 +42,18 @@ import { materializeDocFixture } from './doc-fixture.ts';
 import {
   collectExamples, splitCommand, splitPipeline, type Example,
 } from '../src/core/doc-examples.ts';
+// `test/helpers/` rather than `src/`, same as `removeTree` above: this
+// function's only reason to exist is to keep a spawned CLI child's PATH from
+// stating a fact about the machine that generated it, which is exactly this
+// module's own job for every other pinned env var below — there is no `src/`
+// module this belongs in instead, and `scripts/` already treats
+// `test/helpers/` as the shared home for cross-cutting utilities neither
+// production code nor one test file owns alone (`removeTree`, imported two
+// lines up, is the precedent). Importing it also runs its own module-level
+// scrub of THIS process's `process.env.PATH` — harmless here: this script
+// launches its own child only via `process.execPath` (never a bare `node` or
+// `mycontext` on PATH) and never shells out to `npm`/`npx` itself.
+import { scrubForeignMycontextShims } from '../test/helpers/hermetic-path.ts';
 
 /**
  * The parse half of this mechanism lives in `src/core/doc-examples.ts` and is
@@ -280,6 +294,14 @@ export function toDocumentMarkdown(output: string): string {
  *   wins), so a maintainer who exports `MYCONTEXT_ASCII=1` for their own
  *   terminal would otherwise regenerate every table in the ASCII fallback
  *   and the diff would look like a legitimate change.
+ * - `PATH` is REBUILT, not inherited — see `hermeticPath` below. `mycontext
+ *   doctor`'s `cli_on_path` check (`src/doctor/cli-on-path.ts`) answers a
+ *   question about the MACHINE, not the corpus: whether `mycontext` resolves
+ *   on PATH at all, and if so, to this checkout. Measured on the Ubuntu job
+ *   of CI run 35719545257 (release/15): a runner that never ran `npm link`
+ *   prints `cli_not_on_path [warn]`, while a maintainer's own linked machine
+ *   prints 0 findings — the documented `doctor` block was a fact about
+ *   whether the generating machine happened to have the package linked.
  */
 function childEnv(home: string, clock: string, locale?: 'he'): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
@@ -289,6 +311,7 @@ function childEnv(home: string, clock: string, locale?: 'he'): NodeJS.ProcessEnv
     USERPROFILE: home,
     TZ: 'UTC',
     MYCONTEXT_DOC_CLOCK: clock,
+    PATH: hermeticPath(),
   };
   delete env.MYCONTEXT_ASCII;
   delete env.MYCONTEXT_WIDTH;
@@ -298,6 +321,85 @@ function childEnv(home: string, clock: string, locale?: 'he'): NodeJS.ProcessEnv
   if (locale === undefined) delete env.MYCONTEXT_DOC_LOCALE;
   else env.MYCONTEXT_DOC_LOCALE = locale;
   return env;
+}
+
+/**
+ * A tiny temp directory whose `mycontext` (POSIX) and `mycontext.cmd`
+ * (Windows) resolve, read exactly the way `readShimTarget`
+ * (`src/doctor/cli-on-path.ts`) reads a real `npm link`-generated shim, to
+ * THIS checkout's own CLI entry — release/15's fix for the leak described
+ * above. Built once per process (`shimDir` below memoizes it) and left for
+ * the OS to reclaim, the same way every other `mkdtempSync` call in this file
+ * is; it is two small text files and one directory reparse point, so
+ * reusing it across every example this run generates costs nothing a fresh
+ * one per example wouldn't also cost, minus the repeated creation.
+ *
+ * **Why a directory junction/symlink rather than a shim that just claims a
+ * path.** `readShimTarget` does not trust whatever a shim's text asserts —
+ * it `realpath`s the `node_modules/<pkg>/<path>` segment it finds and reports
+ * whatever is ACTUALLY there, precisely so a shim cannot fake a target it
+ * does not have (the exact dishonesty `cli_path_mismatch` exists to catch in
+ * a real, broken link). So this does not fake a match: `<dir>/node_modules
+ * /mycontext` is a genuine directory reparse point (`symlinkSync(...,
+ * 'junction')`, which — unlike a Windows FILE symlink — needs no elevated
+ * privilege) pointing at `REPO_ROOT`, and `readShimTarget`'s own
+ * `realpathSync` walks straight through it to the same file
+ * `checkCliOnPath` resolves `OWN_CLI_ENTRY` to. Verified directly while
+ * building this fix: `readShimTarget` on both shim files below returns
+ * `realpathSync(OWN_CLI_ENTRY)`, byte for byte.
+ *
+ * Both files are shaped like npm's own generated shims but are never
+ * EXECUTED — `runOne` always invokes `node CLI ...` directly, never the bare
+ * `mycontext` word — so they exist purely to be FOUND by `where`/`which -a`
+ * and READ by `readShimTarget`. Forward slashes are used in both, including
+ * the `.cmd` (which `cmd.exe` accepts in a quoted argument exactly as it
+ * accepts a backslash), because `readShimTarget`'s marker regex
+ * (`node_modules[\\/]`) reads either, and it keeps one code path instead of
+ * a platform-specific escaping difference in what is otherwise identical
+ * text.
+ */
+let shimDir: string | null = null;
+function cliShimDir(): string {
+  if (shimDir !== null) return shimDir;
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-docex-shim-'));
+  const nodeModules = path.join(dir, 'node_modules');
+  mkdirSync(nodeModules);
+  symlinkSync(REPO_ROOT, path.join(nodeModules, 'mycontext'), 'junction');
+
+  const sh = path.join(dir, 'mycontext');
+  writeFileSync(sh,
+    '#!/bin/sh\nexec node "$(dirname "$0")/node_modules/mycontext/src/cli/index.ts" "$@"\n');
+  chmodSync(sh, 0o755); // POSIX `which` only lists executable files; a no-op attribute on Windows
+
+  writeFileSync(path.join(dir, 'mycontext.cmd'),
+    '@ECHO off\r\nnode "%~dp0node_modules/mycontext/src/cli/index.ts" %*\r\n');
+
+  // Reused for the rest of THIS process (the memo above), so cleanup is a
+  // process-exit concern rather than a per-example one — `removeTree` never
+  // throws (test/helpers/tmp.ts), so a failed removal is logged there, not a
+  // reason for this script to exit non-zero.
+  process.once('exit', () => removeTree(dir));
+
+  shimDir = dir;
+  return dir;
+}
+
+/**
+ * The child's PATH: `cliShimDir()` prepended to the host's own PATH with
+ * every FOREIGN `mycontext` shim already scrubbed out of it
+ * (`scrubForeignMycontextShims`, `test/helpers/hermetic-path.ts` — see the
+ * import above for why that file and not a `src/` module). Scrubbing the
+ * rest of the host PATH, not only prepending the shim directory, matters for
+ * the same reason `test/helpers/hermetic-path.ts`'s own docblock gives:
+ * `checkCliOnPath` inspects EVERY candidate `where`/`which -a` returns, not
+ * only the first, so a foreign shim further down a merely-prepended PATH
+ * would still trip `cli_path_mismatch` even with a healthy one shadowing it
+ * in front.
+ */
+function hermeticPath(): string {
+  const delimiter = process.platform === 'win32' ? ';' : ':';
+  const scrubbed = scrubForeignMycontextShims(process.env.PATH ?? '');
+  return [cliShimDir(), scrubbed].filter((segment) => segment !== '').join(delimiter);
 }
 
 /** The empty home directory `childEnv` points a generated command at. */
