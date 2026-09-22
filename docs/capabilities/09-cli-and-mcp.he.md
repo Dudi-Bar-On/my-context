@@ -179,6 +179,16 @@ statusline, supersede, todo, ui
 <span dir="ltr">`my_context: unknown option "--help"`</span>, ואז מדפיס את באנר השימוש בכל זאת,
 ו**יוצא 1**. טקסט השימוש אמיתי; קוד היציאה אינו הצלחה.
 
+**<span dir="ltr">`--version`</span> (או <span dir="ltr">`-v`</span>) מדפיס את הגרסה ויוצא 0 —
+הדבר היחיד ששורת הפקודה הזו עונה עליו לפני שה-<span dir="ltr">`resolveWorkspace`</span> רץ, כך
+שהוא עובד גם מחוץ לסביבת עבודה.** <span dir="ltr">`hooks/35`</span> מדד שהתחליף שנטען,
+<span dir="ltr">`mycontext status --json`</span>, יוצא 1
+(<span dir="ltr">`"no workspace here"`</span>) בדיוק בתיקייה שבה התקנה טרייה רצה לראשונה —
+השנייה הראשונה ש-<span dir="ltr">`TASK-there-is-no-version-flag-and-the-argued-alternative-refuses`</span>
+נקראת על שמה, והעובדה הראשונה שכל דוח באג זקוק לה. זו פקודה, לא קידומת:
+<span dir="ltr">`mycontext --version <anything else>`</span> מסורב עם באנר השימוש במקום לענות
+בשקט על שורת פקודה שהוקלדה בטעות.
+
 הבאנר (המקוצץ):
 
 </div>
@@ -231,6 +241,7 @@ usage: mycontext <command> [args]
   todo [--tag <t>] [--all] [--limit <n>] [...]
   ui [--port N] [--no-open] [--idle-ms N] | ui --nonce [--no-open]
   unpin <id> [--yes]
+  --version                     print the version and exit; -v is the same flag
 
 categories: constraint, invariant, rule, requirement, standard, pattern, glossary, instruction,
 non_goal, open_question, runbook, procedure, environment, known_issue, exception, contract, adr,

@@ -93,6 +93,15 @@ derived from those two files rather than from a banner.
 prints the usage banner anyway, and **exits 1**. The usage text is real; the exit
 code is not success.
 
+**`--version` (or `-v`) prints the version and exits 0 — the one thing this CLI
+answers before `resolveWorkspace` runs, so it works outside a workspace too.**
+`hooks/35` measured that the argued substitute, `mycontext status --json`,
+exits 1 ("no workspace here") in exactly the directory a fresh install is
+first run in — the first second `TASK-there-is-no-version-flag-and-the-argued-alternative-refuses`
+is named for, and the first fact any bug report needs. It is a command, not a
+prefix: `mycontext --version <anything else>` is refused with the usage banner
+rather than silently answering for a mistyped command line.
+
 The (abridged) banner:
 
 ```
@@ -143,6 +152,7 @@ usage: mycontext <command> [args]
   todo [--tag <t>] [--all] [--limit <n>] [...]
   ui [--port N] [--no-open] [--idle-ms N] | ui --nonce [--no-open]
   unpin <id> [--yes]
+  --version                     print the version and exit; -v is the same flag
 
 categories: constraint, invariant, rule, requirement, standard, pattern, glossary, instruction,
 non_goal, open_question, runbook, procedure, environment, known_issue, exception, contract, adr,

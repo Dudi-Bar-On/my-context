@@ -77,6 +77,7 @@ import {
   HELP_TOPICS, docLocale, exampleItem, exampleItemShort, helpTopic, updatableSurface,
 } from '../help/index.ts';
 import { enumError } from '../core/teach.ts';
+import { VERSION } from '../core/version.ts';
 import { renderCollisionReport } from '../pack/collide.ts';
 import {
   applyImport, planImport, type ImportOutcome, type ImportPlan,
@@ -146,10 +147,16 @@ function usage(config: Config): string {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(line)
     .join('\n');
+  // `--version` is answered before this function is ever reached (see the
+  // intercept in `dispatchCli`, ahead of `resolveWorkspace`) rather than
+  // through a `COMMANDS` registration, so it is listed here by hand — the one
+  // line in this banner that is not derived from the registry.
+  const versionLine = `  ${col('--version', 30)}print the version and exit; -v is the same flag`;
   return `usage: mycontext <command> [args]
 
 ${builtin.join('\n')}
 ${registered}
+${versionLine}
 
 categories: ${enabled.join(', ')}`;
 }
@@ -1730,6 +1737,21 @@ function dispatchCli(argv: string[], cwd: string, out: Emit): number {
   const [command, ...args] = argv;
 
   try {
+    // `--version`/`-v` answers BEFORE `resolveWorkspace` — `hooks/35`
+    // (`TASK-there-is-no-version-flag-and-the-argued-alternative-refuses`):
+    // the argued substitute, `status --json`, exits 1 ("no workspace here")
+    // in the one directory where a fresh install's first question is asked.
+    // The first fact any bug report needs has to be answerable there too.
+    //
+    // A trailing argument is NOT swallowed: `--version` is a command, not a
+    // prefix, so `--version foo` falls through to the ordinary "unknown
+    // command" dispatch below rather than silently answering for a
+    // mistyped `mycontext --version status`.
+    if ((command === '--version' || command === '-v') && args.length === 0) {
+      out(VERSION);
+      return 0;
+    }
+
     const registered = command === undefined ? undefined : COMMANDS.get(command);
 
     // **`<command> --help` prints that command's help and exits 0** —
