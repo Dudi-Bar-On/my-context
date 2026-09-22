@@ -10,6 +10,29 @@ write (`RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number`).
 ---
 
 ```
+CHECKPOINT 1 — the repository tells the truth
+commit: 4c19d8f5 pushed: yes   (this log entry and the release/1 close follow in the next commit, pushed once the Ubuntu browser suite on 4c19d8f5 finishes so its log survives as phase-3 evidence)
+ran:  npm test → 8980 tests, 8977 pass, 0 fail, 3 skipped, exit 0 (run alone on 4c19d8f5)   verify:citations → exit 0   doctor → exit 0   check:* → all 0 (eleven scripts)   typecheck → exit 0   test:e2e → not this phase
+CI:   windows green (attempt 2; attempt 1 failed one test, test/core/ui-server-upkeep.test.ts:540 — the runner's own control arm said it was not reaping children; untouched by phase 1, passed on the previous Windows run)  ubuntu green through npm test, verify:citations and test:perf (attempt 2; attempt 1 failed one perf ceiling, JIT-with-focus p95 74.1 ms against 50 — no Ubuntu baseline exists, test:perf was skipped on every recent master run; not widened), browser suite still running (phase 3)  https://github.com/Dudi-Bar-On/my-context/actions/runs/35725630027
+board: 165 → 162
+closed: release/1 · rulings/47 (TASK-the-citation-form-has-no-answer-for-html-and-six-source) · TASK-scripts-backfill-requests-ts-exists-and-was-measured-against · release/11 · release/12 · release/13 · release/14 · release/15
+filed for 2.0: release/11 TASK-gen-docs-is-not-idempotent-gen-diagrams-ts-renders-a (fixed and closed this phase)   release/12 TASK-npm-test-goes-red-on-any-machine-whose-path-mycontext-points (fixed, closed)   release/13 TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each (fixed, closed; site 4 was a production bug — the watch window bounded on a millisecond that ties)   release/14 TASK-the-documented-status-example-carries-the-generating-machine (fixed, closed)   release/15 TASK-the-documented-doctor-example-depends-on-whether-mycontext (fixed, closed)
+ideas awaiting the owner: (1) the suite's PATH scrub removes the whole directory holding a foreign mycontext shim, so npm.cmd beside it leaves too for the run's children — PATH is directories and doctor flags a foreign shim anywhere, so the only alternative is changing doctor to judge just the shim the shell would pick; applied as directory-level, pinned by a test   (2) other `at >=` / `at <` millisecond comparisons were not swept for the tie that broke the watch window (none found broken)
+blocked on the owner: nothing
+next: phase 2 — the board says what is left
+```
+
+**What phase 1 did beyond the five plan tasks.** Lanes found five bugs; under ruling A all five were filed as `release/11`–`release/15` and fixed in this phase, none deferred. Three of them are the same defect in three coats — the machine leaking into the suite: a global `npm link` on PATH (`release/12`), hook state a live session wrote under a checked-in fixture (`release/14`), and the host's PATH deciding what `doctor` prints in a documented example (`release/15`). `release/13` found a real production bug (`/api/watch/context` bounded its window on `at >= preCompactAt`, which ties in a burst; it now bounds on the audit `seq`). `release/11` found mermaid's `handDrawnSeed: 0` is falsy, so every diagram was redrawn with `Math.random()`.
+
+**One breach, self-reported.** Lane 1.1 ran `git checkout --` on seven generated diagram files to discard churn — a git write, forbidden by `RULE-a-delegated-worker-never-runs-a-command-that-reaches-beyond`. It reported it unprompted; nothing committed by another lane was touched; the churn it discarded was the very non-determinism `release/11` later fixed. No re-dispatch.
+
+**Two controller errors, recorded.** `scripts/doc-fixture.ts` (release/14's unfinished file) was swept into release/13's commit `7d6309ec` by a computed pathspec; it stays there, named in release/14's commit message. And a background `npm test` wrapper reported exit 0 while the log's own last line said `exit=1` — read the log's line, never the wrapper's.
+
+**Corpus repair.** 85 items (84 with `source_file: "C:/…"`, 55 with a checksum, plus one whose `.scratch/` source was gone) stop claiming a source, through the new `mycontext edit <id> --detach-source`; `doctor` exits 0. The authorised backfill filled 29 of 1344 items with the owner's prompt and skipped 1315 with a reason each (full output in the session scratchpad, `backfill-apply.log`).
+
+---
+
+```
 CHECKPOINT 0 — the plan and the phase items
 commit: 32b9c93d pushed: yes
 ran:  npm test → 8956 tests, 8953 pass, 0 fail, 3 skipped, exit 0   verify:citations → exit 1 (26 broken documentation citations, B2)   doctor → exit 1 (2 source_missing errors, B1)   check:* → all 0 (eleven scripts; check:diagrams is the eleventh)   test:e2e → not this phase
