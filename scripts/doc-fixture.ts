@@ -41,21 +41,31 @@ const FIXTURE = path.join(
  * would be a fact about the maintainer's disk rather than about the fixture.
  *
  * **`.audit/` and `state/` are the same class of thing, measured 2026-09-22
- * (release/14).** Both directories carry a committed `.gitignore` of `*` —
- * `git ls-files` shows nothing tracked under either — because they hold
- * records a live hook writes, not corpus a supported surface commits. A real
- * Claude Code session that touches a file under this checkout's own
+ * (release/14).** Neither directory is committed at all — `git show
+ * HEAD:test/fixtures/docs-workspace/.my_context/.audit/.gitignore` (and the
+ * `state` equivalent) both answer "exists on disk, but not in 'HEAD'". The
+ * `*` `.gitignore` inside each is written by THIS PROJECT'S OWN RUNTIME the
+ * first time it creates the directory — `ensureLogDir` for `.audit`
+ * (`src/core/audit.ts`), `core/ledger.ts` and `core/continuity.ts` for
+ * `state/` — the same self-writing convention `core/drafts.ts` documents for
+ * every other working-state directory this product makes; nobody committed
+ * it and no supported surface treats it as corpus. A real Claude Code
+ * session that touches a file under this checkout's own
  * `test/fixtures/docs-workspace` (reading it while writing a walkthrough,
  * say) fires `PreToolUse` and leaves exactly that behind: an
  * `.audit/audit.jsonl` injection record and a matching `state/*.seen.jsonl`,
- * both gitignored and both absent from a fresh clone. `cpSync` above copied
- * them anyway — nothing before this filtered them out — so
- * `ledger.sessionCount()` (`src/core/ledger.ts`) read one real session on the
- * generating machine's own disk and zero everywhere else: the committed
- * `mycontext status` block said "1 session(s) recorded" and a fresh clone's
- * fixture run said "none". `test/docs/examples.test.ts` proves the fix by
- * planting a stray segment in this exact fixture directory and asserting
- * `runExampleInFixture('status')` does not move.
+ * both gitignored the moment the directory first exists and both absent
+ * from a fresh clone. `cpSync` above copied them anyway — nothing before
+ * this filtered them out — so `ledger.sessionCount()` (`src/core/ledger.ts`)
+ * read one real session on the generating machine's own disk and zero
+ * everywhere else: the committed `mycontext status` block said "1
+ * session(s) recorded" and a fresh clone's fixture run said "none".
+ * `test/docs/examples.test.ts` proves the fix by planting a stray segment in
+ * this exact fixture directory and asserting `runExampleInFixture('status')`
+ * does not move. The filter below still copies each directory's own
+ * `.gitignore` — the one name inside `.audit`/`state` it does NOT treat as
+ * derived — so that a materialized fixture that later runs a hook of its
+ * own does not re-commit its own state.
  */
 export function isDerivedFixtureState(source: string): boolean {
   const name = path.basename(source);

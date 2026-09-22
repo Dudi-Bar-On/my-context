@@ -671,15 +671,20 @@ test('a global layer on the generating machine cannot reach a documented example
  * release/14: `.audit/audit.jsonl` and `state/*.seen.jsonl`, under the
  * committed `test/fixtures/docs-workspace` itself, are what a live hook
  * writes when a real Claude Code session touches a file under this
- * checkout's OWN fixture directory — measured here, both carry a `.gitignore`
- * of `*` (`git ls-files` shows nothing tracked under either), so both are
- * absent from a fresh clone and present only on a machine where someone
- * worked the fixture directly. `cpSync` copied them into every materialized
- * workspace regardless, so `ledger.sessionCount()` (`src/core/ledger.ts`) —
- * which `mycontext status` prints as `sessionsRecorded` — read one real
- * session on the generating machine's own disk and zero everywhere else: the
- * committed `mycontext status` block said "1 session(s) recorded", a fresh
- * clone's fixture run said "no sessions recorded yet".
+ * checkout's OWN fixture directory. Neither is committed —
+ * `git show HEAD:test/fixtures/docs-workspace/.my_context/.audit/.gitignore`
+ * (and the `state` equivalent) both answer "exists on disk, but not in
+ * 'HEAD'". The `*` `.gitignore` beside each is written by this project's own
+ * runtime the first time it creates the directory (`ensureLogDir`,
+ * `src/core/audit.ts`; `core/ledger.ts`/`core/continuity.ts` for `state/`),
+ * never committed, so both directories are absent from a fresh clone and
+ * present only on a machine where someone worked the fixture directly.
+ * `cpSync` copied them into every materialized workspace regardless, so
+ * `ledger.sessionCount()` (`src/core/ledger.ts`) — which `mycontext status`
+ * prints as `sessionsRecorded` — read one real session on the generating
+ * machine's own disk and zero everywhere else: the committed `mycontext
+ * status` block said "1 session(s) recorded", a fresh clone's fixture run
+ * said "no sessions recorded yet".
  *
  * This plants exactly that class of file on the fixture's OWN disk location
  * — a rotated audit segment and a matching seen-state file, named so they
@@ -698,6 +703,19 @@ test('a session recorded on the fixture directory\'s own disk cannot reach a doc
   const plantedSeen = path.join(stateDir, '00000000-r14-plant__probe-4fefbed4dbba.seen.jsonl');
   assert.ok(!existsSync(plantedAudit), 'a previous run of this test left its plant behind');
   assert.ok(!existsSync(plantedSeen), 'a previous run of this test left its plant behind');
+
+  // Neither directory is committed (see the docblock above and
+  // doc-fixture.ts's) — a fresh checkout has no `.audit/` or `state/` under
+  // the fixture at all, only a machine where the hook has already run there
+  // does. So this test is the thing that creates them on CI, and it is the
+  // thing that must clean them back up: `existsSync` is read BEFORE mkdir,
+  // and a directory this test created is removed, never one that predates it
+  // (the owner's own hook-written `.audit`/`state`, on a machine that has
+  // them, is left exactly as found).
+  const auditDirExisted = existsSync(auditDir);
+  const stateDirExisted = existsSync(stateDir);
+  mkdirSync(auditDir, { recursive: true });
+  mkdirSync(stateDir, { recursive: true });
 
   const baseline = runExampleInFixture('status');
   try {
@@ -720,6 +738,8 @@ test('a session recorded on the fixture directory\'s own disk cannot reach a doc
   } finally {
     rmSync(plantedAudit, { force: true });
     rmSync(plantedSeen, { force: true });
+    if (!auditDirExisted) rmSync(auditDir, { recursive: true, force: true });
+    if (!stateDirExisted) rmSync(stateDir, { recursive: true, force: true });
   }
 });
 
