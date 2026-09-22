@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:12"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 265753b4979af680
+checksum: 3269e8a1852f22c6
 plan: release
 seq: "12"
-state: doing
+state: done
 ---
 
 # npm test goes red on any machine whose PATH mycontext points at another checkout, because the suite is not hermetic against PATH
