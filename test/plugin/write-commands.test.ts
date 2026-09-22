@@ -184,7 +184,14 @@ const SUBSTITUTIONS: Record<string, Record<string, string[]>> = {
     'flags>': ['A rewritten body.', '--summary', 'A plain sentence for the fixture.'],
   },
   'supersede.md': { '<retired': [GOVERNING], 'id>': [], '<replacement': [REPLACEMENT] },
-  'inbox-promote.md': { '<id>': [CAPTURE], '<category>': ['decision'] },
+  // @basis TASK-release-phase-3-the-defects
+  // Since 3.11 the promotion itself is summary-gated
+  // (STD-a-summary-is-one-plain-sentence-for-someone-who-does-not); the
+  // quoted placeholder tokenizes as one string, so it gets one substitution.
+  'inbox-promote.md': {
+    '<id>': [CAPTURE], '<category>': ['decision'],
+    '<one plain sentence>': ['A plain sentence for the fixture.'],
+  },
   'procedure.md': { '<id>': [PROCEDURE] },
   'promote.md': { '<id>': [DRAFT] },
   'discard.md': { '<id>': [DRAFT] },

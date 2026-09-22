@@ -413,9 +413,16 @@ test('`mycontext lesson --agent` is self-declared, and omitting it claims human'
       runCli(argv, cwd, (s) => { text += `${s}\n`; });
       return text;
     };
+    // @basis TASK-release-phase-3-the-defects
+    // Since 3.11 `lesson` is gated by the summary standard
+    // (STD-a-summary-is-one-plain-sentence-for-someone-who-does-not); this
+    // test is about `origin`, not the summary gate, so both captures carry
+    // one and every existing assertion is unchanged.
     return {
-      flagged: run(['lesson', '--agent', 'Probe lesson from an agent shell']),
-      bare: run(['lesson', 'Probe lesson from a human shell']),
+      flagged: run(['lesson', '--agent', 'Probe lesson from an agent shell',
+        '--summary', 'A probe lesson recorded from an agent shell, to check the origin it stamps.']),
+      bare: run(['lesson', 'Probe lesson from a human shell',
+        '--summary', 'A probe lesson recorded from a human shell, to check the origin it stamps.']),
       gate: run(['lesson-accept', '--agent']),
     };
   });
