@@ -43,6 +43,16 @@
  * a complete record, once written, does not disappear — with and without the
  * lock, so the difference IS the proof.
  *
+ * **AND IT DOES THIS THROUGH THE REAL FUNCTIONS, not a copy of them.** The
+ * first version of this fix regex-spliced a COPY of `jsonl-log.ts` with the
+ * lock block cut out and raced that copy in child processes — a copy that
+ * cannot notice when the ORIGINAL stops calling `acquireLock`. `HealSeams`
+ * (`src/core/jsonl-log.ts`) is the seam that replaces it: an injectable
+ * acquirer and an observation point, both defaulting to production
+ * behaviour, in the shape `execute.ts`'s `CommandRunner` already uses for the
+ * same problem. Every test below calls the real, exported
+ * `healTornTail`/`appendJsonlLine`.
+ *
  * @basis INV-nothing-is-dropped-silently,
  *   TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each
  */
@@ -50,13 +60,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import {
-  appendFileSync, closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, truncateSync,
-  writeFileSync, writeSync,
+  closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync, writeSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { appendJsonlLine, healTornTail } from '../../src/core/jsonl-log.ts';
-import { acquireLock } from '../../src/core/lock.ts';
+import { appendJsonlLine, healTornTail, type HealSeams } from '../../src/core/jsonl-log.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const RACERS = 6;
@@ -176,23 +184,6 @@ async function seedTornInterleaved(dir: string): Promise<string> {
   return file;
 }
 
-/**
- * The offset just past the file's last newline — the same one-sentence
- * contract `cutAfterLastNewline` (`src/core/jsonl-log.ts`) implements, read
- * back with `String.lastIndexOf` because this fixture is a handful of lines.
- * `cutAfterLastNewline`'s own chunked backward scan has its coverage below,
- * in "a heal says what it removed"; what THIS test needs is the CONTRACT, not
- * a reproduction of the scan.
- */
-function cutPoint(file: string): number {
-  return readFileSync(file, 'utf8').lastIndexOf('\n') + 1;
-}
-
-function healAndAppendRecord(file: string, cut: number, tag: string): void {
-  truncateSync(file, cut);
-  appendFileSync(file, `${JSON.stringify({ tag, i: 0 })}\n`, 'utf8');
-}
-
 function tagsIn(file: string): string[] {
   return readFileSync(file, 'utf8')
     .split('\n')
@@ -201,63 +192,102 @@ function tagsIn(file: string): string[] {
     .filter((t): t is string => t !== undefined);
 }
 
+/** A no-op acquirer: "acquired" instantly, excludes nobody, releases as no-op. */
+const noLock: NonNullable<HealSeams['acquireLock']> = () => () => {};
+
 /**
- * **The detector, made deterministic.** The test above asserts an ABSENCE
- * under a storm; this one proves the storm's mechanism CAN destroy a record,
- * so that absence is a fact about the lock and not about a harness that
- * stopped racing. It no longer races real processes to get there — see the
- * module header for why that stopped being reliable on Ubuntu's Node/scheduler
- * — because the mechanism itself does not need luck to reproduce: the module
- * header's own doc comment on `cutAfterLastNewline` names it as two healers
- * each reading the SAME stale cut before either one writes. That is an ORDER
- * of operations, and this harness forces that order by calling the two
- * healers' steps itself rather than hoping two processes land in it together.
+ * **The detector, made deterministic AND made to run the real code.** The
+ * test above asserts an ABSENCE under a storm, so its failure mode is a
+ * harness that quietly stopped racing — measured on CI's Ubuntu job (run
+ * 35715432299): three rounds, real processes, real `appendJsonlLine`, zero
+ * losses, because a small `appendFileSync` did not observably tear inside the
+ * window six spawned processes could afford there. This proves the SAME
+ * mechanism can destroy a record without needing that luck, and it does so by
+ * calling `healTornTail`/`appendJsonlLine` themselves — the functions this
+ * file exists to protect — through the seam those functions now take
+ * (`HealSeams`, `src/core/jsonl-log.ts`), not a copy of them.
  *
- * `acquireLock` is the real, unmodified lock this project has exactly one
- * implementation of (`src/core/lock.ts`) — the same one `healTornTail` takes
- * — so "with the lock" here is not a stand-in, it is the primitive itself
- * serializing the two healers' critical sections.
+ * The prior shape here regex-spliced a COPY of the module with the lock block
+ * cut out and raced that copy in child processes: a copy cannot notice when
+ * the ORIGINAL stops calling `acquireLock`, so a regression that silently
+ * dropped the `acquireLock(...)` call from `healTornTail` would have left
+ * every test in this file green. Both arms below run the real,
+ * `src/core/jsonl-log.ts`-exported `appendJsonlLine`.
  */
-test('two healers racing on one torn log lose a record without the lock, '
-  + 'and do not lose one with it', async () => {
+test('two healers racing on one torn log, through the real appendJsonlLine, '
+  + 'lose a record without the lock', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'heal-race-det-'));
   try {
-    // ---- WITHOUT the lock: both healers read the file's cut BEFORE either
-    // one writes — the exact interleave the doc comment above names. Healer A
-    // truncates-and-appends first; healer B then truncates to ITS stale cut,
-    // which is now BEHIND A's just-written record, and takes it with it.
-    const unlocked = await seedTornInterleaved(path.join(dir, 'unlocked'));
-    const cutA = cutPoint(unlocked);
-    const cutB = cutPoint(unlocked); // B's read, taken before A has written anything
-    healAndAppendRecord(unlocked, cutA, 'a');
-    healAndAppendRecord(unlocked, cutB, 'b');
-    const unlockedTags = tagsIn(unlocked);
+    const unlockedDir = path.join(dir, 'unlocked');
+    const unlocked = await seedTornInterleaved(unlockedDir);
+    // Healer A's own call to `healTornTail` finds the tear, computes its cut,
+    // and — at `beforeTruncate`, the exact window between that read and its
+    // truncate (`cutAfterLastNewline`'s own doc comment: "A reads size S ...
+    // B heals the same tear ... A then truncates to L") — healer B runs a
+    // COMPLETE, real, nested `appendJsonlLine` call of its own: reads the
+    // SAME still-torn file, heals it, and appends its record. Control then
+    // returns to A, which truncates to ITS OWN (now stale) cut — taking B's
+    // just-appended record with it — and appends its own.
+    appendJsonlLine(unlockedDir, unlocked, { tag: 'a', i: 0 }, {
+      acquireLock: noLock,
+      beforeTruncate: () => {
+        appendJsonlLine(unlockedDir, unlocked, { tag: 'b', i: 0 }, { acquireLock: noLock });
+      },
+    });
+    const tags = tagsIn(unlocked);
     assert.ok(
-      !unlockedTags.includes('a'),
-      `record "a" survived the unlocked interleave, so this harness does not reproduce the loss `
-      + `the lock exists to prevent; tags on disk: ${unlockedTags.join(', ')}`,
+      !tags.includes('b'),
+      `record "b" survived the unlocked interleave, so this harness does not reproduce the loss `
+      + `the lock exists to prevent; tags on disk: ${tags.join(', ') || '(none)'}`,
     );
-    assert.ok(unlockedTags.includes('b'), '"b" itself must still be there — the loss is A, not the file');
+    assert.ok(tags.includes('a'), '"a" itself must still be there — the loss is B, not the whole file');
+  } finally {
+    removeTree(dir);
+  }
+});
 
-    // ---- WITH the lock: each healer's read-then-write is one critical
-    // section, so B's read happens only after A has released — behind A's
-    // write, not before it, the way the unlocked run above forced instead.
-    const locked = await seedTornInterleaved(path.join(dir, 'locked'));
-    const lockSpec = {
-      file: `${locked}.heal.lock`, name: 'jsonl-heal',
-      otherHolder: 'another actor in this test is healing the same log',
-    };
-    const releaseA = acquireLock(lockSpec);
-    healAndAppendRecord(locked, cutPoint(locked), 'a');
-    releaseA();
-    const releaseB = acquireLock(lockSpec);
-    healAndAppendRecord(locked, cutPoint(locked), 'b'); // reads the ALREADY-healed file: cuts nothing away
-    releaseB();
-    const lockedTags = tagsIn(locked);
-    assert.deepEqual(
-      lockedTags, ['a', 'b'],
-      `both records must survive under the lock; got: ${lockedTags.join(', ')}`,
+/**
+ * **The regression this file could not previously catch.** Nothing above
+ * proves `healTornTail` still TAKES the lock by default — a version that
+ * silently stopped calling `acquireLock` would pass every other test here,
+ * because every other test either supplies its own acquirer or never tears a
+ * file at all. This one does neither: it calls `appendJsonlLine` with NO
+ * seam overrides — the real default path every production caller takes — and
+ * observes, from `beforeTruncate`, that the real lock FILE actually exists on
+ * disk at the one moment it is supposed to: after `acquireLock` succeeded and
+ * before the truncate it was taken to guard. That is a direct, immediate
+ * check of the wiring, not an inference from timing.
+ *
+ * **Removal proof (recorded here, not left in the code):** with the internal
+ * `acquire(...)` call in `healTornTail` (`src/core/jsonl-log.ts`) temporarily
+ * replaced by a stub that returns `() => {}` without creating a lock file,
+ * this test goes red — `sawLockFile` reads `false` and the first assertion
+ * below fails. Restored immediately after. See the task report for the
+ * captured output.
+ */
+test('healTornTail actually takes the real lock by default, and releases it '
+  + 'after', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'heal-race-lock-'));
+  try {
+    const lockedDir = path.join(dir, 'locked');
+    const locked = seedTorn(lockedDir);
+    const lockFile = `${locked}.heal.lock`;
+    let sawLockFile: boolean | null = null;
+    appendJsonlLine(lockedDir, locked, { tag: 'a', i: 0 }, {
+      beforeTruncate: () => { sawLockFile = existsSync(lockFile); },
+    });
+    assert.equal(
+      sawLockFile, true,
+      'the real lock file was not present during the critical section — healTornTail is not '
+      + 'really taking the lock it claims to by default',
     );
+    assert.equal(existsSync(lockFile), false, 'the lock must be released again once the heal ends');
+    assert.deepEqual(tagsIn(locked), ['a']);
+
+    // An ordinary second append, still under the real default lock, lands
+    // cleanly on the now-healed file — the "no loss, with the lock" half.
+    appendJsonlLine(lockedDir, locked, { tag: 'b', i: 0 });
+    assert.deepEqual(tagsIn(locked), ['a', 'b']);
   } finally {
     removeTree(dir);
   }

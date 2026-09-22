@@ -265,8 +265,41 @@ function errnoOf(err: unknown): string {
   return (err as NodeJS.ErrnoException).code ?? (err as Error).message;
 }
 
+/**
+ * The two points `healTornTail`/`appendJsonlLine` let a caller reach in
+ * without a second copy of either function.
+ *
+ * **Why this exists, and why it is a seam rather than a shadow file.**
+ * `test/core/jsonl-heal-race.test.ts` used to prove the heal lock matters by
+ * regex-splicing a COPY of this module with the lock block cut out and
+ * racing that copy in child processes — which could not notice a regression
+ * where THIS file stopped calling `acquireLock`, because the copy never ran
+ * this file's own code at all. `execute.ts`'s `CommandRunner` and
+ * `execute-effect.ts`'s `RunChild`/`CopyTree` are this codebase's existing
+ * shape for the same problem: a trailing, optional dependency that defaults
+ * to the real implementation, so every caller that does not know this exists
+ * — which is all of them but that one test file — gets exactly the
+ * behaviour this file always had.
+ *
+ * `acquireLock` lets a test exercise the unlocked case (a stub that never
+ * excludes anyone) or observe the locked one (the real acquirer, watched from
+ * outside). `beforeTruncate` marks the window the lock exists to close — see
+ * `cutAfterLastNewline`'s own doc comment ("A reads size S ... B heals the
+ * same tear ... A then truncates to L") — so a test can act, or merely look,
+ * at the exact instant between this heal's own read and its write.
+ */
+export interface HealSeams {
+  /** Defaults to the real `acquireLock` (`./lock.ts`) — production behaviour. */
+  acquireLock?: typeof acquireLock;
+  /**
+   * Called once the torn tail's cut point is known, immediately before the
+   * `truncateSync` that acts on it. Defaults to a no-op.
+   */
+  beforeTruncate?: () => void;
+}
+
 /** The heal, with the tear already established and the lock already held. */
-function healUnderLock(file: string): TailHeal {
+function healUnderLock(file: string, beforeTruncate: () => void): TailHeal {
   const read = isTorn(file);
   if (!read.looked) return unreadable(read.error);
   // Healed by whoever held the lock before this call — the ordinary outcome of
@@ -288,6 +321,8 @@ function healUnderLock(file: string): TailHeal {
     closeSync(fd);
   }
 
+  beforeTruncate();
+
   try {
     truncateSync(file, cut);
   } catch (err) {
@@ -296,7 +331,7 @@ function healUnderLock(file: string): TailHeal {
   return { healed: true, droppedBytes: read.size - cut };
 }
 
-export function healTornTail(file: string): TailHeal {
+export function healTornTail(file: string, seams: HealSeams = {}): TailHeal {
   // **The look that decides whether to pay for the lock at all.** An untorn
   // log — every append but the first after a kill — leaves here having done
   // one `stat` and one 1-byte read, exactly what it did before.
@@ -304,9 +339,10 @@ export function healTornTail(file: string): TailHeal {
   if (!first.looked) return unreadable(first.error);
   if (!first.torn) return { healed: false, why: first.size === 0 ? 'empty' : 'intact' };
 
+  const acquire = seams.acquireLock ?? acquireLock;
   let release: () => void;
   try {
-    release = acquireLock({
+    release = acquire({
       file: `${file}.heal.lock`,
       name: 'jsonl-heal',
       otherHolder: 'another process is healing the unfinished write at the end of this log',
@@ -318,7 +354,7 @@ export function healTornTail(file: string): TailHeal {
     };
   }
   try {
-    return healUnderLock(file);
+    return healUnderLock(file, seams.beforeTruncate ?? (() => {}));
   } finally {
     release();
   }
@@ -339,10 +375,15 @@ export function healTornTail(file: string): TailHeal {
  * existing catch and becomes `written: false` with the reason, which
  * `auditFailureNote` already puts in front of a person. Writing anyway wedges
  * the log and says nothing.
+ *
+ * `seams` is forwarded to `healTornTail` verbatim and defaults exactly as it
+ * does there — see `HealSeams`. No production caller passes it.
  */
-export function appendJsonlLine(dir: string, file: string, record: unknown): TailHeal {
+export function appendJsonlLine(
+  dir: string, file: string, record: unknown, seams: HealSeams = {},
+): TailHeal {
   ensureLogDir(dir);
-  const heal = healTornTail(file);
+  const heal = healTornTail(file, seams);
   if (heal.healed === false && (heal.why === 'unreadable' || heal.why === 'contended')) {
     throw new Error(
       heal.why === 'unreadable'
