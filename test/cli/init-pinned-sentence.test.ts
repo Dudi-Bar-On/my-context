@@ -117,6 +117,62 @@ test(
   },
 );
 
+/**
+ * **The `category.enabled` half of the predicate** (task 3.11 review, phase 3
+ * — `isEligible`, `core/select.ts:521-525`, checks `status === 'active'` AND
+ * the item's category `enabled`; `nothingPinned` checked only the first
+ * half). A rule pinned while `rule` was enabled, then disabled through
+ * `mycontext config`, is exactly the state `select`'s own pinned tier already
+ * drops — `isEligible` is the gate every tier reads through, and a category
+ * with `enabled: false` fails it regardless of `always`. Before this fix the
+ * sentence stayed silent here, disagreeing with the corpus it describes: it
+ * would have reported "something is pinned" for an item the selector was
+ * about to deliver nothing for.
+ */
+test(
+  'a category disabled AFTER a rule in it was pinned makes the sentence print again',
+  () => {
+    const cwd = sandbox();
+    try {
+      assert.equal(run(['init'], cwd).code, 0);
+      const first = run(
+        ['add', 'rule', 'Never log customer email', '--summary-omitted',
+          '--body', 'Customer email addresses are never written to logs.', '--always', '--yes'],
+        cwd,
+      );
+      assert.equal(first.code, 0, first.out);
+
+      const pinned = run(
+        ['add', 'rule', 'Always validate webhook signatures', '--summary-omitted',
+          '--body', 'Every inbound webhook is signature-checked before it is trusted.', '--yes'],
+        cwd,
+      );
+      assert.equal(pinned.code, 0, pinned.out);
+      assert.ok(
+        !pinned.out.includes(NOTHING_PINNED_SENTENCE),
+        `something is pinned at this point, so the sentence must not print yet:\n${pinned.out}`,
+      );
+
+      const disabled = run(['config', 'rule', '--disable', '--yes'], cwd);
+      assert.equal(disabled.code, 0, disabled.out);
+
+      const after = run(
+        ['add', 'requirement', 'Every export ships a manifest', '--summary-omitted',
+          '--body', 'A manifest is what the reader checks a bundle against.', '--yes'],
+        cwd,
+      );
+      assert.equal(after.code, 0, after.out);
+      assert.ok(
+        after.out.includes(NOTHING_PINNED_SENTENCE),
+        `the only pinned item's category is now disabled, so the selector delivers nothing ` +
+        `pinned and the sentence must print again:\n${after.out}`,
+      );
+    } finally {
+      removeTree(cwd);
+    }
+  },
+);
+
 test(
   '`--always` at capture also counts as pinned for a later `add`',
   () => {

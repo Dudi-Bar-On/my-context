@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:20"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: ee1ca7aa785720c8
+checksum: f0b93e986360871d
 plan: release
 seq: "20"
-state: doing
+state: done
 ---
 
 # two surfaces still describe importing a full export after the ruling withdrew it

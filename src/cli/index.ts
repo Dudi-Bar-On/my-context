@@ -80,7 +80,7 @@ import { enumError } from '../core/teach.ts';
 import { VERSION } from '../core/version.ts';
 import { renderCollisionReport } from '../pack/collide.ts';
 import {
-  applyImport, planImport, type ImportOutcome, type ImportPlan,
+  applyImport, FULL_EXPORT_REFUSAL, planImport, type ImportOutcome, type ImportPlan,
 } from '../pack/import.ts';
 import { readArtefact } from '../pack/reader.ts';
 import './commands/index.ts';
@@ -328,19 +328,39 @@ interface PlannedPack {
 function planPack(cwd: string, source: string): PlannedPack {
   const origin = path.resolve(cwd, source);
   const artefact = readArtefact(origin);
+  // Ruling C (2026-09-21), checked on the artefact itself before `planImport`
+  // runs — the same order `cmdImport` (cli/commands/pack.ts) checks in, and
+  // the same reason: a full export's own unprojected `config.json` would
+  // usually get refused by `planImport` anyway, on the unrelated grounds of
+  // declaring a category twice, and a reader told "a full export is not
+  // importable" must not instead be told that. `FULL_EXPORT_REFUSAL`
+  // (pack/import.ts) is the one sentence every door a full export can reach
+  // shares; this door completes it "Nothing was created", matching `init`'s
+  // own vocabulary rather than `pack import`'s "Nothing was imported".
+  //
+  // **This replaces a refusal that had quietly gone stale.** Before task 3.11
+  // (phase 3 review) this branch did not exist, and `plan.pack === null`
+  // below caught a full export by the side effect of it carrying no pack
+  // name — then pointed the reader at `mycontext init` followed by
+  // `mycontext pack import <path> --name <text>`, the exact `--name` override
+  // this same ruling closed on `cmdImport`'s door the same day. The remedy
+  // `init --pack` printed led straight to a second, freshly-printed refusal
+  // rather than the workspace it promised.
+  if (artefact.manifest.kind === 'export') {
+    throw new Error(`${FULL_EXPORT_REFUSAL} Nothing was created.`);
+  }
   const plan = planImport(artefact, {
     existing: () => null,
     rawConfig: INIT_CONFIG,
     local: resolveConfig(INIT_CONFIG),
   });
+  /* c8 ignore next 7 -- unreachable now: `plan.pack === null` was reached only by a full
+     export (refused above) or by a `kind: 'pack'` artefact with no name, which
+     `refuseMeta` (pack/manifest.ts) already refuses inside `readArtefact`, before this
+     function ever calls `planImport`. Kept only so `name` narrows to `string` for the
+     return below. */
   if (plan.pack === null || plan.pack === '') {
-    throw new Error(
-      `my_context: ${JSON.stringify(source)} is a full export and carries no pack name, so ` +
-      'there is nothing to file its history and its membership list under. `init` has no ' +
-      '--name to give it one, and a name invented on your behalf would be the one ' +
-      '`mycontext pack list` shows you and nobody chose. Run `mycontext init` on its own and ' +
-      'then `mycontext pack import <path> --name <text>`. Nothing was created.',
-    );
+    throw new Error('my_context: a pack plan carried no name — unreachable.');
   }
   return { plan, name: plan.pack, source, origin };
 }
@@ -547,9 +567,10 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
   // item at `init` time (as a draft — see `nothingPinned`'s own comment on
   // why that still does not count), so only it pays for the check.
   if (applied) {
-    const pinCheck = openStore(resolveWorkspace(cwd));
+    const freshWs = resolveWorkspace(cwd);
+    const pinCheck = openStore(freshWs);
     try {
-      if (nothingPinned(pinCheck.store.all())) out(NOTHING_PINNED_SENTENCE);
+      if (nothingPinned(pinCheck.store.all(), freshWs.config)) out(NOTHING_PINNED_SENTENCE);
     } finally {
       pinCheck.store.close();
     }
@@ -932,6 +953,27 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     // reads what `--step` is for.
     if (!category || !title) { out(ADD_USAGE); out(STEP_HELP); return 1; }
 
+    // Resolved HERE, before anything about the summary is even read — the
+    // same ordering argument the long comment below makes for `--severity`,
+    // `--step` and `scopeRequirementError`, applied to the one refusal that
+    // used to arrive AFTER all of them: `createItem`'s own `resolveCategory`
+    // (mutate.ts) already refused an unknown type, but only once every check
+    // above it — including the summary gate — had already run, so `mycontext
+    // add nosuchcategory "x"` with no `--summary` told a human to write a
+    // sentence for an item that could never be created. `Object.hasOwn`
+    // guards the prototype-pollution hazard `resolveCategory` and `tierOf`
+    // (trust.ts) document — a category named `constructor` would otherwise
+    // resolve through `Object.prototype.constructor` and read as known. Only
+    // ENABLED names are offered, matching `resolveCategory`'s own list: a
+    // disabled category is a different refusal (reached below, unchanged),
+    // and suggesting one here would invite a retry `createItem` refuses too.
+    if (!Object.hasOwn(ws.config.categories, category)) {
+      const enabledNames = Object.values(ws.config.categories)
+        .filter((c) => c.enabled)
+        .map((c) => c.name);
+      throw new Error(enumError('type', category, enabledNames, 'categories'));
+    }
+
     input = { type: category, title, origin: 'human' };
     const body = scalarFlag(args, 'body');
     const file = scalarFlag(args, 'file');
@@ -1297,7 +1339,7 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
       {
         const pinCheck = openStore(ws);
         try {
-          if (nothingPinned(pinCheck.store.all())) out(NOTHING_PINNED_SENTENCE);
+          if (nothingPinned(pinCheck.store.all(), ws.config)) out(NOTHING_PINNED_SENTENCE);
         } finally {
           pinCheck.store.close();
         }

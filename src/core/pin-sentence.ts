@@ -36,21 +36,37 @@
  * i.always);`, ~1563) — rather than re-deriving "pinned" from severity or
  * anything else this sentence has no business inventing an opinion about.
  *
- * **`status: 'active'` joins it, and this is not a re-derivation either: it is
- * the other half of the same line.** `select.ts` reaches `i.always` only after
- * `isEligible` (`status === 'active'`, category enabled) has already run, so a
- * DRAFT item carrying `always: true` never actually competes for the pinned
- * tier. This is not a theoretical gap — `mycontext init --pack` is the one
- * caller of `cmdInit`'s check that can hand it a non-empty item list, and
- * `pack/import.ts` writes every arriving item `status: 'draft'` while leaving
- * `always` exactly as the source authored it (`buildDraftItem`,
- * `applyOverwrite`: `always: item.always, status: 'draft'`, `import.ts`
- * ~439-483, ~463-483). A pack carrying a pinned rule therefore lands a DRAFT
- * that is still `always: true` on disk — nothing this corpus would actually
- * inject at a session start until a human promotes it — and a predicate that
- * stopped at `item.always` would silently suppress the sentence for a corpus
- * that has, in every sense `select` cares about, nothing pinned yet.
+ * **`isEligible` (`select.ts`) joins it, imported rather than re-derived, and
+ * this is not a re-derivation either: it is the other half of the same
+ * line.** `select.ts` reaches `i.always` only after `isEligible` — `status ===
+ * 'active'` AND the item's category `enabled` in the RESOLVED config — has
+ * already run, so a DRAFT item carrying `always: true` never actually
+ * competes for the pinned tier, and neither does one whose category was
+ * pinned once and later disabled. The first half was a theoretical gap no
+ * longer: `mycontext init --pack` is the one caller of `cmdInit`'s check that
+ * can hand it a non-empty item list, and `pack/import.ts` writes every
+ * arriving item `status: 'draft'` while leaving `always` exactly as the
+ * source authored it (`buildDraftItem`, `applyOverwrite`: `always:
+ * item.always, status: 'draft'`, `import.ts` ~439-483, ~463-483). A pack
+ * carrying a pinned rule therefore lands a DRAFT that is still `always: true`
+ * on disk — nothing this corpus would actually inject at a session start
+ * until a human promotes it.
+ *
+ * **The second half was not theoretical either, and was measured on review of
+ * task 3.10 (`TASK-release-phase-3-the-defects`).** Until this fix the
+ * predicate below re-derived `status === 'active'` inline and never consulted
+ * `category.enabled` at all — so a corpus holding one pinned item whose
+ * category was pinned once and then DISABLED in `config.json` reported
+ * "something is pinned" while `select`'s own `isEligible` gate had already
+ * dropped that item from every tier, pinned included. The sentence would stay
+ * silent exactly when a reader most needed it: nothing this corpus injects at
+ * session start, and nothing on screen says so. `isEligible` is imported —
+ * not copied — so the day a THIRD condition joins eligibility, this predicate
+ * inherits it with no edit of its own, which is the whole point of importing
+ * the selector's own notion of "pinned" rather than restating it.
  */
+import { isEligible } from './select.ts';
+import type { Config } from './config.ts';
 import type { Item } from './types.ts';
 
 /**
@@ -71,7 +87,12 @@ export const NOTHING_PINNED_SENTENCE =
  * Takes the whole item list rather than a count, so a caller that already has
  * `Store.all()` in hand (both print sites do) passes it straight through with
  * no intermediate query of its own to drift from this one.
+ *
+ * `config` is the RESOLVED config, the same object `isEligible`'s other
+ * caller (`select.ts`) reads a category's `enabled` flag from — both print
+ * sites already have one in hand (`ws.config`, or a freshly resolved
+ * workspace's), so this asks for nothing a caller does not already hold.
  */
-export function nothingPinned(items: Item[]): boolean {
-  return items.filter((item) => item.always && item.status === 'active').length === 0;
+export function nothingPinned(items: Item[], config: Config): boolean {
+  return items.filter((item) => item.always && isEligible(item, config)).length === 0;
 }

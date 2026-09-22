@@ -1,15 +1,19 @@
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import type { ResolvedCategory } from '../../core/config.ts';
-import { createItem, updateItem } from '../../core/mutate.ts';
+import { createItem, updateItem, type CreateInput } from '../../core/mutate.ts';
 import { globalLayerRefusal } from '../../core/persist.ts';
+import {
+  summaryAtCreateRefusal, summaryOmittedRefusal, summaryRequiredAtCreate,
+} from '../../core/summary-gate.ts';
 import { trustedStatus } from '../../core/trust.ts';
 import type { Item, Status } from '../../core/types.ts';
+import { normalizeSummary, validateSummary } from '../../core/validate.ts';
 import type { Workspace } from '../../core/workspace.ts';
 import { emitLoadErrors, openMutateContext, toCliMessage } from './context.ts';
 import { paragraph, refuseUnknownFlag } from './format.ts';
 import { injection } from './injection.ts';
 import { confirmAction } from './review.ts';
-import { flag, positionals, registerCommand, type Emit } from './registry.ts';
+import { boolFlag, flag, positionals, registerCommand, type Emit } from './registry.ts';
 
 /**
  * `mycontext inbox-promote` — the way out of the inbox.
@@ -61,7 +65,8 @@ const INBOX_TYPES = ['todo', 'note'];
 const { allowed: ALLOWED, values: VALUE_FLAGS } = COMMAND_FLAGS['inbox-promote'];
 
 const USAGE =
-  'usage: mycontext inbox-promote <todo or note id> --to <category> [--title <text>] [--yes]';
+  'usage: mycontext inbox-promote <todo or note id> --to <category> [--title <text>] ' +
+  '(--summary <text>|--summary-omitted) [--yes]';
 
 function say(out: Emit, text: string): void {
   for (const line of paragraph(text)) out(line);
@@ -120,10 +125,18 @@ function cmdInboxPromote(ws: Workspace, args: string[], out: Emit): number {
   let extra: string | undefined;
   let to: string | null;
   let titleFlag: string | null;
+  let summary: string | null;
+  let summaryOmitted: boolean;
   try {
     [id, extra] = positionals(args, VALUE_FLAGS);
     to = flag(args, 'to');
     titleFlag = flag(args, 'title');
+    summary = flag(args, 'summary');
+    // `boolFlag`, matching `add`'s own `--summary-omitted`: `=false` is the
+    // same as leaving it out, and it cannot be given as true and false at
+    // once.
+    summaryOmitted = boolFlag(args, 'summary-omitted') === true;
+    if (summary !== null) validateSummary(normalizeSummary(summary));
   } catch (err) {
     out(toCliMessage(err));
     return 1;
@@ -195,6 +208,29 @@ function cmdInboxPromote(ws: Workspace, args: string[], out: Emit): number {
       Object.hasOwn(ws.config.categories, to) ? ws.config.categories[to] : undefined;
 
     if (category?.enabled) {
+      // **THE SUMMARY GATE, ON ITS SEVENTH AUTHORED SURFACE**
+      // (`core/summary-gate.ts`, task 3.11 phase 3 review) — placed HERE,
+      // before the preview and the confirmation below, for the ordering
+      // `cmdAdd` argues at length for its own `--severity`/`--step`/
+      // `scopeRequirementError`: a human must not be shown "about to
+      // promote…" and told only after answering that the capture was never
+      // going to land. It sits INSIDE the `category?.enabled` branch on
+      // purpose, matching the comment two blocks up — an unknown or disabled
+      // category already skips the preview and falls through to
+      // `createItem`'s own refusal, and the summary gate must fall through
+      // with it rather than firing first over a category that was never
+      // going to accept anything.
+      const gateInput: CreateInput = { type: to, title, summary: summary ?? undefined, summaryOmitted };
+      const omittedRefusal = summaryOmittedRefusal(gateInput, 'inbox-promote');
+      if (omittedRefusal) {
+        out(omittedRefusal);
+        return 1;
+      }
+      if (summaryRequiredAtCreate(gateInput)) {
+        out(summaryAtCreateRefusal(gateInput, 'inbox-promote', `${origin.id} --to ${to}`));
+        return 1;
+      }
+
       const status = predictedStatus(origin, category);
       const after = injection(
         { type: to, status, always: false, continuity: false, scope: [] }, ws.config,
@@ -257,6 +293,14 @@ function cmdInboxPromote(ws: Workspace, args: string[], out: Emit): number {
       // `rule` lands `active`, which is what `mycontext add rule` does from
       // the same terminal.
       origin: origin.origin,
+      // The same two fields the gate above validated — carried straight into
+      // the write it approved, on the terms `add` and `lesson` already pass
+      // them: `summary ?? undefined` because `flag` answers `null` for
+      // "absent" and `CreateInput.summary` wants `undefined` there, and
+      // `summaryOmitted` only when the flag was actually given (see
+      // `summaryOmittedRefusal`'s own note on why the two cannot disagree).
+      ...(summary === null ? {} : { summary }),
+      ...(summaryOmitted ? { summaryOmitted: true } : {}),
     });
     // `createItem`'s own message, not a second one composed here: it already
     // states the real status and appends the standard explanation when the

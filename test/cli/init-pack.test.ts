@@ -299,18 +299,33 @@ test('a bad pack refuses and leaves NO .my_context behind', () => {
   assert.match(out, /tier/);
 });
 
-test('an artefact that carries no pack name is refused, pointing at pack import --name', () => {
-  // A full export has no name, and there is nothing here to file its history
-  // and its membership list under. `init` takes no `--name`, so the honest
-  // answer is the command that does — not a name invented on the user's behalf.
+// @basis TASK-release-phase-3-the-defects
+/**
+ * **Ruling C (2026-09-21): a full export is an archive to copy back, not
+ * something this product imports.** Before task 3.11's phase 3 review this
+ * refusal was reached by accident — a full export carries no pack name, and
+ * `init --pack` caught THAT and pointed the reader at `mycontext init`
+ * followed by `mycontext pack import <path> --name <text>`, the exact
+ * `--name` override this same ruling closed on `pack import`'s own door the
+ * same day. So the remedy `init --pack` printed led straight to a SECOND
+ * refusal rather than the workspace it promised. `FULL_EXPORT_REFUSAL`
+ * (`src/pack/import.ts`) is the one sentence every door a full export can
+ * reach shares; this asserts `init --pack` says it too, completed with
+ * "Nothing was created" — `init`'s own vocabulary — rather than the closed
+ * workaround.
+ */
+test('a full export is refused with the shared ruling-C sentence, not the closed --name workaround', () => {
   const cwd = empty();
   const exported = artefact({ items: newItems(), meta: { kind: 'export', name: null, version: null } });
 
   const { code, out } = run(['init', '--pack', exported], cwd);
 
   assert.equal(code, 1, out);
-  assert.match(flat(out), /mycontext pack import/);
-  assert.match(flat(out), /--name/);
+  assert.match(flat(out), /a full export is an archive to copy back/);
+  assert.match(flat(out), /mycontext export --as-pack/);
+  assert.match(flat(out), /Nothing was created/);
+  // The closed workaround must be gone, not merely joined by the new sentence.
+  assert.doesNotMatch(flat(out), /mycontext pack import <path> --name/);
   assert.equal(existsSync(rootOf(cwd)), false);
 });
 

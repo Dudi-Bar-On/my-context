@@ -109,7 +109,7 @@ function renderings(cwd: string): Record<string, string> {
   // its own: while it sat outside this enumeration, a mutant that made ONLY
   // this preview disagree left the agreement assertion green. A surface
   // checked separately is a surface excluded from the agreement.
-  const created = run(['lesson', 'Deploys are risky'], cwd);
+  const created = run(['lesson', 'Deploys are risky', '--summary-omitted'], cwd);
   const lessonId = /LESSON-[a-z0-9-]+/.exec(created)![0];
   writeFileSync(path.join(cwd, 'r.json'), JSON.stringify([
     { title: 'Unscoped rule', directive: 'do', body: 'Because.' },

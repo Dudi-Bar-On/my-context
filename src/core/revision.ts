@@ -846,6 +846,29 @@ export function promoteRevision(
     // in the log from a human typing the same text themselves, which is the
     // one distinction this whole review boundary exists to draw. It also means
     // ONE record, not two — the promotion is not separately audited below.
+    //
+    // **`SUMMARY_OMITTED_NOTE`, recorded the way `updateItem` records it for a
+    // human's own `--summary-unchanged` (mutate.ts, the block right after
+    // `reviseSummary`).** A promotion this proposal does not touch the
+    // summary on, of an item that already carries none, is exactly the state
+    // `summary_absent` reports and no check ever asks about again — the same
+    // fact `add`'s and `lesson`'s `--summary-omitted` records, reached here by
+    // a different door because a promoted revision has no flag of its own to
+    // carry it. `summaryUnchanged: true` is the ANSWER already wired into
+    // `updateItem`'s shared code, not a second note written here: on an item
+    // whose summary is already `null` it skips `reaffirmSummary` (guarded on
+    // `item.summary !== null`, so nothing is falsely re-stamped as
+    // re-affirmed) and attaches `note: SUMMARY_OMITTED_NOTE` to this SAME
+    // 'promote' row instead of a re-affirmation. Gated on BOTH halves —
+    // `onDisk` (read before this write) already carries no summary, AND this
+    // revision is not about to give it one — because a revision that DOES
+    // carry a new summary must land it as ordinary content, never be waved
+    // through as "nobody wrote one". `origin: 'human'` on every promote is
+    // also what keeps this safe: the staging-only refusals `updateItem`
+    // raises for `summaryUnchanged` (mutate.ts, `agentEdits: 'review'`) are
+    // gated on `origin !== 'human'` and never see this call.
+    const summaryStillOmitted =
+      onDisk !== null && onDisk.summary === null && pending.changes.summary === undefined;
     const update = updateItem(ctx, {
       id: itemId,
       ...(pending.changes.title === undefined ? {} : { title: pending.changes.title }),
@@ -854,6 +877,7 @@ export function promoteRevision(
       ...(pending.changes.tags === undefined ? {} : { tags: pending.changes.tags }),
       ...(pending.changes.extra === undefined ? {} : { extra: pending.changes.extra }),
       origin: 'human',
+      ...(summaryStillOmitted ? { summaryUnchanged: true } : {}),
     }, 'promote');
 
     const at = new Date().toISOString();

@@ -400,13 +400,33 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
    * day) by saying the person has chosen to proceed.
    */
   handover: { allowed: ['anyway', 'json'], values: [] },
-  'inbox-promote': { allowed: ['to', 'title', 'yes'], values: ['to', 'title'] },
+  /**
+   * `summary`/`summary-omitted` joined 2026-09-22 (task 3.11, phase 3
+   * review): `inbox-promote` is a `createItem` call reachable from a shell
+   * with nothing to say what the new item IS, exactly the hole `add` was
+   * fixed for and `lesson-accept` was fixed for on 2026-09-12. `values`
+   * carries `summary` alone — `summary-omitted` is a bare switch, the reason
+   * `add`'s own declaration above gives: it consumes no token, and a composed
+   * `--summary-omitted "<something>"` would be offering to write the summary
+   * the flag exists to say nobody wrote.
+   */
+  'inbox-promote': {
+    allowed: ['to', 'title', 'yes', 'summary', 'summary-omitted'],
+    values: ['to', 'title', 'summary'],
+  },
   'ingest-status': { allowed: DETAIL_FLAGS, values: [] },
   /**
-   * `--agent` is the only flag `lesson` takes. `lesson-accept` refuses it BY
-   * NAME with a sentence of its own and is not lifted — see the header.
+   * `--agent` was the only flag `lesson` took until 2026-09-22 (task 3.11,
+   * phase 3 review): a creation route with no way to give it a summary, and
+   * one of exactly two left once `add` and `lesson-accept` were closed
+   * (`inbox-promote`, above, was the other). `summary`/`summary-omitted` join
+   * it on the identical terms `add` and `lesson-accept` already take them —
+   * `values: ['summary']` alone, `summary-omitted` a bare switch for the
+   * reason given on `inbox-promote` above. `lesson-accept` still refuses
+   * `--agent` BY NAME with a sentence of its own and is not lifted — see the
+   * header.
    */
-  lesson: { allowed: ['agent'], values: [] },
+  lesson: { allowed: ['agent', 'summary', 'summary-omitted'], values: ['summary'] },
   /**
    * No flags at all, and deliberately — see `cli/commands/link.ts`'s own
    * header for why: adding a relation crosses no trust boundary, so there is
@@ -1202,6 +1222,29 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
       format: 'one line of prose', example: 'Never log secrets',
       note: 'The promoted item\'s title. Omit it to keep the note\'s own first line.',
     },
+    // The summary gate's two flags, on its seventh authored surface
+    // (`core/summary-gate.ts`, task 3.11 phase 3 review). `SUMMARY_FLAG`'s
+    // shared format, example and note, plus the sentence that is true HERE
+    // and of none of `add`, `lesson` or `lesson-accept`: the text being
+    // summarised was written by whoever captured the origin todo or note,
+    // and this command is the first moment anybody is asked to say in one
+    // sentence what it becomes.
+    summary: {
+      ...SUMMARY_FLAG,
+      group: 'summary-source',
+      note: `${SUMMARY_FLAG.note} A promotion must carry one, or say \`--summary-omitted\` in `
+        + 'so many words: a promoted item created without one can never afterwards be asked '
+        + 'for it, exactly as an `add` capture cannot.',
+    },
+    'summary-omitted': {
+      group: 'summary-source',
+      note: 'Say that the promoted item is being created with NO summary, and that it is '
+        + 'deliberate. A promotion without one is otherwise refused, because an item born with '
+        + 'no summary can never afterwards be required to have one — `mycontext doctor` reports '
+        + 'it as `summary_absent` and nothing else will ever ask. It is never a default, it is '
+        + 'refused beside `--summary`, and the audit row records `summary-omitted` so that '
+        + 'nobody wrote one is visible rather than assumed.',
+    },
     yes: YES,
   },
   'ingest-status': DETAIL,
@@ -1209,6 +1252,27 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     agent: {
       note: 'Record the lesson as origin "agent" rather than "human" - the one claim a shell '
         + 'cannot truthfully make on its own. `lesson-accept` refuses it by name.',
+    },
+    // The summary gate's two flags, on its sixth authored surface
+    // (`core/summary-gate.ts`, task 3.11 phase 3 review) — only on the
+    // CREATE path (`mycontext lesson "<text>"`); re-deriving from an
+    // existing id (`mycontext lesson <LESSON-id>`) creates nothing and the
+    // gate never fires there.
+    summary: {
+      ...SUMMARY_FLAG,
+      group: 'summary-source',
+      note: `${SUMMARY_FLAG.note} A capture must carry one, or say \`--summary-omitted\` in `
+        + 'so many words: an item created without a summary can never afterwards be asked '
+        + 'for one, exactly as an `add` capture cannot.',
+    },
+    'summary-omitted': {
+      group: 'summary-source',
+      note: 'Say that this lesson is being captured with NO summary, and that it is deliberate. '
+        + 'A capture without one is otherwise refused, because an item born with no summary can '
+        + 'never afterwards be required to have one — `mycontext doctor` reports it as '
+        + '`summary_absent` and nothing else will ever ask. It is never a default, it is refused '
+        + 'beside `--summary`, and the audit row records `summary-omitted` so that nobody wrote '
+        + 'one is visible rather than assumed.',
     },
   },
   // No flags — see COMMAND_FLAGS.link and cli/commands/link.ts.
