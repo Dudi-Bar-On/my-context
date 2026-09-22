@@ -181,7 +181,7 @@ says "establish by executing" instead of asserting it.
 | …and it reads only those two fields, so the same payload shape produces the same key at any event | `hooks/io.ts` · `return input.agent_id ?` · ~216 |
 | `agent_id` is declared on `HookInput` and is the only subagent discriminator the hooks have | `hooks/io.ts` · `agent_id?: string;` · ~77 |
 | `source` is declared as `SessionStart only`, with `clear` already named | `hooks/io.ts` · `SessionStart only:` · ~15 |
-| Stdin was read **only synchronously** in the shared IO module when this plan was written; Task 5 adds `readStdinAsync` beside it and `readStdin` is unchanged | `hooks/io.ts` · `return readFileSync(0, 'utf8');` · ~222 |
+| Stdin was read **only synchronously** in the shared IO module when this plan was written; Task 5 adds `readStdinAsync` beside it and `readStdin` is unchanged | `hooks/io.ts` · `readFileSync(0, 'utf8')` · ~450 |
 | The only output envelope builder was `PreToolUse`-specific — Task 5 generalises it to `hookContext` and this function stays as its one-line wrapper | `hooks/io.ts` · `export function preToolUseContext(text: string): string {` · ~530 |
 | …and its envelope shape is `hookSpecificOutput` + `additionalContext`, which Task 5 preserves byte for byte in `hookContext` | `hooks/io.ts` · `hookSpecificOutput: { hookEventName: event, additionalContext: text },` · ~488 |
 | `io.ts` already records that `AUDIT_OPS` is closed and the reader refuses a whole segment on an unknown op | `hooks/io.ts` · `refuses a whole segment on an unknown op` · ~344 |

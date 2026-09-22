@@ -288,7 +288,7 @@ test('/api/select reads the per-session SEEN FILE, and the seen answer differs f
  * the other way.
  *
  * Read the way the hook reads it — `core/inject.ts` ·
- * `const carried = !manual && (subagent || !compacting)` · ~476 — which means
+ * `const sessionCarried = !manual && (subagent || !compacting)` · ~695 — which means
  * `session-start` and nothing else.
  */
 test('/api/select carries the cross-session carry, so the UI reads the shape the CLI renders', () => {

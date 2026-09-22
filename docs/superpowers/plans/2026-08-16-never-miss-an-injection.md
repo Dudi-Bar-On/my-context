@@ -134,7 +134,7 @@ Expected: all clean — including `cd28989`'s pre-compact disclosure test and it
 
 ### Task 2: The per-session seen file — `src/core/seen-file.ts`
 
-The B enabler: session dedupe state moves to `state/<sanitized-key>.seen.jsonl`, one `{id, tier, at}` line per delivery, using the audit log's own append machinery (`appendJsonlLine`/`healTornTail` — `src/core/jsonl-log.ts` · `export function appendJsonlLine(` · ~192 and `src/core/jsonl-log.ts` · `export function healTornTail(file: string): void {` · ~157) — measured at 0.55 ms p95, flat from empty to 32 MiB (`src/core/audit-db.ts` · `//  1. **The hot path.** The PreToolUse hook writes a record on every tool call` · ~21, `test/perf/audit-latency.perf.ts`). Concurrent appends: 6,000/6,000 lines intact across 2 processes × 3,000 interleaved, and the heal-then-append race against a file that starts torn lost 0 records in 3,000 races [R2]; the analytical worst case is a lost seen-record → one re-injection, the accepted direction.
+The B enabler: session dedupe state moves to `state/<sanitized-key>.seen.jsonl`, one `{id, tier, at}` line per delivery, using the audit log's own append machinery (`appendJsonlLine`/`healTornTail` — `src/core/jsonl-log.ts` · `export function appendJsonlLine(` · ~192 and `src/core/jsonl-log.ts` · `export function healTornTail(file: string): TailHeal {` · ~299) — measured at 0.55 ms p95, flat from empty to 32 MiB (`src/core/audit-db.ts` · `//  1. **The hot path.** The PreToolUse hook writes a record on every tool call` · ~21, `test/perf/audit-latency.perf.ts`). Concurrent appends: 6,000/6,000 lines intact across 2 processes × 3,000 interleaved, and the heal-then-append race against a file that starts torn lost 0 records in 3,000 races [R2]; the analytical worst case is a lost seen-record → one re-injection, the accepted direction.
 
 **Files:**
 - Create: `src/core/seen-file.ts`
@@ -1712,7 +1712,7 @@ The guarantee is conditional on corpus ≲ 10,000 items: the Markdown fallback m
 - Test: `test/doctor/corpus-size.test.ts`
 
 **Interfaces:**
-- Consumes: `Finding` (`checks.ts` · `export interface Finding {` · ~78); `Item[]` already flowing into `runChecks` via `opts.items`.
+- Consumes: `Finding` (`doctor/finding.ts` · `export interface Finding {` · ~67); `Item[]` already flowing into `runChecks` via `opts.items`.
 - Produces: `checkCorpusSize(items: Item[]): Finding[]`; `export const FALLBACK_CEILING_WARN_ITEMS = 5000`.
 
 - [ ] **Step 1: Write the failing test**

@@ -55,8 +55,8 @@ async function shelled(page: Page, body: (fixture: Fixture) => Promise<void>): P
    * **Attached BEFORE `goto`, and that is the whole of `plan:live seq:11`.**
    *
    * The shell opens its one connection during the INITIAL load — the landing
-   * screen is `preview` (`app.js` · `location.hash.replace(/^#\//, '') || 'preview'`
-   * · ~1975), `preview` declares kinds in `SCREEN_INVALIDATION`, and `route()`
+   * screen is `preview` (`app.js` · `String(hash).replace(/^#\//, '') || 'preview'`
+   * · ~8589), `preview` declares kinds in `SCREEN_INVALIDATION`, and `route()`
    * subscribes on its behalf through `setupLiveScreen`, whose first
    * `subscribeStream()` call is what runs `ensureLiveStream()`. Measured
    * 2026-08-29 on both browser projects: the request for

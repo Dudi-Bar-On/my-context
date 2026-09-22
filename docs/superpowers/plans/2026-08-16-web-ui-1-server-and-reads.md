@@ -497,7 +497,7 @@ of asserting it.
 | `Ledger.sessionCount()` | `core/ledger.ts` · `sessionCount(): number {` · ~633 |
 | Ledger schema: `PRIMARY KEY (session_id, item_id, tier)`, `injected_at` a value | `core/ledger.ts` · `PRIMARY KEY (session_id, item_id, tier)` · ~67 |
 | `Ledger.open` relies on a writable open having run first against the same path | `core/ledger.ts` · `static open(dbPath: string, busyTimeoutMs = 3000): Ledger {` · ~135 |
-| `readSnapshotMeta(root, sessionId)` reads a compact snapshot's item ids | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta \| null {` · ~861 |
+| `readSnapshotMeta(root, sessionId)` reads a compact snapshot's item ids | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotRead {` · ~902 |
 | `renderSelection(selection)` renders the injected text | `core/render.ts` · `export function renderSelection(selection: Selection): string {` · ~405 |
 | **`Store.openReadOnlyChecked(dbPath)` — what this server must use** | `core/store.ts` · `static openReadOnlyChecked(dbPath: string): Store {` · ~402 |
 | `Store.open(dbPath)` — **self-heals by deleting the file; not for a read path** | `core/store.ts` · `static open(dbPath: string, profile: OpenProfile = DEFAULT_OPEN_PROFILE, _retried = false): Store {` · ~337 |
@@ -507,15 +507,15 @@ of asserting it.
 | `resolveWorkspace(cwd): Workspace` | `core/workspace.ts` · `export function resolveWorkspace(cwd: string): Workspace {` · ~162 |
 | `Workspace { projectRoot; globalRoot; dbPath; config }` | `core/workspace.ts` · `export interface Workspace {` · ~9 |
 | `runChecks(opts): Finding[]` | `doctor/checks.ts` · `export function runChecks(opts: {` · ~3914 |
-| `Finding { level; code; message; item? }` | `doctor/checks.ts` · `export interface Finding {` · ~78 |
-| `listRepoFiles(repoRoot, limit)` exported; skips `.git`, `node_modules`, … | `doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~378 |
+| `Finding { level; code; message; item? }` | `doctor/finding.ts` · `export interface Finding {` · ~67 |
+| `listRepoFiles(repoRoot, limit)` exported; skips `.git`, `node_modules`, … | `doctor/repo-files.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~125 |
 | `computeDecay(input): DecayReport` | `core/decay.ts` · `export function computeDecay(input: DecayInput): DecayReport {` · ~93 |
 | `DecayReport { window; sessionsRecorded; cold; warm; unrestricted }` | `core/decay.ts` · `export interface DecayReport {` · ~24 |
 | `helpTopic(topic, config, locale?)` — **three parameters now** | `help/index.ts` · `export function helpTopic(topic: string, config: Config, locale?: HelpLocale): string {` · ~895 |
 | `HELP_TOPICS = ['categories','scope','capture','workflow','cli','tools','slash']` — seven now. Three of them are generated: `cli` from `COMMANDS`, which needs the CLI loaded to render and refuses otherwise; `tools` from the MCP tool registry and `slash` from the committed `commands/` directory, neither of which has that precondition. The list itself lives in `core/teach.ts`, a module that imports nothing, because `mcp/tools.ts` reads it at module scope and `help/index.ts` imports `createRegistry` from `mcp/tools.ts`; `help/index.ts` re-exports it. `MCP_HELP_TOPICS` beside it is that list minus `cli`, and it is what `mycontext_help` accepts | `core/teach.ts` · `export const HELP_TOPICS: HelpTopic[] = [` · ~16 |
 | `registerCommand(def)` | `cli/commands/registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46 |
 | `CommandFn = (ws, args, out, cwd) => number` | `cli/commands/registry.ts` · `export type CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number;` · ~6 |
-| CLI main sets `process.exitCode` (never `process.exit`), so a live server keeps the process alive | `cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));` · ~1614 |
+| CLI main sets `process.exitCode` (never `process.exit`), so a live server keeps the process alive | `cli/index.ts` · `process.exitCode = commandExit;` · ~1887 |
 | `createItem` | `core/mutate.ts` · `export function createItem(` · ~312 |
 | `updateItem` | `core/mutate.ts` · `export function updateItem(` · ~765 |
 | `supersedeItem` | `core/mutate.ts` · `export function supersedeItem(ctx: MutationContext, input: SupersedeInput): MutationResult {` · ~1418 |
@@ -2959,7 +2959,7 @@ git commit -m "feat(ui): status, doctor and decay read model"
 - Test: extend `test/ui/read-model.test.ts`
 
 **Interfaces:**
-- Consumes: `matchesScope` (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~575), `injection` (`cli/commands/injection.ts` · `export function injection(` · ~84), `listRepoFiles` (`doctor/checks.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~378), `helpTopic`/`HELP_TOPICS` (`help/index.ts`), `scopePolicyFor` (`core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~207), `isLoadBearing` (`core/focus.ts`), `Ledger.usage`.
+- Consumes: `matchesScope` (`select.ts` · `export function matchesScope(item: Item, target: string, config: Config): boolean {` · ~575), `injection` (`cli/commands/injection.ts` · `export function injection(` · ~84), `listRepoFiles` (`doctor/repo-files.ts` · `export function listRepoFiles(repoRoot: string, limit: number = FILE_LIMIT): string[] {` · ~125), `helpTopic`/`HELP_TOPICS` (`help/index.ts`), `scopePolicyFor` (`core/config.ts` · `export function scopePolicyFor(config: Config, type: string): ScopePolicy {` · ~207), `isLoadBearing` (`core/focus.ts`), `Ledger.usage`.
 - Produces:
   - `apiCoverage(ws, url): JsonResult` — `GET /api/coverage` →
 
@@ -3156,7 +3156,7 @@ Expected: new tests FAIL.
 - [ ] **Step 3: Implement** (append to `src/ui/read-model.ts`; add imports: `matchesScope` from `select.ts`, `injection` from `../cli/commands/injection.ts`, `listRepoFiles` from `../doctor/checks.ts`, `helpTopic, HELP_TOPICS` from `../help/index.ts`, `scopePolicyFor` from `../core/config.ts`, `statSync` from `node:fs`)
 
 ```ts
-const FILE_WALK_LIMIT = 20_000; // listRepoFiles' own default bound (`doctor/checks.ts` · `const FILE_LIMIT = 20_000;` · ~312)
+const FILE_WALK_LIMIT = 20_000; // listRepoFiles' own default bound (`doctor/repo-files.ts` · `export const FILE_LIMIT = 20_000;` · ~59)
 
 export function apiCoverage(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, []);
@@ -4894,7 +4894,7 @@ answer.**
 - Consumes: `startUiServer`, `OPENER_NONCE_TTL_MS`, `PRINTED_NONCE_TTL_MS` (Task 13), `registerCommand` (`registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46).
 - Produces:
   - `openBrowser(url: string, platform?: NodeJS.Platform, spawnFn?: typeof spawn): { command: string; args: string[] } | null` — returns what it spawned (for tests and for the fallback decision), `null` when the spawn failed. **This is the first `child_process` use in `src/`** — there were none before (verified by grep); zero dependencies is intact, "zero moving parts" is not, and this comment says so in the module rather than letting a reader assume it (spec §3).
-  - The `ui` command: `mycontext ui [--port N] [--no-open]`, registered via `registerCommand`. **Nothing shadows a registration any more:** `registry.ts`'s hand-kept `SHADOWED_BY_SWITCH` mirror went with the dispatch switch in Wave 5 (`cli/index.ts` · `switch shadows. With the switch gone there is exactly one dispatch path` · ~1550), so the only name check left is `registerCommand`'s own duplicate guard (`registry.ts` · `if (COMMANDS.has(def.name)) {` · ~47). The command starts the server in-process; the CLI main sets `process.exitCode` and never calls `process.exit` (`cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2), process.cwd(), (s) => console.log(s));` · ~1614), so the live server keeps the event loop — and the process — alive until idle exit or Ctrl-C.
+  - The `ui` command: `mycontext ui [--port N] [--no-open]`, registered via `registerCommand`. **Nothing shadows a registration any more:** `registry.ts`'s hand-kept `SHADOWED_BY_SWITCH` mirror went with the dispatch switch in Wave 5 (`cli/index.ts` · `switch shadows. With the switch gone there is exactly one dispatch path` · ~1550), so the only name check left is `registerCommand`'s own duplicate guard (`registry.ts` · `if (COMMANDS.has(def.name)) {` · ~47). The command starts the server in-process; the CLI main sets `process.exitCode` and never calls `process.exit` (`cli/index.ts` · `process.exitCode = commandExit;` · ~1887), so the live server keeps the event loop — and the process — alive until idle exit or Ctrl-C.
 
 Token-channel rules, restated where they are implemented: the **spawned** URL carries a 10-second nonce (`OPENER_NONCE_TTL_MS`); the **printed** URL (`--no-open`, or fallback when the spawn fails) carries a `PRINTED_NONCE_TTL_MS` nonce; the token itself appears in neither, and never on any process command line.
 
@@ -5013,7 +5013,7 @@ function cmdUi(ws: Workspace, args: string[], out: Emit, cwd: string): number {
   const noOpen = hasFlag(args, 'no-open');
 
   // The server outlives this function: runCli returns, the CLI main sets
-  // process.exitCode without calling process.exit (`cli/index.ts` · `process.exitCode = runCli(process.argv.slice(2)` · ~1614),
+  // process.exitCode without calling process.exit (`cli/index.ts` · `process.exitCode = commandExit;` · ~1887),
   // and the listening socket keeps the event loop alive until idle exit.
   startUiServer({ cwd, port, onExit: () => process.exit(0) })
     .then((running) => {
