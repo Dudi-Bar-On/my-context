@@ -319,7 +319,7 @@ test rows the way `delivered.ts:132` does).
 
 Checkpoint 4.
 
-## 7. Phase 5 — CLI, store, types and hygiene (28 board tasks)
+## 7. Phase 5 — CLI, store, types and hygiene (29 board tasks)
 
 Exit: each closing condition met; `npm test` green; both jobs green.
 
@@ -341,11 +341,14 @@ index, six files under `test/perf`), `accretion/6` (split `conversation-index.ts
 "it stays" with the reason), `repaint/12` (steps 2 and 4), `dxfindings/4` (the two remaining
 checks), `live/20` (a git guard on Bash for delegated workers; the item records the cost
 argument, answer it), `live/24` (the three remaining), `confirm/6`, `readmodel/2` (the client
-request shape), `readmodel/4`.
+request shape), `readmodel/4`, `TASK-five-perf-files-index-the-percentile-one-rank-high…` (five timing
+baselines were derived through the same one-rank-high reading they exist to check; re-deriving
+them needs a quiet machine, so do it when no other lane is running — it has no `plan/seq`, which
+is why the first census missed it).
 
 Checkpoint 5.
 
-## 8. Phase 6 — the web UI (55 board tasks)
+## 8. Phase 6 — the web UI (56 board tasks)
 
 Exit: each closing condition met; `npm test` green; `npm run test:e2e` green on this machine
 and on Ubuntu.
@@ -357,7 +360,10 @@ Order the lanes by file so no two hold `app.js`, `conversations.js` or `styles.c
    and a rail collapse; the strip wraps or scrolls below 1200 px), `walk/153`, `walk/154`,
    `walk/155` (language switch without a reload, if the closures allow; otherwise record why),
    `walk/157` (keyboard jumps between screens), `walk/169`, `walk/139`, `walk/151`, `walk/167`
-   (per G), `builder/18`, `screens/25`.
+   (per G), `builder/18`, `screens/25`,
+   `TASK-the-tier-ribbon-needs-per-line-index-costs…` (a required chart cannot be drawn at all:
+   two facts it needs are never sent to the page and cannot be derived there, so this is a
+   read-model change before it is a drawing change; no `plan/seq`).
 2. **Conversations** (`conversations.js` and its libs): `wcag/4` (per-row accessible names on
    rename and drop), `wcag/7`, `wcag/8`, `walk/160`, `walk/166`, `screens/27` (the question in
    the viewer: the check half in `scripts/check-ask-numbering.ts:168-196`), `screens/26`
@@ -442,6 +448,22 @@ for B1, B6, B7, B8, B9, B12, the summary-gate back doors and every phase-4 discl
 voice `VERSIONING.md` asks for ("what changes in practice"); `### Added` for every phase-7
 feature; `### Removed` for the three retired browser specs; correct the export/import sentence.
 If the owner asked at checkpoint 8 for an editorial pass, do it here and only here.
+
+**8.6 The capture screen tells a user a metric does not exist, and one does**
+(`TASK-the-mockup-gives-a-true-conclusion-a-false-reason…`, owner ruling 2026-09-22: “fix the
+reason despite the freeze, it belongs in phase 8”). **This is not a mockup edit and the freeze
+does not reach it** — the sentence ships, at `src/ui/public/strings/en.js:1788` with its `he.js`
+twin: *“No similarity or ranking is shown, because no similarity metric exists in this
+product.”* `overlapScore` exists — `src/core/overlap.ts:106,126`, jaccard and
+`max(jaccard, containment * 0.8)`, behind `POST /api/overlap`, and `capture-model.ts` says so in
+its own header. **The CONCLUSION does not move**
+(`DEC-the-capture-screen-shows-a-scope-match-and-never-a-score`): the screen still shows a scope
+match and never a score. Only the justification moves, and the replacement is already written in
+the task — a metric exists and is deliberately not rendered, because it has never been validated
+against a person’s judgement of whether two items are the same rule, and an unvalidated order
+shown at capture time invites a trust it has not earned. **Both string tables move in the same
+commit**; `strings-parity` compares the key sets in both directions. The freeze itself ended
+2026-08-25 (“give the mockup a data-t and ship it”), so write no exception.
 
 Checkpoint 8.
 

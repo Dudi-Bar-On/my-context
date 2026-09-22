@@ -9,9 +9,37 @@ and §9 rather than softened.
 
 Everything here rests on three reviews done on 2026-09-21 from a fresh clone
 (`reports/2026-09-21-external-status-review.md`, `…-installed-as-a-new-user.md`,
-`…-capabilities-reviewed-and-scored.md`) and on a triage of all 164 open tasks against the
+`…-capabilities-reviewed-and-scored.md`) and on a triage of all 160 open tasks against the
 code, whose result is in §7. Where this runbook and the board disagree, the evidence in §7 is
 why.
+
+---
+
+## 0. What the new session needs, and in what order
+
+**Hand it these five. The first two are not optional.**
+
+| | Document | Why it is needed |
+|---|---|---|
+| 1 | `reports/2026-09-21-v2-release-runbook.md` | this file — the plan, the phases, the triage, the blockers |
+| 2 | `reports/2026-09-21-v2-release-prompt.md` | what the session actually executes, phase by phase, with the exit condition for each |
+| 3 | `reports/2026-09-22-the-d-board-live.md` | **the board by SUBJECT, which this runbook never gives.** §7 triages by TASK and nothing joins the two. It also carries the 18 items in no subject, the 21 subjects sitting at 100% that close on a judgement, and the two matching traps below |
+| 4 | `reports/2026-09-21-external-status-review.md` | B4’s 49 red browser tests are enumerated there and nowhere else; phase 3 cannot close B4 without it |
+| 5 | `reports/2026-09-21-v2-release-morning.he.md` | the owner’s own Hebrew walk-through of the morning. Not needed to execute; needed if the owner reads along |
+
+Also read once, before triaging anything: `reports/2026-09-21-installed-as-a-new-user.md` and
+`reports/2026-09-21-capabilities-reviewed-and-scored.md`, the other two reviews §7 rests on.
+
+### Two traps that will cost a session an hour each
+
+**§7 names some items as a RANGE** — `` `wcag/1` to `wcag/9` `` — so an exact-id search over this
+file reports seven tasks as uncovered when they are not. **And it names items that have no id BY
+TITLE**, "`` `TASK-…` `` and its `-2` twin", which an id search cannot see at all. A reconciliation
+on 2026-09-22 hit both and reported false gaps from each before catching them.
+
+**The board does not close itself.** `mycontext ready` reports 151 ready of 155 open today and
+prints ~52 grouped rows, not one row per task. Its own count sentence is the number; the row count
+is not.
 
 ---
 
@@ -174,22 +202,30 @@ re-reports; it does not move on.
 
 ---
 
-## 7. The triage of the 164 open tasks, and where each lands
+## 7. The triage of the 160 open tasks, and where each lands
 
 Every row was checked against the code on 2026-09-21. "Done" means the task's own closing
 condition is met in the tree.
 
-**160 became 164 on 2026-09-22.** The original census was four short, and the four have one
-thing in common: THEY CARRY NO PLAN OR SEQ, so there is no `plan/seq` for a triage to cite and
-they can only be named by title. This section already names eleven such items that way; these four
-were the ones it missed. They were all added to the corpus on 2026-09-03, eighteen days before the
-triage ran, so nothing about them is new — only their being counted is.
+**The 160 is a BOARD COUNT and it was right.** A session on 2026-09-22 briefly changed it to 164
+and that was an error, corrected here: the board held 160 open tasks on 2026-09-21, and it holds
+155 today because five items that had shipped on 2026-09-17 were marked done.
+
+**Do not add the bucket counts below and expect 160.** They are a different population: §7.1 is
+"Done but not marked" and §7.2 is "Obsolete", so between them they name 24 ids of which 8 are
+already closed. The buckets sum to 158 and that number answers "how many rows does this triage
+carry", not "how many tasks are open".
+
+**What WAS wrong is that four open tasks were in no bucket at all**, and they are now in §7.1,
+§7.5, §7.6 and §7.8. The four have one thing in common: THEY CARRY NO PLAN OR SEQ, so there is no
+`plan/seq` for a triage to cite and they can only be named by title. This section already names
+eleven such items that way; these four were the ones it did not reach. All were added to the
+corpus on 2026-09-03, eighteen days before the triage ran.
 
 `review/10` is the item about exactly this ("a promoted item arrives with no plan, no seq and no
 priority, so nothing can schedule or cite the work you just approved"), it is open, and it is in
 phase 5. **Until it lands, any census of this board is a census of the items that happen to have
-numbers.** The arithmetic now reads 158 in the eight buckets below plus the 6 blockers carried in
-§4, which is 164.
+numbers** — which is why the four were missed, and why 160 should be read as a floor.
 
 ### 7.1 Done but not marked (18) — phase 2 closes them
 

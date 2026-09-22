@@ -14,7 +14,12 @@ Repository at `acd574ce`. Written to be correlated with
 
 ---
 
-## 1. Reconciled against the runbook — three items are genuinely uncovered, not six
+## 1. Reconciled against the runbook — four items were in no bucket, and all are now placed
+
+**SETTLED 2026-09-22.** All four were added to §7 of the runbook, and the owner ruled on the one
+that needed a ruling. The board count of 160 was always right; what was wrong is that four open
+tasks sat in no bucket. Nothing below is outstanding — it is kept as the record of how they were
+found, because the two matching traps in it will cost the next reader an hour each.
 
 **This section replaces an earlier version of itself that was wrong, and the correction is the
 point.** It read: *"154 against 160 is NOT explained, and it is the gap worth your attention."* It is
@@ -47,7 +52,7 @@ writes the WCAG items as a RANGE — "`wcag/1` to `wcag/9`" — so an exact-id s
 gaps; and it names id-less items BY TITLE, "…and its `-2` twin", which an id search cannot see at
 all. **The runbook is more thorough than either method could detect.**
 
-### What is actually not covered — three items
+### What was not covered — four items, now placed
 
 All three are `status: active, state: todo`, and none is named or described anywhere in the runbook:
 
@@ -63,7 +68,9 @@ And one more, covered only by a phase DESCRIPTION and never named:
 `TASK-five-perf-files-index-the-percentile-one-rank-high-and-their` — phase 5's line says "perf
 percentiles", which is the subject; the item is not in §7.5's list of 28.
 
-**Recommendation: add these four to §7 before phase 2 runs.** Three of them have no id for the
+**Done: all four are in §7** — the withheld bulk promote in §7.1, the perf baselines in §7.5, the
+tier ribbon in §7.6, and the capture screen’s false reason in §7.8 by owner ruling.
+**Originally recommended:** Three of them have no id for the
 runbook to cite, which is exactly why they were missed — `review/10` ("a promoted item arrives with
 no plan, no seq and no priority") is the item about that, and it is itself open.
 
