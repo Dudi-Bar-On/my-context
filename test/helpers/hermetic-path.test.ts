@@ -66,6 +66,36 @@ test('a shim pointing at a DIFFERENT checkout is scrubbed; untouched entries kee
   }
 });
 
+test('a directory holding a foreign shim AND an unrelated tool is removed whole — the pinned tradeoff', () => {
+  const { dir, cleanup } = tmp();
+  try {
+    const before = path.join(dir, 'before');
+    const npmBin = path.join(dir, 'npmbin');
+    const after = path.join(dir, 'after');
+    mkdirSync(before, { recursive: true });
+    mkdirSync(after, { recursive: true });
+
+    // `npmBin` holds two things, the way a real npm global-prefix bin
+    // directory can: the foreign `mycontext` shim this scrub exists to
+    // remove, AND an unrelated tool that happens to sit right next to it.
+    // `PATH` has no way to keep one and drop the other — see the header
+    // comment's "tradeoff" paragraph — so this asserts the DECISION (the
+    // whole directory goes) rather than leaving it to be noticed by accident
+    // the next time someone changes this function.
+    writeShim(npmBin, 'src/cli/index.ts', 'a different checkout\n');
+    write(path.join(npmBin, 'npm.cmd'), '@ECHO off\r\nrem an unrelated tool sharing the directory\r\n');
+    const ownEntry = path.join(dir, 'own-checkout', 'src', 'cli', 'index.ts');
+    write(ownEntry, 'this checkout\n');
+
+    const pathValue = [before, npmBin, after].join(path.delimiter);
+    const result = scrubForeignMycontextShims(pathValue, ownEntry);
+
+    assert.equal(result, [before, after].join(path.delimiter));
+  } finally {
+    cleanup();
+  }
+});
+
 test('a shim pointing at THIS repository is kept, unchanged, in place', () => {
   const { dir, cleanup } = tmp();
   try {

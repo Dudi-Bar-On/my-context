@@ -40,6 +40,57 @@
  * shape, so this scrub and `checkCliOnPath`'s own verdict can never disagree
  * about what a given shim resolves to.
  *
+ * **The tradeoff this makes, written down because it was raised in review and
+ * belongs somewhere more durable than the thread that raised it.** `PATH` is
+ * a list of DIRECTORIES, not a list of files — there is no such thing as
+ * removing one shim from an entry while keeping the entry on PATH for
+ * everything else in it. So when a directory is removed because it holds a
+ * foreign `mycontext`, whatever ELSE that directory holds — `npm.cmd`,
+ * `npx.cmd`, another package's global link — goes with it, for every CLI
+ * child this suite spawns, for the duration of the run only (this mutates
+ * `process.env.PATH` in THIS process; nothing is written to the machine's
+ * real environment, and a shell started outside this run is unaffected).
+ *
+ * Measured on this machine (`where npm`, and directory listings of both):
+ * `npm`/`npx` resolve to `C:\Program Files\nodejs\`, entirely separate from
+ * `C:\Users\UserC\AppData\Roaming\npm` — the npm global-PREFIX directory,
+ * where `npm link`/`npm install -g` put PACKAGE shims (`mycontext.cmd` here)
+ * but not npm itself. Removing the prefix directory here does not touch
+ * `npm`/`npx` at all. That separation is this machine's install layout, not a
+ * law — a setup where the global prefix bin dir IS where `npm`/`npx` resolve
+ * from too (a portable or nvm-style Node install, among others) would lose
+ * both for the run's children the moment that same directory holds a foreign
+ * `mycontext` shim.
+ *
+ * Whether that scenario ever actually bites depends on whether anything this
+ * suite spawns calls `npm`/`npx` by bare name at all — checked by grepping
+ * every `execSync`/`execFileSync`/`spawnSync`/`spawn` call in `test/`, `src/`,
+ * `scripts/` and `e2e/` for a first argument starting with `npm` or `npx`.
+ * Exactly one call in the whole repository does:
+ * `test/rules/maintenance-absent.test.ts:66`'s
+ * `execSync('npm pack --dry-run --json', …)`, run once at that file's
+ * top-level load — so on the machine layout where the two directories
+ * collide, THAT specific test would also fail on this scrub, not only the
+ * doctor-dependent ones this task set out to fix.
+ *
+ * **Why directory-level removal stands anyway, rather than a narrower
+ * per-file scrub or a shadow.** A per-file removal is not a `PATH` operation
+ * at all — `PATH` cannot say "this directory, minus one name in it" — so the
+ * only narrower alternative on the table is shadowing: prepend a clean
+ * directory ahead of the foreign one instead of removing it, so the FIRST
+ * `mycontext` a shell would resolve is harmless. That does not satisfy
+ * `checkCliOnPath`: its loop over candidates (`src/doctor/cli-on-path.ts`,
+ * the `for (const candidate of candidates)` loop building `mismatch ??= …`)
+ * inspects EVERY path `where mycontext` returns, not only the first, and
+ * sets `mismatch` off ANY of them resolving elsewhere — so a foreign shim
+ * later in the list still trips `cli_path_mismatch` even with a healthy one
+ * shadowing it in front. Removal is the only lever that actually changes
+ * what `checkCliOnPath` sees. The npm/npx exposure above is accepted, not
+ * unnoticed: it is narrower than the bug this task fixes (one measured
+ * call-site, only on a colliding install layout, only for the run's
+ * children) and the alternative (leaving PATH unscrubbed) is the 49-failure
+ * defect this whole file exists to close.
+ *
  * // @basis TASK-npm-test-goes-red-on-any-machine-whose-path-mycontext-points
  */
 import { existsSync, realpathSync } from 'node:fs';
