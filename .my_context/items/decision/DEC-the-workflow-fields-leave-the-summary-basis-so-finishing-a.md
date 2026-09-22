@@ -15,9 +15,9 @@ tags:
   - workflow
   - owner-ruling
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7/scratchpad/r5.md"
+source_file: null
 source_anchor: null
-source_checksum: 51517b2b1fcd3a81
+source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
 checksum: 573ba5ea1b93bf5b

@@ -15,9 +15,9 @@ tags:
   - owner-ruling
   - gates
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7/scratchpad/r1.md"
+source_file: null
 source_anchor: null
-source_checksum: c5b7c16cdff3b0ce
+source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
 checksum: 8550081ed0b4695b

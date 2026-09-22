@@ -13,9 +13,9 @@ tags:
   - ui
   - lesson
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/lesson2.md"
+source_file: null
 source_anchor: null
-source_checksum: 224e2397a05e445f
+source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
 checksum: 426649d61242d8e7

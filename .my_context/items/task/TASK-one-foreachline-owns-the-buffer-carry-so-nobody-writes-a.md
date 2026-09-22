@@ -20,9 +20,9 @@ tags:
   - "seq:74"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/foreachline.md"
+source_file: null
 source_anchor: null
-source_checksum: e9c59b2911bb4661
+source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
 checksum: b4443df20930b771

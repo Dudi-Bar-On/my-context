@@ -17,9 +17,9 @@ tags:
   - "seq:73"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/supers.md"
+source_file: null
 source_anchor: null
-source_checksum: c0a1338bc7db62d3
+source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
 checksum: b613a4b8cd7ae5df

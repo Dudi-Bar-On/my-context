@@ -18,9 +18,9 @@ tags:
   - "seq:7"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/d42body.md"
+source_file: null
 source_anchor: null
-source_checksum: 01b1ec698787e1b4
+source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
 checksum: d5e22a4ad1e6f000

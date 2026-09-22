@@ -17,9 +17,9 @@ tags:
   - "seq:7"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/zero.md"
+source_file: null
 source_anchor: null
-source_checksum: 7e1b1541761da6bf
+source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
 checksum: 6fd202cc922adb6d

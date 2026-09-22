@@ -18,9 +18,9 @@ tags:
   - "seq:120"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/exec-refresh.md"
+source_file: null
 source_anchor: null
-source_checksum: 53735a21f1fda04f
+source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
 checksum: 3d313e574b82a920
