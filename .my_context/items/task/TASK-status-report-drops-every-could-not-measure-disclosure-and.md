@@ -17,17 +17,17 @@ tags:
   - disclosure
   - "plan:walk"
   - "seq:146"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 1d21d54ddecc30bd
+checksum: 7108efd51dc2bcdb
 plan: walk
 seq: "146"
-state: doing
+state: done
 priority: "1"
 ---
 

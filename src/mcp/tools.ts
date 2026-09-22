@@ -199,6 +199,35 @@ function isDoctorDisclosure(finding: Finding): boolean {
   return typeof finding.about === 'string' && finding.about !== '';
 }
 
+/**
+ * **The one place the "could not measure" sentence is written, called by
+ * every tool that partitions `isDoctorDisclosure` findings out of its own
+ * counts.**
+ *
+ * `doctor` and `status_report` both run `isDoctorDisclosure` to keep a
+ * disclosure out of the health/finding counts it is not — a disclosure is a
+ * note a check makes about itself, never a defect (see `Finding.about`). A
+ * count that excludes a disclosure and a report that never PRINTS it are two
+ * different things; `status_report` used to do only the first, so an agent
+ * reading it saw a clean health line drawn over a check that stated, in the
+ * same run, it could not measure something. `TASK-status-report-drops-every
+ * -could-not-measure-disclosure-and` names that exact drop, and
+ * `INV-nothing-is-dropped-silently` is the invariant it violated. Extracted
+ * here so the two tools cannot drift back apart into saying it two ways on
+ * one surface.
+ */
+function appendDisclosures(lines: string[], disclosures: Finding[]): void {
+  if (disclosures.length === 0) return;
+  lines.push(
+    '',
+    'notes about the checks themselves — what they could not measure, said once. These ' +
+    'are NOT findings, are not counted above, and nothing is owed on them.',
+  );
+  for (const f of disclosures) {
+    lines.push(`  ${f.code} — about the "${f.about}" check: ${f.message}`);
+  }
+}
+
 /** Presentation only, for the `ready` tool's held rows — the same four
  * sentences `cli/commands/ready.ts`'s own `HELD_REASON` prints, kept in step
  * by `test/mcp/tools.test.ts` rather than imported: that module writes to a
@@ -1495,16 +1524,7 @@ const SPECS: ToolSpec[] = [
         for (const e of errors) lines.push(`  ${e.file}: ${e.message}`);
       }
 
-      if (disclosures.length > 0) {
-        lines.push(
-          '',
-          'notes about the checks themselves — what they could not measure, said once. These ' +
-          'are NOT findings, are not counted above, and nothing is owed on them.',
-        );
-        for (const f of disclosures) {
-          lines.push(`  ${f.code} — about the "${f.about}" check: ${f.message}`);
-        }
-      }
+      appendDisclosures(lines, disclosures);
 
       return lines.join('\n');
     },
@@ -2117,6 +2137,7 @@ const SPECS: ToolSpec[] = [
         root: projectRoot, repoRoot: path.dirname(projectRoot), dbPath: ws.dbPath, items, config: ws.config,
       });
       const real = findings.filter((f) => !isDoctorDisclosure(f));
+      const disclosures = findings.filter(isDoctorDisclosure);
       const health = {
         errors: real.filter((f) => f.level === 'error').length,
         warnings: real.filter((f) => f.level === 'warn').length,
@@ -2194,6 +2215,8 @@ const SPECS: ToolSpec[] = [
         lines.push('', `${errors.length} corpus load error(s):`);
         for (const e of errors) lines.push(`  ${e.file}: ${e.message}`);
       }
+
+      appendDisclosures(lines, disclosures);
 
       return lines.join('\n');
     },
