@@ -388,7 +388,6 @@ test/plugin/write-commands.test.ts
 test/release.test.ts
 test/scripts/citations-in-source.test.ts
 test/scripts/dependency-budget.test.ts
-test/scripts/e2e-gate.test.ts
 test/scripts/mutate.test.ts
 test/scripts/vendor-gate.test.ts
 test/scripts/verify-citations.test.ts
