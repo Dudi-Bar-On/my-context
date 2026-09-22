@@ -6,12 +6,12 @@ status: active
 severity: soft
 always: false
 summary: Once the screens are finished on sample data, point them back at real data and look at every one, because a fixture hides what real volume reveals.
-summary_of: baddb5141a7a51f9
+summary_of: 3b08d8a971ab1d07
 scope: []
 tags:
   - "plan:port"
   - "seq:99"
-  - "state:todo"
+  - "state:done"
   - v2
   - ui
   - last
@@ -21,10 +21,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: ba80bc5dd57f9461
+checksum: 14a9b62ddcc0693e
 plan: port
 seq: "99"
-state: todo
+state: done
 needs: port/98
 ---
 
@@ -51,3 +51,5 @@ VERDICT: STANDS, and it is TERMINAL by owner ruling. Nothing supersedes it and n
 ONE THING THE RECONCILIATION SHARPENS. This task says to delete DATA_DEPENDENT from e2e/screen-parity.spec.ts, "because against the fixture the comparison measures the code". That is only true once plan:port seq:94 has made the fixture mirror the mockup s scene. Today the fixture does NOT mirror it -- 200 ask rows against 2, 50 audit rows against 7 -- which is why DATA_DEPENDENT still exists and why it still makes parity a CEILING for eight screens. So the real order is 94, then 93, then 98, then 99, and deleting DATA_DEPENDENT belongs to 94 rather than here.
 
 AND THE SECOND PARAGRAPH IS THE ONE THAT WILL EARN ITS KEEP: re-run every screen against the REAL corpus and look at each one, to find what the fixture hid. The reconciliation has already found the reverse case four times -- code that looked unbuilt because the fixture gave it nothing to draw. The forward case, a screen that is fine at 12 items and wrong at 300, has been seen once (preview s unbounded carried list draws 19 to 26 rows on the owner s corpus and nothing on the fixture) and nothing systematic has looked for more.
+
+Closed 2026-09-22 by owner ruling G on the mechanical work in e2e/app.ts; see DEC-the-return-of-the-ui-to-the-real-corpus-closes-on-the.

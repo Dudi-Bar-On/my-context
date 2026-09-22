@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Notes handed between sessions should point at the record rather than restate it, so one correction reaches every future reader.
-summary_of: 622f48a8683b72e9
+summary_of: d4dacb1d777f74f5
 scope:
   - reports/V2-HANDOVER.md
   - scripts/check-handover.ts
@@ -16,17 +16,17 @@ tags:
   - quality
   - "plan:handover"
   - "seq:16"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-06
 valid_until: null
-checksum: 987cf69ad2d585ca
+checksum: e79b04ac6218a73a
 plan: handover
 seq: "16"
-state: todo
+state: done
 priority: "2"
 ---
 
@@ -95,3 +95,5 @@ priority: "2"
 > document under pressure. `handover/15`'s own constraint is that nothing it lands may make the
 > write heavier, and adopting a writing rule on an agent's say-so is exactly that. It needs the
 > owner.
+
+Closed 2026-09-22 by owner ruling G: the convention is now RULE-a-handover-line-that-is-actionable-names-an-item-id-and-a.

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A run of fixes all report their problem down the same channel, and nobody has confirmed the user ever sees that channel.
-summary_of: 934b2cc41ca4caf6
+summary_of: 3029a185b1b5a862
 scope:
   - src/hooks/**
 tags:
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: c4983e13c0112153
+checksum: 665de4b986a78ff3
 plan: swallow
 seq: "16"
 state: todo
@@ -41,3 +41,5 @@ IT IS NO LONGER A PRECONDITION. IT IS NOW A DEBT. Eight of the twelve D66 items 
 THE CONTRADICTION IS IN THE SOURCE AND IS THE STARTING EVIDENCE. `src/hooks/session-end.ts` states that the platform copies a SessionEnd hooks output to stderr ONLY ON THE FAILURE BRANCH, and that `INV-hooks-fail-open` requires exit 0 - so it writes the line anyway and says so. `src/hooks/session-start.ts` treats stderr as "the channel", the one that reaches the USER and never the model. Both cannot be the general rule.
 
 WHAT ANSWERING IT LOOKS LIKE: drive a live `claude` session, make each hook event fire with a disclosure on stderr, and record per event whether it appeared - SessionStart, PreToolUse, PostToolUse, SubagentStart, SubagentStop, Stop, PreCompact, PostCompact, SessionEnd. The deliverable is a table, not a fix. Where an event discards stderr, the fix for every disclosure on that event is the audit row instead, and that is then a second item with a known size.
+
+Owner ruling G, recorded 2026-09-22: the owner fires the nine events in release phase 9. See DEC-the-owner-fires-the-nine-hook-events-on-his-own-machine-and.

@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Survey every way this tool can plug into the editor and ship sensible defaults, so it helps from the moment it is installed with nothing configured.
-summary_of: ec4f5dcf48e7ee06
+summary_of: 27492e44ec4df85c
 scope: []
 tags:
   - "plan:hooks"
@@ -20,7 +20,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-22
 valid_until: null
-checksum: 6d521cffb83d40bd
+checksum: bec9f48d7f41e933
 plan: hooks
 seq: "22"
 state: todo
@@ -64,3 +64,5 @@ It is "BLOCKED until the hooks programme completes -- registering the ten ruled 
 IT SHOULD GO TO THE OWNER RATHER THAN BE UNBLOCKED SILENTLY, because it is his instruction of 2026-08-22 and because "survey every integration surface and ship the settings" is a scope he set. Confirm the ground is finished ground, then start.
 
 AND IT IS ADJACENT TO A WHOLE CLASS THE RECONCILIATION KEEPS MEETING: settings this product accepts and does not honour (plan:rulings seq:42, ui.enabled), and facts it states without checking (the status strip s bridge, the Tutorials screen s checkmarks). An autonomy survey that ships settings should establish that each new one is READ.
+
+Owner ruling G, recorded 2026-09-22: the hooks programme is finished ground; this survey runs in release phase 5. See DEC-the-hooks-programme-is-finished-ground-the-integration.

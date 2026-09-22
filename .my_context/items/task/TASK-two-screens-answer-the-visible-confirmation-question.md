@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: One screen shows a short message confirming a copy and another deliberately refuses to, so the same action behaves differently depending on where you do it.
-summary_of: cab6d5df8fb9fcaf
+summary_of: 671c9ae26db1100c
 scope:
   - src/ui/public/app.js
   - src/ui/public/screens/conversations.js
@@ -24,7 +24,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: dc955e5024ba6b2e
+checksum: 6e110ed1fed89d97
 plan: walk
 seq: "167"
 state: todo
@@ -40,3 +40,5 @@ THE RECOMMENDATION ON THE TABLE, from the consolidation: approve the visible hal
 FOUND BY BOTH UI REVIEWS. Report 1 measured the invisible confirmation and quoted the refusal; report 2 found the question had already been settled the other way in shipped code. Row 31 of `reports/2026-09-13-the-consolidated-findings.md`.
 
 WHY IT IS UNDER D50. The surface exists -- a live region, a refusal, a recorded reason -- and what is missing is anything a sighted user can see filling it.
+
+Owner ruling G, recorded 2026-09-22: approved; unify both screens. Lands in release phase 6. See DEC-the-visible-confirmation-is-approved-chrome-and-both-screens.

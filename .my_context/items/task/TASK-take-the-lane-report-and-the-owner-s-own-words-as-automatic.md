@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Bookmarks labelled as your own rulings were mostly our own injected text; that is fixed and proved, and one choice about which label wins when a message is both is still yours.
-summary_of: 93ec3c8fa024d9d4
+summary_of: 5ecb99fb20fd15c0
 summary_was:
   - 2026-09-16 Bookmark a helper agent’s report, find your rulings by the words you actually use, and stop bookmarking the tool’s own instructions as though you had written them.
 scope:
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 319bd3a5f732cefc
+checksum: d28120ab325ee658
 plan: anchors
 seq: "12"
 state: todo
@@ -181,3 +181,5 @@ THE ITEM'S RECOMMENDED TRIGGER WAS REFUSED WITH A MEASUREMENT, which settles opt
 WHY IT IS STILL OPEN, and it is not work: 230 of 419 lane reports are findable ONLY as tables, because the table grammar claims a turn that is both. Reversing the precedence is one line and moves 230 marks. That is the owner's call and it is filed as `OPENQ-does-the-table-mark-or-the-lane-report-mark-win-when-one`, so `mycontext path` draws this subject as WAITING ON HIM rather than as open work to dispatch. The second thing owed to him is the rebuild of his live archive, which this lane deliberately did not run.
 
 The `NAMED-BUT-OPEN` line above is read by `npm run check:board`.
+
+Recorded 2026-09-22 (release phase 2): ruling G of 2026-09-21 says the lane-report mark wins over the table mark and the rebuild runs in phase 7; the 2026-09-16 answer of the owner to OPENQ-does-the-table-mark-or-the-lane-report-mark-win-when-one, recorded in TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing, rejected precedence and asked for two marks. The two disagree; the owner rules at checkpoint 2 and the decision is filed then. Lands in release phase 7.
