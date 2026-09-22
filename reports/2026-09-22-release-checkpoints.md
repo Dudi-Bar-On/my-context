@@ -10,6 +10,27 @@ write (`RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number`).
 ---
 
 ```
+CHECKPOINT 2 — the board says what is left
+commit: e2031c10 pushed: yes   (this entry is the next commit)
+ran:  npm test → 8980 tests, 8977 pass, 0 fail, 3 skipped, exit 0   verify:citations → exit 0 (phase 1, unchanged tree outside the corpus)   doctor → exit 0   check:* → check:board 0, check:needs-cycles 0 (the two this phase gates on)   test:e2e → not this phase
+CI:   windows pending  ubuntu pending — run 35743218944 on e2031c10; corpus-only changes since the three green attempts on 97e27289  https://github.com/Dudi-Bar-On/my-context/actions/runs/35743218944
+board: 163 → 136 (every open row has a plan, a seq and a state; 134 ready, 2 held)
+closed: release/2 · 14 done-but-not-marked (anchors/13, semantic/15, semantic/17, ui2/13, ui2/10p, walk/129, walk/161, the screens/27 headings tick, parseItem casts ×2, contradiction-scope write ×2, the live-feed reload notice, the shared watch-model id) · 4 on ruling G (rulings/89, walk/66, handover/16, port/99)
+retired: 9 — superseded: walk/150 → walk/139, the two "58% of its rows" twins → rulings/82; deprecated with the reason in the body: port/93, port/98, walk/4, rulings/63, review/4, D33's gate.  NOT retired, against runbook §7.2: ui2/5r is TASK-the-mockup-gives-a-true-conclusion-a-false-reason-a and your 2026-09-22 ruling keeps it for phase 8; rulings/84 retires after 3.8 files decision E.
+filed for 2.0: walk/170 "the Decay and Ledger screens say when the ledger projection was last rebuilt" (the screen half of your walk/66 ruling; phase 6, not a bug)   release/19 = TASK-the-audit-log-still-records-two-session-ids-that-never (planless survivor given a plan; phase 4)
+recorded: eight decision items and one hard rule (RULE-a-handover-line-that-is-actionable-names-an-item-id-and-a), each linked to its task; hooks/22, review/10, walk/167, walk/14, swallow/16 carry their phase in the body
+ideas awaiting the owner: none
+blocked on the owner: anchors/12 — two rulings of yours disagree. On 2026-09-16 you answered OPENQ-does-the-table-mark-or-the-lane-report-mark-win-when-one with "make them 2 different anchor types with 2 distinguished marks" (no precedence; recorded in TASK-a-turn-that-is-both-a-table-and-a-lane-report-is-one-thing, done). Ruling G on 2026-09-21 says "the LANE REPORT mark wins over the table mark". Which stands? The rebuild is phase 7 either way; the decision item is filed on your word.
+next: phase 3 — the defects
+```
+
+**Two things check:board reports without gating.** D46 named walk/150, superseded today; the row already carried its successor walk/139, so the seat was dropped and the gate is green again. And 22 subjects (D8, D13a/b, D14, D16, D17, D20, D21, D22, D23, D29, D31, D34, D35, D36, D38, D40, D42, D59, D65, D71, D73, D74) read "open" with every item done — a subject closes on a judgement, not a count, and `reports/2026-09-22-the-d-board-live.md` already lists them for phase 9.
+
+**One process lesson.** The first attempt at the eight decisions ran with stderr hidden; the contradiction gate refused every write (each lexically matched the D-number map or the mockup decision) and nothing said so, leaving four closed tasks pointing at "see ." — caught by the empty ids, repaired the same hour, and every write was re-sent with `--distinct` naming the candidates. The gate did its job; hiding its voice was mine.
+
+---
+
+```
 CHECKPOINT 1 — the repository tells the truth   (FINAL, 2026-09-22 14:37Z; the first version of this entry was superseded by the owner's ruling that phase 1 is complete only when it is complete)
 commit: 97e27289 pushed: yes   (this final entry and the three closes are the next commit)
 ran:  npm test → 8980 tests, 8977 pass, 0 fail, 3 skipped, exit 0 (run alone on 4c19d8f5)   verify:citations → exit 0   doctor → exit 0   check:* → all 0 (eleven scripts)   typecheck → exit 0   test:e2e → not this phase
