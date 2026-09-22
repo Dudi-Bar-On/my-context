@@ -9,7 +9,7 @@ and §9 rather than softened.
 
 Everything here rests on three reviews done on 2026-09-21 from a fresh clone
 (`reports/2026-09-21-external-status-review.md`, `…-installed-as-a-new-user.md`,
-`…-capabilities-reviewed-and-scored.md`) and on a triage of all 160 open tasks against the
+`…-capabilities-reviewed-and-scored.md`) and on a triage of all 164 open tasks against the
 code, whose result is in §7. Where this runbook and the board disagree, the evidence in §7 is
 why.
 
@@ -78,11 +78,11 @@ the rest of the board under the no-deferral ruling; phase 9 is yours; phase 10 i
 | Phase | Closes | Tasks | Lane days (estimate) |
 |---|---|---|---|
 | 1 — the repository tells the truth | CI green, fresh-clone green, cleanup | B1, B2, B3, B15 + cleanup | 2 |
-| 2 — the board says what is left | 17 done closed, 11 obsolete retired, your 11 rulings recorded | §7.1, §7.2, §7.3 | 0.5 |
+| 2 — the board says what is left | 18 done closed, 12 obsolete retired, your 11 rulings recorded | §7.1, §7.2, §7.3 | 0.5 |
 | 3 — the defects | the six board blockers and nine review defects | B4 to B14 | 2 |
 | 4 — silent failures and disclosures | every "could not measure" or swallowed error says so | 17 (§7.4) | 2 |
-| 5 — CLI, store, types and hygiene | flag vocabulary, closed-set types, store changelog, perf percentiles, lane safety | 28 (§7.5) | 3 |
-| 6 — the web UI: function, accessibility, gates | every functional finding, WCAG conformance, keyboard, reflow, typography, help adoption, gate re-derivation | 55 (§7.6) | 8 |
+| 5 — CLI, store, types and hygiene | flag vocabulary, closed-set types, store changelog, perf percentiles, lane safety | 29 (§7.5) | 3 |
+| 6 — the web UI: function, accessibility, gates | every functional finding, WCAG conformance, keyboard, reflow, typography, help adoption, gate re-derivation | 56 (§7.6) | 8 |
 | 7 — features | typed SQL on Ask, `init --rewrite-watched`, budget carry, delivery-log report, archive said/ran control, simulator anchoring | 8 (§7.7) | 4 |
 | 8 — documentation | retired rulings, README claims, screenshots in every English chapter, Hebrew edition parity, chapter 10 | 7 + B5 + B14 (§7.8) | 4 |
 | 9 — yours | the stranger test on Windows, with one look at the UI; the nine hook events fired on your machine (`swallow/16`) | 2 | your time |
@@ -174,12 +174,24 @@ re-reports; it does not move on.
 
 ---
 
-## 7. The triage of the 160 open tasks, and where each lands
+## 7. The triage of the 164 open tasks, and where each lands
 
 Every row was checked against the code on 2026-09-21. "Done" means the task's own closing
 condition is met in the tree.
 
-### 7.1 Done but not marked (17) — phase 2 closes them
+**160 became 164 on 2026-09-22.** The original census was four short, and the four have one
+thing in common: THEY CARRY NO PLAN OR SEQ, so there is no `plan/seq` for a triage to cite and
+they can only be named by title. This section already names eleven such items that way; these four
+were the ones it missed. They were all added to the corpus on 2026-09-03, eighteen days before the
+triage ran, so nothing about them is new — only their being counted is.
+
+`review/10` is the item about exactly this ("a promoted item arrives with no plan, no seq and no
+priority, so nothing can schedule or cite the work you just approved"), it is open, and it is in
+phase 5. **Until it lands, any census of this board is a census of the items that happen to have
+numbers.** The arithmetic now reads 158 in the eight buckets below plus the 6 blockers carried in
+§4, which is 164.
+
+### 7.1 Done but not marked (18) — phase 2 closes them
 
 | Task | Evidence |
 |---|---|
@@ -198,8 +210,9 @@ condition is met in the tree.
 | `TASK-the-write-must-be-in-contradiction-scope…` and its `-2` twin | `docs/capabilities/03-creation-and-gates.md:439-451` |
 | `TASK-the-live-feed-notice-says-reload…` | `app.js:2790-2826`; `test/ui/live-skew-notice.test.ts` |
 | `TASK-a-shared-item-id-across-ops-leaves-watch-model…` | `test/ui/watch-model.test.ts:213-218` |
+| `TASK-the-palette-does-not-offer-review-promote-all-pack…` | the withholding IS the decision and it is pinned: `FLAGS_NOT_OFFERED['review promote']` at `test/ui/palette-lib.test.ts:730-741` carries `all`, `pack` and `source` with their reasons; `src/ui/public/lib/palette-defs.js:208` points at it |
 
-### 7.2 Obsolete (11) — phase 2 retires them, naming the successor
+### 7.2 Obsolete (12) — phase 2 retires them, naming the successor
 
 | Task | Why |
 |---|---|
@@ -213,6 +226,7 @@ condition is met in the tree.
 | `walk/150` loading label | duplicate of `walk/139`, which is in phase 6 |
 | `TASK-58-of-its-rows…` and its `-2` twin | duplicate: `rulings/71` done + `rulings/82` in phase 7 |
 | `TASK-d33-s-gate…` | its own backfill says it names no surface |
+| `TASK-the-mockup-gives-a-true-conclusion-a-false-reason…` | the same disposition as `ui2/5r` two rows above and for the same reason — the mockup is frozen (`DEC-the-mockup-is-a-frozen-reference…`), so its `cap.nosim` text cannot be corrected. **The conclusion it draws is TRUE; only the reason is stale.** If you would rather the reason were fixed despite the freeze, this belongs in phase 8 instead and the freeze needs an exception recorded |
 
 ### 7.3 Owner-only (11) — your ruling in one line each, recorded in phase 2, done where it lands
 
@@ -236,21 +250,27 @@ condition is met in the tree.
 `rulings/81`, `rulings/85`, `rulings/88`, `dxfindings/6`, `walk/147`, `walk/148`, `store/7`,
 `store/13`, `live/28`, `TASK-the-audit-log-still-records-two-session-ids…`.
 
-### 7.5 Phase 5 — CLI, store, types and hygiene (28)
+### 7.5 Phase 5 — CLI, store, types and hygiene (29)
 
 CLI and prose: `rulings/76`, `rulings/83`, `rulings/87`, `rulings/92`, `rulings/38`,
 `rulings/93`, `cliscript/5`, `cliscript/6`, `contra/5`, `walk/11`, `walk/142`, `walk/162`,
 `hooks/22` (per G), `review/10` (per G).
 Store, types, perf: `rulings/77`, `rulings/78`, `rulings/86`, `rulings/91`, `store/10`,
 `store/11`, `store/12`, `hooks/12q`, `accretion/6`, `repaint/12`, `dxfindings/4`, `live/20`,
-`live/24`, `confirm/6`, `readmodel/2`, `readmodel/4`.
+`live/24`, `confirm/6`, `readmodel/2`, `readmodel/4`,
+`TASK-five-perf-files-index-the-percentile-one-rank-high…` (the five timing baselines were
+derived through the same one-rank-high reading they exist to check; re-deriving them needs a
+quiet machine, which is why it is here and not in phase 1).
 
-### 7.6 Phase 6 — the web UI (55)
+### 7.6 Phase 6 — the web UI (56)
 
-Functional (24): `walk/2`, `walk/12`, `walk/32`, `walk/33`, `walk/39`, `walk/57`, `walk/59`,
+Functional (25): `walk/2`, `walk/12`, `walk/32`, `walk/33`, `walk/39`, `walk/57`, `walk/59`,
 `walk/76`, `walk/89`, `walk/100`, `walk/102`, `walk/105`, `walk/119`, `walk/134`, `walk/139`,
 `walk/149`, `walk/151`, `walk/152`, `walk/153`, `walk/154`, `walk/155`, `walk/163`, `walk/164`,
-`walk/166`, `walk/167` (per G).
+`walk/166`, `walk/167` (per G),
+`TASK-the-tier-ribbon-needs-per-line-index-costs…` (one of the required charts cannot be drawn
+at all: two facts it needs are never sent to the page and cannot be worked out there, so this is
+a read-model change before it is a drawing change).
 Accessibility and typography (26): `wcag/1` to `wcag/9`, `dxfindings/2`, `screens/23`,
 `screens/24`, `screens/25`, `screens/26`, `screens/27` (the question in the viewer),
 `builder/12`, `builder/18`, `ui1/17b`, `walk/144`, `walk/156`, `walk/157`, `walk/158`,
