@@ -515,10 +515,10 @@ function recordDeny(input: HookPayload<'PreToolUse'>, cwd: string, abs: string):
 // every dispatch, which is worse than silence: a refusal quoting
 // "well-designed" as "not an id this corpus has" teaches nothing about the
 // gate it names, and is exactly the "fires on a quotation" failure a gate
-// like this has to avoid. `AGENT_ID_TOKEN` below additionally requires the
-// shape every id in this corpus already has — an ALL-CAPS run before the
-// first hyphen, which is what `makeId` (slug.ts) mints every category prefix
-// as — before a token is even asked whether it is grammar-valid.
+// like this has to avoid. `buildAgentIdToken` below additionally requires the
+// shape every id in this corpus already has — one of THIS WORKSPACE'S OWN
+// category prefixes, followed by the lowercase-led slug `makeId` (slug.ts)
+// actually mints — before a token is even asked whether it is grammar-valid.
 //
 // **EXISTENCE IS REQUIRED, MEASURED RATHER THAN ASSUMED.** A token shaped
 // like an id is not proof one exists: this corpus's own `TASK-…` grammar
@@ -547,12 +547,51 @@ function recordDeny(input: HookPayload<'PreToolUse'>, cwd: string, abs: string):
 // ---------------------------------------------------------------------------
 
 /**
- * A prompt token shaped like an item id this corpus actually mints:
- * `vocabulary.ts`'s own grammar, narrowed to the ALL-CAPS-prefix-then-hyphen
- * shape every id here has. See the header comment above for why the bare
- * grammar is too wide to scan prose with.
+ * `AGENT_ID_TOKEN`, narrowed a second time — owner ruling F (2026-09-21),
+ * B11. The ALL-CAPS-prefix-then-hyphen shape above (any run of `[A-Z][A-Z0-9]`
+ * before the first hyphen) still let through every ALL-CAPS acronym and
+ * hyphenated capitalised phrase this corpus's own prose writes constantly:
+ * `READ-ONLY`, `SHA-256`, `UTF-8` and `X-MYCONTEXT-TOKEN` all matched it, and
+ * none of them names an item — the bare shape says nothing about what this
+ * WORKSPACE actually mints, or about what follows the prefix. Two narrowings
+ * fix that; the header comment's own argument (a shape check first, existence
+ * measured once) is unchanged by either:
+ *
+ *  1. **The prefix is no longer "any ALL-CAPS run" — it is one of the
+ *     prefixes THIS WORKSPACE'S OWN CATEGORIES actually mint**
+ *     (`ws.config.categories[*].prefix`, already resolved once in
+ *     `agentDispatchVerdict` — built-in categories included even when a
+ *     workspace defines no custom ones, since `resolveConfig` populates every
+ *     shipped category's `prefix` unconditionally). `READ`, `SHA`, `UTF` and
+ *     `X` answer to no category, built-in or custom, so none of the four ever
+ *     reaches the alternation.
+ *  2. **The slug after the prefix must be LOWERCASE-LED**
+ *     (`[a-z0-9][a-z0-9.-]*[a-z0-9]`) — what `makeId` (slug.ts) actually
+ *     mints, and what an ALL-CAPS acronym never is. This is the guard prefix-
+ *     narrowing alone does not give: several of this workspace's own category
+ *     prefixes are also ordinary English words — `ENV`, `RUN`, `REF`, `STD`,
+ *     `PAT`, `PLAN`, `TODO`, `NOTE`, `RISK` among them — so `ENV-VARS`,
+ *     `PLAN-B` or `TODO-LIST` in prose would still read as candidates on
+ *     prefix alone. None of them survive the lowercase requirement.
+ *
+ * A LEFT BOUNDARY (`(?<![A-Za-z0-9-])`) is unchanged from the bare grammar:
+ * `XTASK-foo` must not read as `TASK-foo` wearing a longer word around it.
+ *
+ * `isUsableId` (below, in `candidateItemIds`) still does the final character
+ * check — the `..` exclusion in particular — so this pattern does not have to
+ * re-derive it.
  */
-const AGENT_ID_TOKEN = /[A-Z][A-Z0-9]{0,14}-[A-Za-z0-9._-]*[A-Za-z0-9]/g;
+export function buildAgentIdToken(prefixes: readonly string[]): RegExp {
+  // Built ONCE per `agentDispatchVerdict` call — see the call site — not once
+  // per candidate token: a workspace's categories do not change mid-scan, so
+  // there is nothing to gain and a real cost (one compile per match instead
+  // of one per prompt) to lose by rebuilding it inside `candidateItemIds`'s
+  // loop.
+  return new RegExp(
+    `(?<![A-Za-z0-9-])(?:${prefixes.join('|')})-[a-z0-9][a-z0-9.-]*[a-z0-9]`,
+    'g',
+  );
+}
 
 /**
  * The escape hatch: a phrase written deliberately into the prompt, case
@@ -564,16 +603,18 @@ const NO_ITEM_HATCH = /no-item\s*:\s*(.+)/i;
 
 /**
  * Every id-shaped token in `text`, deduplicated, in the order it appears.
- * Reuses `isUsableId` rather than re-deriving its rule — the `..` exclusion
- * in particular is not restated here.
+ * `token` is `buildAgentIdToken`'s output — a caller's regex, not a module
+ * constant, because the prefix alternation it was compiled from is per-
+ * workspace. Reuses `isUsableId` rather than re-deriving its rule — the `..`
+ * exclusion in particular is not restated here.
  */
-export function candidateItemIds(text: string): string[] {
+export function candidateItemIds(text: string, token: RegExp): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const token of text.match(AGENT_ID_TOKEN) ?? []) {
-    if (seen.has(token) || !isUsableId(token)) continue;
-    seen.add(token);
-    out.push(token);
+  for (const match of text.match(token) ?? []) {
+    if (seen.has(match) || !isUsableId(match)) continue;
+    seen.add(match);
+    out.push(match);
   }
   return out;
 }
@@ -630,7 +671,13 @@ function agentDispatchVerdict(input: HookPayload<'PreToolUse'>, cwd: string): st
 
   const promptValue = input.tool_input?.prompt;
   const prompt = typeof promptValue === 'string' ? promptValue : '';
-  const candidates = candidateItemIds(prompt);
+  // One regex per verdict: the prefix alternation is this workspace's own
+  // categories (built-in and custom alike — `ws.config.categories` already
+  // carries both, resolved by `resolveConfig`), and `buildAgentIdToken` is
+  // called exactly once here rather than once per token `candidateItemIds`
+  // finds.
+  const prefixes = Object.values(ws.config.categories).map((c) => c.prefix);
+  const candidates = candidateItemIds(prompt, buildAgentIdToken(prefixes));
   if (corpusHasAny(ws.dbPath, candidates)) return '';
 
   const hatch = NO_ITEM_HATCH.exec(prompt);

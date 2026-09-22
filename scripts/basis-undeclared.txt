@@ -327,7 +327,6 @@ test/hooks/post-tool-use-failure.test.ts
 test/hooks/post-tool-use.test.ts
 test/hooks/pre-compact-occupancy.test.ts
 test/hooks/pre-compact.test.ts
-test/hooks/pre-tool-use-agent-gate.test.ts
 test/hooks/pre-tool-use-deny.test.ts
 test/hooks/pre-tool-use-jit.test.ts
 test/hooks/self-register.test.ts
