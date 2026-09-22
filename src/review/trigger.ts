@@ -229,7 +229,7 @@ export function reviewTrigger(
     // 6. Something new. One `stat` against the last report's offset, and it is
     //    the whole of the rubric's job that can be done for free.
     const bytes = snapshotBytes(transcript);
-    const since = lastReadTo(root);
+    const since = lastReadTo(root, transcript);
     if (bytes <= since) {
       return verdict(
         false,
