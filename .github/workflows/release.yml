@@ -35,7 +35,9 @@ jobs:
             runs-on: ubuntu-latest
     runs-on: ${{ matrix.runs-on }}
     steps:
+      # `check:board`'s drift tier reads commit history, and a shallow clone shows it none.
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: '24' }
       - run: npm ci
@@ -82,13 +84,16 @@ jobs:
       # genuinely gates, so this is not the never-red step that keeps
       # `check:cited-items` out of both workflows.
       - run: npm run check:board
-      # Moved ABOVE `npm test` from the bottom of this list. It costs two
-      # seconds and the suite costs twelve minutes, and `ci.yml` already argues
-      # the ordering in its own words: the cheap check fails first. Nothing
-      # about the verdict changes — only how long a tag cut waits to hear it.
-      - run: npm run verify:citations
       - run: npm run typecheck
       - run: npm test
+      # Moved back BELOW `npm test`, matching `ci.yml`'s reordering and its
+      # reason: for 27 days (2026-08-21 to 2026-09-17) the unit suite never
+      # ran on master because this documentation-tier gate was red in front of
+      # it and nobody was looking. The cheap `check:*` gates above still run
+      # first — that argument is unchanged — this one just no longer sits
+      # ahead of the suite it must not hide, on a tag cut any more than on a
+      # push.
+      - run: npm run verify:citations
       - run: npm run test:perf
 
       # ── The one gate here that needs a browser, and the reason it is worth

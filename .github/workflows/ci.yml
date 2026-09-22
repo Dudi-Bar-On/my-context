@@ -58,7 +58,9 @@ jobs:
             runs-on: ubuntu-latest
     runs-on: ${{ matrix.runs-on }}
     steps:
+      # `check:board`'s drift tier reads commit history, and a shallow clone shows it none.
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: '24' }
       - run: npm ci
@@ -143,17 +145,18 @@ jobs:
       # its own line prints into a green log and manufactures the appearance of
       # coverage. Here it prints inside a run whose greenness means something.
       - run: npm run check:board
-      # Before `npm test` because it is two seconds, and in CI at all because the
-      # alternative is what this repository just lived through: it exits on the
-      # DOCUMENTATION tier only, it was red on 2026-09-13, and `release.yml` was
-      # the only place it ran — so every tag cut that day would have failed at a
-      # gate no pull request exercised. Two of the four breaks were opened by
-      # 44b3623b THAT SAME DAY, hours after the review counted two, by a commit
-      # that moved `STATUSES` out of `validate.ts`. Nothing noticed, because on
-      # master nothing was looking.
-      - run: npm run verify:citations
       - run: npm run typecheck
       - run: npm test
+      # AFTER `npm test`, not before. The reasoning that put the cheap
+      # `check:*` gates ahead of the suite still stands — each is a two-second
+      # check that fails long before a twelve-minute run would tell you the
+      # same thing. This gate is not one of them: it exits on the
+      # DOCUMENTATION tier only, and for 27 days (2026-08-21 to 2026-09-17) the
+      # unit suite never ran on master because this gate was red in front of
+      # it and nobody was looking. A documentation-tier gate must never be the
+      # thing standing between a push and the suite that actually proves the
+      # code, so it now runs after that suite rather than in front of it.
+      - run: npm run verify:citations
       - run: npm run test:perf
 
       # ── The browser suite. UBUNTU ONLY, and deliberately so. ──────────────
