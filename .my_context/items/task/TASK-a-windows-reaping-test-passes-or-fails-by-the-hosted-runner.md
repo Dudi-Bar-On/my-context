@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:17"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: b7a2fed89815268b
+checksum: 21794f2bf3247252
 plan: release
 seq: "17"
-state: doing
+state: done
 ---
 
 # a Windows reaping test passes or fails by the hosted runner's mood, so the suite does not tell the truth there twice in a row
