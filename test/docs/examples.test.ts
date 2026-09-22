@@ -1,3 +1,4 @@
+// @basis STD-documentation-is-regenerated-not-edited-to-match, TASK-release-phase-1-the-repository-tells-the-truth
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -794,6 +795,23 @@ test('scrubOutput replaces the workspace path and normalizes separators', () => 
 });
 
 /**
+ * The same substitution one level up: this repository's OWN root is exactly
+ * as machine-specific as the fixture's, and `REPO_ROOT` here is derived from
+ * `import.meta.dirname` the same way the module under test derives it —
+ * never a literal path, so this test is exactly as portable as the code it
+ * checks.
+ */
+test('scrubOutput replaces the repository root and normalizes separators', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-scrub-'));
+  try {
+    const text = `resolves to ${path.join(REPO_ROOT, 'src', 'cli', 'index.ts')}`;
+    assert.equal(scrubOutput(text, dir), 'resolves to <repo>/src/cli/index.ts');
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
  * That `runExample` is actually wired to `scrubOutput`, asserted against a
  * command that really does print an absolute path.
  *
@@ -835,7 +853,10 @@ test('scrubOutput leaves backslashes that are not path separators alone', () => 
 test('scrubOutput refuses to emit a path it could not scrub', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-scrub-'));
   try {
-    assert.throws(() => scrubOutput(`built from ${REPO_ROOT}`, dir), /machine-specific path/);
+    // The repository root is no longer a leak — it is scrubbed to `<repo>`,
+    // proved by the test above. What still has no token is a temp root that
+    // is neither the workspace under test nor this repository.
+    assert.equal(scrubOutput(`built from ${REPO_ROOT}`, dir), 'built from <repo>');
     assert.throws(() => scrubOutput(`somewhere under ${tmpdir()}`, dir), /machine-specific path/);
     assert.equal(scrubOutput('nothing machine-specific here', dir),
       'nothing machine-specific here');

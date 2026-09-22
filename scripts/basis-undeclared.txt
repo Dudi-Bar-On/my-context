@@ -278,7 +278,6 @@ test/docs/capabilities.test.ts
 test/docs/categories.test.ts
 test/docs/compaction-claim.test.ts
 test/docs/counts.test.ts
-test/docs/examples.test.ts
 test/docs/fixture.test.ts
 test/docs/injection.test.ts
 test/docs/inventory.test.ts
@@ -440,7 +439,6 @@ test/ui/open.test.ts
 test/ui/packs-model.test.ts
 test/ui/packs-screen.test.ts
 test/ui/palette-lib.test.ts
-test/ui/palette-screen.test.ts
 test/ui/pane-float.test.ts
 test/ui/pane-resize.test.ts
 test/ui/pane-route.test.ts
@@ -464,7 +462,6 @@ test/ui/server-record.test.ts
 test/ui/server.test.ts
 test/ui/session-continuity.test.ts
 test/ui/simulate-screen.test.ts
-test/ui/staging-endpoint.test.ts
 test/ui/static.test.ts
 test/ui/status-screen.test.ts
 test/ui/strings-parity.test.ts

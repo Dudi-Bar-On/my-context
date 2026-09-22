@@ -104,6 +104,17 @@ export const DOCUMENTS: { relative: string; locale?: 'he' }[] = [
 const WORKSPACE = '<workspace>';
 
 /**
+ * The token this checkout's own root is replaced with — the same idea as
+ * `WORKSPACE`, one level up. A few commands print a path that is not the
+ * fixture but this repository itself (a resolved `mycontext` entry point, a
+ * hint that names where a file lives on disk), and that path is exactly as
+ * machine-specific as the fixture's: every checkout has this repository at a
+ * different absolute location, and a reader's own checkout is never the one
+ * baked into the committed example.
+ */
+const REPO_TOKEN = '<repo>';
+
+/**
  * The exact character length of every documented fixture's absolute path.
  *
  * The path's LENGTH is a machine fact exactly like its spelling. `wrap`
@@ -329,6 +340,14 @@ function escapeRegExp(s: string): string {
  * documentation — JSON that does not parse, in the one block whose whole
  * purpose is to be copied and answered.
  *
+ * This checkout's own root is scrubbed the same way, to `<repo>` rather than
+ * `<workspace>` — derived from `import.meta.dirname` here, never written as a
+ * literal, so the substitution is correct on whichever checkout runs it. The
+ * two tokens can both apply to the same output (a fixture nested under this
+ * repository is scrubbed to `<workspace>` first, longest match first, leaving
+ * only the repository's own root outside it as `<repo>`), and the tail
+ * normalization below runs after either.
+ *
  * What it cannot scrub, it refuses to emit: any remaining occurrence of the
  * repository root, the temp root, or a bare drive letter throws, because a
  * machine-specific path pasted into a documentation block is exactly the
@@ -347,28 +366,43 @@ function escapeRegExp(s: string): string {
  */
 export function scrubOutput(stdout: string, cwd: string, clock: string = DOC_CLOCK): string {
   const flags = process.platform === 'win32' ? 'gi' : 'g';
-  const roots = new Set<string>();
+  const roots = new Map<string, string>();
   for (const root of [cwd, canonicalizeNearestExisting(cwd)]) {
-    roots.add(root);
-    roots.add(root.replaceAll('\\', '/'));
+    roots.set(root, WORKSPACE);
+    roots.set(root.replaceAll('\\', '/'), WORKSPACE);
+  }
+  // This checkout's own root, derived from `import.meta.dirname` (see
+  // `REPO_ROOT` above) rather than written here as a literal — the same
+  // token for every checkout, never the path itself.
+  for (const root of [REPO_ROOT, canonicalizeNearestExisting(REPO_ROOT)]) {
+    if (!roots.has(root)) roots.set(root, REPO_TOKEN);
+    const forward = root.replaceAll('\\', '/');
+    if (!roots.has(forward)) roots.set(forward, REPO_TOKEN);
   }
 
   let out = stdout;
-  // Longest first: a shorter root that happens to prefix a longer one would
-  // otherwise leave the remainder of the longer path behind.
-  for (const root of [...roots].sort((a, b) => b.length - a.length)) {
-    out = out.replace(new RegExp(escapeRegExp(root), flags), WORKSPACE);
+  // Longest first: a shorter root that happens to prefix a longer one — the
+  // fixture nested under this repository, `<workspace>` under `<repo>` — would
+  // otherwise leave the remainder of the longer path behind, or replace it
+  // with the wrong token.
+  for (const [root, token] of [...roots].sort((a, b) => b[0].length - a[0].length)) {
+    out = out.replace(new RegExp(escapeRegExp(root), flags), token);
   }
   // Only the tail of a substituted root, delimited by whitespace or a quote —
   // see the note on JSON escapes above.
-  out = out.replace(new RegExp(`${WORKSPACE}[^\\s"'\`]*`, 'g'), (m) => m.replaceAll('\\', '/'));
+  out = out.replace(
+    new RegExp(`(?:${WORKSPACE}|${REPO_TOKEN})[^\\s"'\`]*`, 'g'),
+    (m) => m.replaceAll('\\', '/'),
+  );
   out = out.trimEnd();
   out = out.replaceAll(clockDay(clock), TODAY);
   out = out.replaceAll(yearOutDay(clock), A_YEAR_OUT);
 
   // Both spellings of each root, because `out` is no longer uniformly
   // POSIX: a leaked Windows path keeps its backslashes, and a needle
-  // normalized to `/` would no longer find it.
+  // normalized to `/` would no longer find it. The repository root is
+  // scrubbed above and should never reach here — this is the backstop for
+  // whatever that substitution missed, not the primary mechanism.
   const leaks = [...new Set(
     [REPO_ROOT, canonicalizeNearestExisting(REPO_ROOT), tmpdir()]
       .flatMap((p) => [p, p.replaceAll('\\', '/')]),
