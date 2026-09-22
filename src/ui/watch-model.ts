@@ -582,10 +582,22 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
   // `core/context-share.ts` owns both, and `mycontext statusline` runs the
   // same two, so the terminal and the browser cannot disagree about one
   // number again.
+  //
+  // `sinceSeq`, not `since`, when the epoch has one: `epoch.at` is a
+  // millisecond-resolution clock reading, and CI's Ubuntu job (run
+  // 35715432299) tied it across a fast, synchronous burst of `recordAudit`
+  // calls in `test/ui/watch-model.test.ts`'s own fixture, which let `at >=`
+  // re-admit a record from BEFORE the compaction. `epoch.seq` is the
+  // `pre-compact` row's own `INTEGER PRIMARY KEY` — unique by construction —
+  // and `at` remains the fallback for the one case with no row to anchor a
+  // `seq` to: a boundary read off a transcript's own resume-rebuild marker.
+  // See `contextEpochStart`'s doc comment (`core/context-share.ts`) for the
+  // measurement.
   const read = readProjection(root, (db) => {
     const epoch = contextEpochStart(db, session);
     return shareOf(queryProjection(db, {
-      sessionId: session, kind: 'injection', ...(epoch === null ? {} : { since: epoch }),
+      sessionId: session, kind: 'injection',
+      ...(epoch === null ? {} : epoch.seq !== null ? { sinceSeq: epoch.seq } : { since: epoch.at }),
     }));
   });
   let mycontext: { tokens: number; injections: number; unrecorded: number } | null = null;

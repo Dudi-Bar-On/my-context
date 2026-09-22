@@ -27,16 +27,36 @@
  * appended is still in the file. NOT a time, not a rate, not a number of
  * attempts. The harness is a storm on purpose; the assertion is about bytes.
  *
- * @basis INV-nothing-is-dropped-silently
+ * ── THE CONTROL, MADE DETERMINISTIC (2026-09-22) ────────────────────────────
+ *
+ * CI's Ubuntu job (run 35715432299) ran the control below over three rounds
+ * and lost nothing: a small `appendFileSync` does not observably tear on that
+ * platform inside the window six spawned processes could afford there, so the
+ * storm never landed two healers on the same torn file at once — the control
+ * went green for the wrong reason, a harness that stopped racing rather than a
+ * lock that stopped mattering. THE MECHANISM does not need luck: it is stated
+ * above ("A reads size S ... B heals the same tear ... A then truncates to L
+ * — now BEHIND B's records"), and that is two healers each reading the same
+ * stale cut before either writes — an ORDER, not a coincidence of timing. The
+ * control now forces that order directly instead of hoping a scheduler
+ * supplies it, and still asserts the one thing this file has always asserted:
+ * a complete record, once written, does not disappear — with and without the
+ * lock, so the difference IS the proof.
+ *
+ * @basis INV-nothing-is-dropped-silently,
+ *   TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync, closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, truncateSync,
+  writeFileSync, writeSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { appendJsonlLine, healTornTail } from '../../src/core/jsonl-log.ts';
+import { acquireLock } from '../../src/core/lock.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const RACERS = 6;
@@ -61,13 +81,9 @@ const SEEDED = 20;
  */
 const TORN_TAIL = 1024 * 1024;
 
-/** How many rounds the control may take to see one loss before giving up. */
-const CONTROL_ROUNDS = 3;
-
 const HERE = import.meta.dirname;
 const RACER = path.join(HERE, '..', 'fixtures', 'jsonl-append-racer.ts');
 const FORCE_STAT = path.join(HERE, '..', 'fixtures', 'force-stat-failure.ts');
-const REAL_MODULE = path.join(HERE, '..', '..', 'src', 'core', 'jsonl-log.ts');
 
 /** A log of complete records with one unfinished byte after the last newline. */
 function seedTorn(dir: string): string {
@@ -131,54 +147,116 @@ test('six writers healing one torn log lose no complete record', async () => {
   }
 });
 
-/**
- * **The detector, proved able to see a red in the same run.** The test above
- * asserts an ABSENCE under a storm, so its failure mode is a harness that
- * quietly stopped racing. This runs the same harness against a copy of the
- * module with the lock — and only the lock — removed, and requires it to lose
- * records. Two greens would mean the harness, not the fix, is what is measured.
+/** How much garbage a torn tail carries in the deterministic control below. Its
+ * size carries none of `TORN_TAIL`'s reasoning above — that size is chosen so
+ * a real scheduler cannot hide the race; this harness never asks a scheduler
+ * for anything, so a few bytes prove the same point.
  */
-test('the same harness, with the heal lock removed, does lose records', async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'heal-race-red-'));
+const DET_TAIL = 24;
+
+/**
+ * A torn log built from two `writeSync` calls with a yield between them,
+ * rather than one `writeFileSync` — the shape a writer actually killed
+ * mid-append leaves, not merely a file that happens to lack a trailing
+ * newline. What lands on disk is identical either way; this is about fidelity
+ * to the failure this file is named for, not about the bytes.
+ */
+async function seedTornInterleaved(dir: string): Promise<string> {
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, 'log.jsonl');
+  const complete = Array.from({ length: SEEDED }, (_, i) => JSON.stringify({ seeded: i })).join('\n');
+  const fd = openSync(file, 'w');
   try {
-    const source = readFileSync(REAL_MODULE, 'utf8');
-    const broken = source.replace(
-      /  let release: \(\) => void;[\s\S]*?\n  \} finally \{\n    release\(\);\n  \}\n/u,
-      '  return healUnderLock(file);\n',
-    );
-    assert.notEqual(broken, source, 'the removal LANDED — the lock block was found and cut');
-    assert.ok(!/acquireLock\(\{/u.test(broken), 'and nothing still takes the lock');
+    writeSync(fd, `${complete}\n`); // the records a killed writer left complete
+    await new Promise((resolve) => { setImmediate(resolve); }); // the interrupt
+    writeSync(fd, 'x'.repeat(DET_TAIL)); // the write that never got its closing '\n'
+  } finally {
+    closeSync(fd);
+  }
+  return file;
+}
 
-    // The module has exactly one relative import, so the copy is ONE file
-    // rather than a shadow of `src/` — and the racer beside it imports it by a
-    // relative name, because an absolute Windows path is not a legal ESM
-    // specifier.
-    const shadow = path.join(dir, 'jsonl-log-nolock.ts');
-    const lockHref = pathToFileURL(path.join(HERE, '..', '..', 'src', 'core', 'lock.ts')).href;
-    writeFileSync(shadow, broken.replace("'./lock.ts'", JSON.stringify(lockHref)), 'utf8');
+/**
+ * The offset just past the file's last newline — the same one-sentence
+ * contract `cutAfterLastNewline` (`src/core/jsonl-log.ts`) implements, read
+ * back with `String.lastIndexOf` because this fixture is a handful of lines.
+ * `cutAfterLastNewline`'s own chunked backward scan has its coverage below,
+ * in "a heal says what it removed"; what THIS test needs is the CONTRACT, not
+ * a reproduction of the scan.
+ */
+function cutPoint(file: string): number {
+  return readFileSync(file, 'utf8').lastIndexOf('\n') + 1;
+}
 
-    const racer = path.join(dir, 'racer-nolock.ts');
-    writeFileSync(racer, readFileSync(RACER, 'utf8').replace(
-      "'../../src/core/jsonl-log.ts'", "'./jsonl-log-nolock.ts'",
-    ), 'utf8');
+function healAndAppendRecord(file: string, cut: number, tag: string): void {
+  truncateSync(file, cut);
+  appendFileSync(file, `${JSON.stringify({ tag, i: 0 })}\n`, 'utf8');
+}
 
-    // Bounded ROUNDS, not a bounded wait: a race is a race, and one round that
-    // happens not to collide is not evidence that none can. Nothing here reads
-    // a clock.
-    let lost = 0;
-    let ran = 0;
-    for (let round = 0; round < CONTROL_ROUNDS && lost === 0; round++) {
-      const file = seedTorn(path.join(dir, `round-${round}`));
-      // eslint-disable-next-line no-await-in-loop -- rounds are sequential by design
-      const out = await race(racer, path.join(dir, `round-${round}`), file);
-      ran += out.appended;
-      lost += out.missing.length;
-    }
-    assert.ok(ran > 0, 'the unlocked racers ran at all');
+function tagsIn(file: string): string[] {
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((l) => l.trim() !== '')
+    .map((l) => (JSON.parse(l) as { tag?: string }).tag)
+    .filter((t): t is string => t !== undefined);
+}
+
+/**
+ * **The detector, made deterministic.** The test above asserts an ABSENCE
+ * under a storm; this one proves the storm's mechanism CAN destroy a record,
+ * so that absence is a fact about the lock and not about a harness that
+ * stopped racing. It no longer races real processes to get there — see the
+ * module header for why that stopped being reliable on Ubuntu's Node/scheduler
+ * — because the mechanism itself does not need luck to reproduce: the module
+ * header's own doc comment on `cutAfterLastNewline` names it as two healers
+ * each reading the SAME stale cut before either one writes. That is an ORDER
+ * of operations, and this harness forces that order by calling the two
+ * healers' steps itself rather than hoping two processes land in it together.
+ *
+ * `acquireLock` is the real, unmodified lock this project has exactly one
+ * implementation of (`src/core/lock.ts`) — the same one `healTornTail` takes
+ * — so "with the lock" here is not a stand-in, it is the primitive itself
+ * serializing the two healers' critical sections.
+ */
+test('two healers racing on one torn log lose a record without the lock, '
+  + 'and do not lose one with it', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'heal-race-det-'));
+  try {
+    // ---- WITHOUT the lock: both healers read the file's cut BEFORE either
+    // one writes — the exact interleave the doc comment above names. Healer A
+    // truncates-and-appends first; healer B then truncates to ITS stale cut,
+    // which is now BEHIND A's just-written record, and takes it with it.
+    const unlocked = await seedTornInterleaved(path.join(dir, 'unlocked'));
+    const cutA = cutPoint(unlocked);
+    const cutB = cutPoint(unlocked); // B's read, taken before A has written anything
+    healAndAppendRecord(unlocked, cutA, 'a');
+    healAndAppendRecord(unlocked, cutB, 'b');
+    const unlockedTags = tagsIn(unlocked);
     assert.ok(
-      lost > 0,
-      `with the lock removed the harness must lose complete records; over ${CONTROL_ROUNDS} `
-      + 'round(s) it lost none, so the test above is not what proves the fix',
+      !unlockedTags.includes('a'),
+      `record "a" survived the unlocked interleave, so this harness does not reproduce the loss `
+      + `the lock exists to prevent; tags on disk: ${unlockedTags.join(', ')}`,
+    );
+    assert.ok(unlockedTags.includes('b'), '"b" itself must still be there — the loss is A, not the file');
+
+    // ---- WITH the lock: each healer's read-then-write is one critical
+    // section, so B's read happens only after A has released — behind A's
+    // write, not before it, the way the unlocked run above forced instead.
+    const locked = await seedTornInterleaved(path.join(dir, 'locked'));
+    const lockSpec = {
+      file: `${locked}.heal.lock`, name: 'jsonl-heal',
+      otherHolder: 'another actor in this test is healing the same log',
+    };
+    const releaseA = acquireLock(lockSpec);
+    healAndAppendRecord(locked, cutPoint(locked), 'a');
+    releaseA();
+    const releaseB = acquireLock(lockSpec);
+    healAndAppendRecord(locked, cutPoint(locked), 'b'); // reads the ALREADY-healed file: cuts nothing away
+    releaseB();
+    const lockedTags = tagsIn(locked);
+    assert.deepEqual(
+      lockedTags, ['a', 'b'],
+      `both records must survive under the lock; got: ${lockedTags.join(', ')}`,
     );
   } finally {
     removeTree(dir);

@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:13"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 93821c0d88ee11e1
+checksum: ed664c7728700eb7
 plan: release
 seq: "13"
-state: doing
+state: done
 ---
 
 # four tests are red on Ubuntu and green on Windows, and each passes here only because of something the owner's machine happens to have

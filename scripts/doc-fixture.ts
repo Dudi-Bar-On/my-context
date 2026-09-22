@@ -39,10 +39,30 @@ const FIXTURE = path.join(
  * example's workspace, an already-applied session makes `mycontext ingest`
  * report a document with nothing left to extract, and the generated block
  * would be a fact about the maintainer's disk rather than about the fixture.
+ *
+ * **`.audit/` and `state/` are the same class of thing, measured 2026-09-22
+ * (release/14).** Both directories carry a committed `.gitignore` of `*` —
+ * `git ls-files` shows nothing tracked under either — because they hold
+ * records a live hook writes, not corpus a supported surface commits. A real
+ * Claude Code session that touches a file under this checkout's own
+ * `test/fixtures/docs-workspace` (reading it while writing a walkthrough,
+ * say) fires `PreToolUse` and leaves exactly that behind: an
+ * `.audit/audit.jsonl` injection record and a matching `state/*.seen.jsonl`,
+ * both gitignored and both absent from a fresh clone. `cpSync` above copied
+ * them anyway — nothing before this filtered them out — so
+ * `ledger.sessionCount()` (`src/core/ledger.ts`) read one real session on the
+ * generating machine's own disk and zero everywhere else: the committed
+ * `mycontext status` block said "1 session(s) recorded" and a fresh clone's
+ * fixture run said "none". `test/docs/examples.test.ts` proves the fix by
+ * planting a stray segment in this exact fixture directory and asserting
+ * `runExampleInFixture('status')` does not move.
  */
 export function isDerivedFixtureState(source: string): boolean {
   const name = path.basename(source);
-  return name.startsWith('.index.db') || name === '.ingest' || name === '.staging';
+  if (name.startsWith('.index.db') || name === '.ingest' || name === '.staging') return true;
+  if (name === '.gitignore') return false;
+  const parent = path.basename(path.dirname(source));
+  return parent === '.audit' || parent === 'state';
 }
 
 /**

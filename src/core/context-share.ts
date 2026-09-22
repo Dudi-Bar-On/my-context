@@ -261,20 +261,56 @@ export function rebuiltFromSummaryAt(transcriptPath: string, sessionId: string):
  * calls on this per-message path. The transcript read only happens on the
  * branch that used to return `null` unconditionally, so a session with no
  * `transcriptPath` in hand behaves exactly as before.
+ *
+ * ── `seq` RIDES ALONG WHEN THE ROW HAS ONE (2026-09-22) ─────────────────────
+ *
+ * Measured on CI's Ubuntu job (run 35715432299,
+ * `TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each`):
+ * `test/ui/watch-model.test.ts`'s fixture fires six `recordAudit` calls back
+ * to back with no I/O between them, and on that runner all six landed the
+ * same millisecond — `at` is `Date.toISOString()`, ONE-millisecond
+ * resolution, and nothing about a synchronous loop of in-process writes
+ * promises the clock will have ticked between two of them. `shareSql`'s bound
+ * used to be `at >= preCompactAt`, so a TIE let an injection recorded BEFORE
+ * the compaction satisfy it — the pre-compact row's own timestamp, not the
+ * boundary it names, is what a same-millisecond sibling was being compared
+ * against, and `>=` cannot tell "same instant, arrived first" from "same
+ * instant, arrived after". `seq` is the audit table's `INTEGER PRIMARY KEY`,
+ * assigned in insertion order with no two rows ever sharing one — the one
+ * fact SQLite itself guarantees here that the wall clock does not — so a
+ * caller that has it can bound on `seq > preCompactSeq` instead and a tied
+ * timestamp stops mattering.
+ *
+ * `seq` is `null` on the TRANSCRIPT branch, deliberately: a resume-rebuild's
+ * timestamp is read from a file outside this database, so there is no row of
+ * this table for it to be the sequence number OF. `shareSql` falls back to the
+ * `at`-comparison there, same as before this fix — a disclosed remaining gap,
+ * not a claim that this closes every tie everywhere, and the same shape
+ * `contextEpochStart`'s own docblock already draws around that branch's
+ * transcript-tail bound.
  */
+export interface EpochStart {
+  /** ISO-8601, kept for the transcript-only branch and for callers that log it. */
+  at: string;
+  /** The `pre-compact` row's own `seq`, or `null` when this came from a transcript instead. */
+  seq: number | null;
+}
+
 export function contextEpochStart(
   db: DatabaseSync, sessionId: string, transcriptPath?: string | null,
-): string | null {
+): EpochStart | null {
   const row = db
-    .prepare(`SELECT rec ->> '$.at' AS at FROM audit
+    .prepare(`SELECT rec ->> '$.at' AS at, seq FROM audit
                 WHERE session_id = ? AND op = 'pre-compact'
                 ORDER BY seq DESC LIMIT 1`)
-    .get(sessionId) as { at?: unknown } | undefined;
+    .get(sessionId) as { at?: unknown; seq?: unknown } | undefined;
   const preCompactAt = typeof row?.at === 'string' ? row.at : null;
-  if (preCompactAt !== null) return preCompactAt;
+  if (preCompactAt !== null) {
+    return { at: preCompactAt, seq: typeof row?.seq === 'number' ? row.seq : null };
+  }
   if (typeof transcriptPath === 'string' && transcriptPath !== '') {
     const rebuiltAt = rebuiltFromSummaryAt(transcriptPath, sessionId);
-    if (rebuiltAt !== null) return rebuiltAt;
+    if (rebuiltAt !== null) return { at: rebuiltAt, seq: null };
   }
   return null;
 }
@@ -344,12 +380,23 @@ function opClause(column: string): string {
  * `subagent-start` is somebody else's window" each already had to exist in
  * two languages, and "each item is charged once" is now the third rule that
  * does.
+ *
+ * **`since.seq`, when `contextEpochStart` had one, not `since.at`.** `seq` is
+ * this table's `INTEGER PRIMARY KEY` — unique and insertion-ordered by
+ * construction — where `at` is a millisecond-resolution clock reading that a
+ * synchronous burst of writes can tie, and a tie under `>=` let a
+ * pre-compaction record back in (measured, CI run 35715432299; see
+ * `contextEpochStart`'s own doc comment). The `at`-comparison remains for the
+ * one case with no row to anchor a `seq` to: a boundary read off a transcript
+ * file rather than this table.
  */
 export function shareSql(
-  sessionId: string, since: string | null,
+  sessionId: string, since: EpochStart | null,
 ): { sql: string; params: (string | number)[] } {
-  const params: (string | number)[] = since === null ? [sessionId] : [sessionId, since];
-  const sinceClause = since === null ? '' : 'AND at >= ?';
+  const params: (string | number)[] = since === null
+    ? [sessionId]
+    : [sessionId, since.seq !== null ? since.seq : since.at];
+  const sinceClause = since === null ? '' : since.seq !== null ? 'AND seq > ?' : 'AND at >= ?';
   const sql = `
     WITH filtered AS (
       SELECT seq FROM audit

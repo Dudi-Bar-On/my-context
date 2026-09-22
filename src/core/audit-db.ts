@@ -1240,6 +1240,9 @@ export function filterSelect(filter: AuditFilter): { sql: string; params: (strin
   const params: (string | number)[] = [];
 
   if (filter.since !== undefined) { where.push('at >= ?'); params.push(filter.since); }
+  // Exclusive, unlike `since` above: a caller with a `seq` to bound on has an
+  // actual row to start AFTER, never one to re-include. See `AuditFilter`.
+  if (filter.sinceSeq !== undefined) { where.push('seq > ?'); params.push(filter.sinceSeq); }
   if (filter.until !== undefined) { where.push('at < ?'); params.push(filter.until); }
   if (filter.kind !== undefined) { where.push('kind = ?'); params.push(filter.kind); }
   if (filter.op !== undefined) { where.push('op = ?'); params.push(filter.op); }

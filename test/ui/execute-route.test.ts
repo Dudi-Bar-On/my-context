@@ -720,12 +720,65 @@ test('a non-zero exit is REPORTED, not swallowed — a refusal is a state to lea
     });
     assert.notEqual(body.exitCode, 0);
     assert.equal(typeof body.exitCode, 'number');
-    assert.match(body.stderr, /./);
+    // Not `body.stderr` — this CLI's `Emit` is one channel (`runCli`,
+    // `src/cli/index.ts`), and `CONST-the-cli-exit-code-contract` rule 7 plus
+    // `src/cli/json-envelope.ts`'s own "WHICH STREAM" ruling (`rulings/72`)
+    // settled that a refusal is prose on STDOUT at a non-zero exit,
+    // deliberately: threading a second, stderr channel through 48 commands
+    // would not even fix anything, since the complaint was stdout being
+    // unparseable, not empty. `src/ui/execute-effect.ts`'s `deriveEffect`
+    // already leans on the same fact ("stdout is where the answer usually
+    // is"). This assertion used to read `body.stderr` matches `/./`, which
+    // passed on this machine only because Node's own `node:sqlite`
+    // `ExperimentalWarning` happened to land on real stderr alongside the
+    // refusal — an incidental runtime notice, not the command speaking, and
+    // one Node 24.20 (CI's Ubuntu job) no longer prints at all
+    // (`test/cli/experimental-warning.test.ts`). A refusal is a state to
+    // leave, so the state itself — the sentence and the exit code — is what
+    // is asserted here now.
+    // @basis TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each
+    assert.match(body.stdout, /no item with id "NOPE"/);
     // The COMPLETION row is where a real exit code lives; the `execute` row beside
     // it still reads null, because it was written before the process existed.
     assert.equal(doneRow(h.cwd)?.command?.exitCode, body.exitCode);
     assert.equal(startRow(h.cwd)?.command?.exitCode, null);
   });
+});
+
+/**
+ * The deterministic stand-in for CI's Ubuntu job, run here on Windows: that
+ * job's Node (24.20.0) no longer prints `node:sqlite`'s `ExperimentalWarning`
+ * at all (`test/cli/experimental-warning.test.ts` measures exactly this), so
+ * its stderr for `show NOPE` was genuinely empty — which is what exposed the
+ * test above pinning the wrong stream. `--disable-warning=ExperimentalWarning`
+ * is the flag `src/cli/index.ts`'s own shebang (line 1) already carries for
+ * every invocation this project starts itself; passed to the child directly
+ * (`execFileRunner` bypasses the shebang, since it runs `node <entry>` rather
+ * than the entry as a script), it silences the same warning without needing
+ * CI's Node. Removing the flag reproduces Windows's incidental pass; the
+ * assertions below hold either way, because they no longer read stderr as the
+ * answer.
+ *
+ * @basis TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each
+ */
+test('show NOPE reports its refusal on stdout even with a warning-free '
+  + 'stderr — the exact condition CI\'s Ubuntu job measured', async () => {
+  const cwd = project();
+  try {
+    const outcome = await execFileRunner(
+      process.execPath,
+      ['--disable-warning=ExperimentalWarning', CLI_ENTRY, 'show', 'NOPE'],
+      { cwd, timeout: RUN_TIMEOUT_MS },
+    );
+    assert.notEqual(outcome.exitCode, 0);
+    // The reproduction proof: stderr is empty here, deterministically, the
+    // same as it was on Ubuntu — not merely "the assertion below does not
+    // need it".
+    assert.equal(outcome.stderr, '', outcome.stderr);
+    assert.match(outcome.stdout, /no item with id "NOPE"/);
+  } finally {
+    removeTree(cwd);
+  }
 });
 
 test('the run is bounded, and the bound is the constant that carries its reasoning', async () => {

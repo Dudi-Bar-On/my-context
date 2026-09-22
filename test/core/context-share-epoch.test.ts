@@ -130,6 +130,11 @@ test('rebuiltFromSummaryAt never throws on a malformed line', () => {
  * — the exact defect: a session with no `pre-compact` row and a transcript
  * that shows it was rebuilt from a summary was read as "never compacted",
  * carrying pre-resume tokens as resident when they were actually gone.
+ *
+ * `contextEpochStart` now returns `{ at, seq }` rather than a bare string —
+ * // @basis TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each
+ * — so the assertions below carry that shape too. See `EpochStart`'s doc
+ * comment (`core/context-share.ts`) for why `seq` exists.
  */
 test('contextEpochStart resets the epoch at a resume-rebuild when there is no pre-compact row at all', () => {
   const { outer, root } = sandboxRoot();
@@ -150,8 +155,10 @@ test('contextEpochStart resets the epoch at a resume-rebuild when there is no pr
       syncProjection(root, db);
       // No transcript path handed in: unchanged from before this fix.
       assert.equal(contextEpochStart(db, 's1'), null);
-      // With the transcript: the resume-rebuild is the epoch boundary.
-      assert.equal(contextEpochStart(db, 's1', transcript), summaryAt);
+      // With the transcript: the resume-rebuild is the epoch boundary, and
+      // `seq` is `null` — there is no row of `audit` for a transcript-file
+      // marker to BE the sequence number of (`EpochStart`'s own doc comment).
+      assert.deepEqual(contextEpochStart(db, 's1', transcript), { at: summaryAt, seq: null });
     } finally {
       db.close();
     }
@@ -176,7 +183,13 @@ test('contextEpochStart prefers an existing pre-compact row over the transcript 
     const db = openProjection(root);
     try {
       syncProjection(root, db);
-      assert.equal(contextEpochStart(db, 's1', transcript), preCompactAt);
+      // `seq` rides along this time — a real row of `audit` backs this
+      // boundary, so there IS a sequence number to bound later reads on
+      // (`shareSql`/`filterSelect`'s `sinceSeq`), not merely a timestamp a
+      // synchronous burst elsewhere could tie.
+      const epoch = contextEpochStart(db, 's1', transcript);
+      assert.equal(epoch?.at, preCompactAt);
+      assert.equal(typeof epoch?.seq, 'number');
     } finally {
       db.close();
     }

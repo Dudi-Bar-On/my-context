@@ -1770,6 +1770,22 @@ export interface AuditFilter {
   since?: string;
   /** Exclusive upper bound, ISO-8601. */
   until?: string;
+  /**
+   * Exclusive lower bound on the projection's own `seq` — DB-PROJECTION ONLY
+   * (`filterSelect`/`queryProjection`, `core/audit-db.ts`), and `undefined`
+   * on every other filter, including `filterAudit`'s raw-JSONL path, which
+   * has no `seq` column to bound on.
+   *
+   * Exists beside `since` rather than replacing it: `since` compares `at`, a
+   * millisecond-resolution clock reading, and a caller that fired several
+   * `recordAudit`s in one synchronous burst can tie it — `seq` is this
+   * table's `INTEGER PRIMARY KEY`, unique and insertion-ordered by
+   * construction, so a caller that has one (`contextEpochStart`,
+   * `core/context-share.ts`) can bound on the fact SQLite itself guarantees
+   * instead of the one the wall clock does not. See that module's doc
+   * comment for the measurement (CI run 35715432299) a tied `at` produced.
+   */
+  sinceSeq?: number;
   itemId?: string;
   sessionId?: string;
   kind?: AuditKind;
