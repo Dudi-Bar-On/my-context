@@ -501,7 +501,7 @@ resolveWorkspace
 - **Session dedupe:** the hook appends delivered `{id, tier, at}` lines to
   `state/<sanitized-ledger-key>.seen.jsonl` and reads the same file for `seen` — replacing
   `Ledger.recordMany`/`Ledger.seen` on the hot path. Torn-tail handling and the atomicity
-  argument are `jsonl-log.ts`'s, verbatim (`src/core/jsonl-log.ts` · `export function healTornTail(file: string): TailHeal {` · ~299). The restored tier's
+  argument are `jsonl-log.ts`'s, verbatim (`src/core/jsonl-log.ts` · `export function healTornTail(file: string, seams: HealSeams = {}): TailHeal {` · ~334 — `seams` is an optional test-injection point added later; every production call omits it). The restored tier's
   identity-marker semantics (`injected_at = capturedAt`, equality-compared —
   `src/core/ledger.ts` · `recordRestored(sessionId: string, itemIds: string[], at: string = new Date().toISOString()): void {` · ~378,
   `src/core/inject.ts` · `? { at: snapshotCapturedAt }` · ~822) carried over unchanged: the marker
