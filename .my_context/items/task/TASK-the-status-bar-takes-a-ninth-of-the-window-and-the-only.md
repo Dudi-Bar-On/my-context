@@ -150,3 +150,7 @@ guarded, because `localStorage` throws outright in some contexts.
 
 REPORT the strip height and the viewer height BEFORE and AFTER, at two widths, in both languages,
 for: today’s default, a tightened row with the same fields, and a reduced selection.
+
+## Request
+
+the design - yes, the status bar currentlly no as is but... i could think about an idea to use the right menu to display status bar customization dialog that would allow the user to check which elements to show and many some other possible customizations you can suggest, the viewer will dynamically extend it size down according to the status bar occupied lines but not by defining MAX ROWS - by setting up the status bar structure and content - tell me what you think before you do

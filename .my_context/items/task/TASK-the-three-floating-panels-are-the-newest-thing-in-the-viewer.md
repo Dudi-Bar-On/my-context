@@ -46,3 +46,7 @@ WHERE IT GOES. `docs/capabilities/15-document-and-lane-viewer.md` owns the viewe
 AND THE SCREENSHOTS ARE ENGLISH ONLY, DELIBERATELY. An English screen and a Hebrew RTL screen are different images; the Hebrew edition re-shoots rather than reuses. That is why diagrams were required to be Mermaid text and screenshots were not required at all until now: a diagram translates, a photograph does not.
 
 EVERY SCREENSHOT IS OF THE REAL TOOL, DRIVEN. `docs/the-store.he.md` set that standard: read-only screens shot against the real store, anything that writes shot against a copy, and each image says which it was. A drawing of a screen nobody opened is the claim this project refuses.
+
+## Request
+
+also worth adding the last implementations of the 3 dialogs search navigate copy and their screen snapshots into the documentation

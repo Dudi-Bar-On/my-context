@@ -42,3 +42,7 @@ WHICH STORE. The rule store - `src/rules/entries/` - and not the corpus and not 
 WHY IT IS WORTH HAVING. The store is the one thing this product ships that OUTRANKS every other source in a consuming session, and there is no single place that explains it. What exists is scattered: a definition entry, a manifest, an integrity module, a CLI command, a tier system, and a day's worth of defects found in conversation. A reader who installs this plugin meets the store's output without ever meeting the store.
 
 AND THE TEST MATTERS AS MUCH AS THE DOCUMENT. He wants to know how well a conversation serves as a source for capturing a subject. So whatever is produced must also report on THAT: what the conversation gave, what it could not, and what had to be read from the code instead.
+
+## Request
+
+meanwhle i need somthing and it is a good oportunity to also do a test: The mission is to go over the conversation from the begining, only from it if you find a document that you need to read go and read it, if you find that you need to read a subagent transcript go read it, the Goal is to generate an enhanced document in hebrew which explains in simple words what is the store, what it's fucntionalities and capabilities, what does it contains now, how it works all the mechanism, how we manage it and it's content - all in a single document, if you need to add some drawing or diagrams do that. I suggest to dispatch a subagent for this mission - let's try how good is our conversation and how we can capture a whole subject from it.

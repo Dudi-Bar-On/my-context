@@ -51,3 +51,7 @@ priority: "1"
 > 4. AND THE OWNER'S FALLBACK IS EXPLICIT: if no variant is invisible, MINIMISED AND NOT ON TOP is acceptable. Do not spend a lane chasing perfection past his stated bar.
 >
 > THE POSIX BRANCH IS NOT IN SCOPE. It has no window and its own known hole is recorded on `live/25`.
+
+## Request
+
+when you execute the server under a new process it opens a kind of cmd window, make sure it is minimized and not on top of my windows

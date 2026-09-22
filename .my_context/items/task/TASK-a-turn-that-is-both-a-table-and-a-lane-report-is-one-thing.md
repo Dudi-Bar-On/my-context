@@ -84,3 +84,7 @@ AND IT IS A UI CHANGE, so it is driven in Playwright before it is reported, in b
 
 ## Relations
 - supersedes [[OPENQ-does-the-table-mark-or-the-lane-report-mark-win-when-one]]
+
+## Request
+
+1 table & report - if required make them 2 different anchor types with 2 distinguished marks, 2 yes, 3 write 40 lines of code - just verify it works the same as the original code intended and every found search result in my viewer should be highlited, 4 clear them

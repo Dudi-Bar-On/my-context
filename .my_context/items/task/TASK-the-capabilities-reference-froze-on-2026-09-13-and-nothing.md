@@ -43,3 +43,7 @@ WHAT IS KNOWN TO BE WRONG, measured 2026-09-16 by the lane that wrote reports/20
   - watchedDocs is named in the index as a key with two doctor findings behind it and has no chapter at all.
 
 THE STANDARD IS ACCURACY AGAINST THE TREE, not against any document. A distillate freezes counts that keep moving - five of six wrong claims met this week came from documents made out of this conversation.
+
+## Request
+
+i looked at the docs/capabilities and it looks the direction but i need to do several things: 1 - select professional reviewers from the tools you have and let ne approve them, they should go over the capabilities documents as well as over the code base and fix refactor add missing subjects documents mechanisms and every single detail to make them super accurate, 2 - the same reviewers over the table above including the readme.md and here the results should be more documents maybe in a different directory than capabilities with the same accuracy and detailing levels, 3 - i will look and review the documents and then i would like to generate documents similar to the-store.he.md in hebrew with the same simplicity and clearness as you did including all the features like screen snapshots, examples, drawings, diagrams etc. readme already contains good drawings and diagrams use them and add more to the documemnts from step 1 and 2 so when we will write the hebrew documents the drawing will be prepaired (maybe a simple translation will be requiredd)

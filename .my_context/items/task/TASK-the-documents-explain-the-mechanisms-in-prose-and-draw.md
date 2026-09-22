@@ -50,3 +50,7 @@ MERMAID TEXT, NEVER IMAGES. That is not a style preference: these documents are 
 A DIAGRAM THAT IS WRONG IS WORSE THAN NO DIAGRAM, because a picture is believed faster than a sentence. Two verification passes over the capability chapters found 38 then 21 false claims; a diagram is a claim with a higher believability and a lower word count. Draw only what has been read from the code.
 
 AND DO NOT DRAW WHAT A SENTENCE SAYS BETTER. The standing instruction to every documenter here has been: a diagram earns its place or it does not appear. A page of boxes that restates a list is noise, and this product already has a measured allergy to surfaces nobody reads.
+
+## Request
+
+i want you to dispatch a special subagents select the best available tools that will review all the generated documents capabilities and system, and add much more explenatory mermaid drawings flows state or what ever diagram it requires to simply and best explain the features especially it is critical for mechanisms that are the heart of the product
