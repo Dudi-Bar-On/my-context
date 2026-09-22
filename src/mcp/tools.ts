@@ -56,7 +56,7 @@ import {
 } from '../lesson/derive.ts';
 import { readStagingDir } from '../lesson/staging.ts';
 import { illegibleExisting, renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
-import { planImport } from '../pack/import.ts';
+import { FULL_EXPORT_REFUSAL, planImport } from '../pack/import.ts';
 import { readImportRecords } from '../pack/imported-audit.ts';
 import { readArtefact } from '../pack/reader.ts';
 // **The argument vocabulary every spec below is written in**, moved out by
@@ -2026,6 +2026,24 @@ const SPECS: ToolSpec[] = [
 
       const origin = path.resolve(cwd, source);
       const artefact = readArtefact(origin);
+
+      // Ruling C (2026-09-21): a full export is an archive to copy back, not
+      // something this tool previews an import of, and `name` cannot rescue
+      // it — that was the withdrawn behaviour this refusal replaces, letting
+      // `name` stand in for the name an export does not carry. Checked on the
+      // artefact itself, BEFORE `planImport` runs: task
+      // TASK-two-surfaces-still-describe-importing-a-full-export-after (3.5)
+      // found `preview_pack_import` on the same wrong-order shape `pack.ts`
+      // had — the config merge inside `planImport` could refuse first, with
+      // words about a category declared twice instead of this one sentence.
+      // `FULL_EXPORT_REFUSAL` (pack/import.ts) is the one sentence every door
+      // a full export reaches says; this door adds no tail of its own — see
+      // that constant's doc comment: an import says nothing was imported,
+      // `init --pack` says nothing was created, a preview says neither.
+      if (artefact.manifest.kind === 'export') {
+        throw new Error(FULL_EXPORT_REFUSAL);
+      }
+
       const plan = planImport(artefact, {
         existing: (id) => ctx.store.get(id),
         rawConfig: rawWorkspaceConfig(ctx.root),
@@ -2034,13 +2052,10 @@ const SPECS: ToolSpec[] = [
 
       const override = optStr(args, 'name');
       const name = override ?? plan.pack;
-      if (name === null || name === '') {
-        throw new Error(
-          `my_context: ${JSON.stringify(source)} is a full export and carries no pack name, so ` +
-          'there is nothing to file this preview under. Pass "name" to say what to call it. ' +
-          'Nothing was imported — this tool only previews.',
-        );
-      }
+      /* c8 ignore next 2 -- unreachable: `refuseMeta` (pack/manifest.ts) refuses a `kind: 'pack'`
+         artefact with no name, and a `kind: 'export'` one already returned above. Kept only so
+         `name` narrows to `string` for every use below. */
+      if (name === null || name === '') throw new Error('my_context: a pack plan carried no name — unreachable.');
 
       const report: CollisionReport = {
         pack: name,
