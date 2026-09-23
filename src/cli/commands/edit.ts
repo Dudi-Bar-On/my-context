@@ -95,7 +95,8 @@ const USAGE =
                         [--continuity[=false]]
                         [--status active|draft|deprecated|validated]
                         [--request "<text>"]
-                        [--extra key=value] [--unlink <relation> <target>] [--yes]`;
+                        [--extra key=value] [--unlink <relation> <target>]
+                        [--detach-source] [--yes]`;
 
 /* -------------------------------------------------------------------------- *
  * What may be changed, READ off the declaration rather than spelled here.
@@ -206,6 +207,19 @@ const FIELD_CLASS: Record<string, FieldClass> = {
   // print the "what governs before and after" block over a change that governs
   // nothing.
   summary_of: 'content',
+  // `source` (`--detach-source`) is CONTENT for the reason `request` is:
+  // `sourceFile`/`sourceChecksum` are never emitted by `renderItemBlock` or
+  // `renderIndexLine`, and `select` never reads them, so clearing them changes
+  // nothing about whether, where or how forcefully the item is injected — the
+  // same fact `UPDATE_FIELD_POLICY`'s `documentation` classification (trust.ts)
+  // is built on. It is `content` HERE rather than a fourth class, on the same
+  // grounds `request`'s comment gives: this table's three classes ask how
+  // heavily a HUMAN's edit is gated, and neither `reach` nor `force` fits a
+  // change that is not injected at all — `content` is the lightest of the
+  // three and the only honest answer, previewed as a labelled line rather
+  // than a diff because there is no "before text" to show, only a fact that
+  // stops being recorded.
+  source: 'content',
   // `relations` is REACH, and the classification is the whole gate on
   // `--unlink`. Removing a `blocks` or a `constrains` from a governing item
   // takes away part of what that item asserts about the rest of the corpus,
@@ -401,6 +415,12 @@ function changesOf(item: Item, patch: UpdateInput, scopeLabel: (globs: string[])
   if (patch.status !== undefined && patch.status !== item.status) {
     add('status', item.status, patch.status);
   }
+  // `item.sourceFile` is never null here: `cmdEdit` refuses `--detach-source`
+  // on an item with no source before `changesOf` is ever called, so this is
+  // unconditionally a real change once `patch.detachSource` is set.
+  if (patch.detachSource === true) {
+    add('source', item.sourceFile ?? '', 'detached — source_file and source_checksum both null');
+  }
   return changes;
 }
 
@@ -564,7 +584,7 @@ function say(out: Emit, text: string, prefix = ''): void {
  */
 export const PREVIEW_LABELS = [
   'id', 'type', 'title', 'status', 'today', 'after', 'relations',
-  'scope', 'always', 'continuity', 'severity',
+  'scope', 'always', 'continuity', 'severity', 'source',
 ];
 
 function labelled(out: Emit, label: string, text: string): void {
@@ -656,6 +676,13 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
     // asserts nothing, and putting it there would make the "nothing to edit"
     // count below treat a decline as a field.
     const summaryUnchanged = boolFlag(args, 'summary-unchanged');
+    // `UpdateInput.detachSource`. A switch, `summary-unchanged`'s shape
+    // exactly: only `true` is meaningful and only `true` is carried into the
+    // patch, for the identical reason — `false` asserts nothing, and it
+    // would make the "nothing to edit" count below treat a decline as a
+    // field. Refused (below, once the item is loaded) alongside `--body` and
+    // `--unlink`, and refused on an item with no `source_file` to detach.
+    const detachSource = boolFlag(args, 'detach-source');
     // `flag`, not `listFlag`: a request is one utterance, and two of them are
     // two different accounts of what was asked for. Absent (`null`) and empty
     // (`--request=`) are different instructions here — the second REMOVES the
@@ -767,6 +794,25 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       }
       patch.status = status as Status;
     }
+    if (detachSource === true) {
+      // Refused beside `--body` and `--unlink`, in one sentence and before
+      // anything is opened: detaching a source is a narrow repair — "this
+      // item no longer claims a file `mycontext doctor` can check drift
+      // against" — and nothing else. Mixing it into a call that also rewrites
+      // the body or removes a relation folds two different acts into one
+      // write and one confirmation, which is harder to review and harder to
+      // undo cleanly than two calls, each answerable on its own. (`edit` has
+      // no `--file` flag of its own — a snapshot's source is set once, at
+      // `mycontext add --file`, never at `edit` — so the two flags that can
+      // actually collide with `--detach-source` here are these.)
+      if (body !== null || unlinks.length > 0) {
+        say(out, 'my_context: --detach-source is refused alongside --body or --unlink in the ' +
+          'same call — one call, one act. Run it on its own, then make the other change ' +
+          'separately. Nothing was changed.');
+        return 1;
+      }
+      patch.detachSource = true;
+    }
 
     if (Object.keys(patch).length <= 2 && unlinks.length === 0) {
       say(out, 'my_context: nothing to edit — no field was named.');
@@ -789,6 +835,16 @@ function cmdEdit(ws: Workspace, args: string[], out: Emit): number {
       // `updateItem` would throw anyway — checked here purely for that
       // ordering.
       say(out, globalLayerRefusal(item.id));
+      return 1;
+    }
+
+    // Data-driven, not declaration-driven — `source_file` is a tier-wide
+    // field (`addSnapshot`, cli/index.ts: "not restricted to the `reference`
+    // category"), so any item's category may legally accept `--detach-source`
+    // and the only real question is whether THIS item has anything recorded.
+    if (patch.detachSource === true && item.sourceFile === null) {
+      say(out, `my_context: ${item.id} records no source_file — there is nothing to detach. ` +
+        `Nothing was changed.`);
       return 1;
     }
 

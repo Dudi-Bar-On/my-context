@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { retryOnTransientFsError } from '../core/rebuild.ts';
+import { writePrivateGitignore } from '../core/private-gitignore.ts';
 import path from 'node:path';
 import { RULE_DIRECTIVES } from '../core/command-flags.ts';
 import type { Config } from '../core/config.ts';
@@ -53,8 +54,9 @@ export type AcceptedSummary = { summary?: string; summaryOmitted?: boolean };
 function ensureDir(root: string): string {
   const dir = stagingDir(root);
   mkdirSync(dir, { recursive: true });
-  const ignore = path.join(dir, '.gitignore');
-  if (!existsSync(ignore)) writeFileSync(ignore, '*\n', 'utf8');
+  // `core/private-gitignore.ts` owns the line and carries the guard this
+  // `existsSync` was standing in for — see the 2026-09-23 incident.
+  writePrivateGitignore(dir);
   return dir;
 }
 

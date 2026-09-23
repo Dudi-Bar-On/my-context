@@ -77,6 +77,14 @@ const TABLE_LABEL = 'tokenizer | hits';
  */
 const REPORT = 'reports/2026-09-10-lexical-selection-research.md';
 const RULING = 'RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number';
+/**
+ * **The composed label is the WHOLE LINE, never the bare id** — `rulingLabel()`
+ * (`src/core/anchor-pass.ts`) names a ruling by "the LINE the word is on,
+ * verbatim, clipped", precisely so a list entry never has to guess where a
+ * citation ends. The turn below is one line, so its label is that line as
+ * typed, `RULING` and all.
+ */
+const RULING_LABEL = `follow ${RULING} here`;
 /** In the transcript and in NO label — so a label search cannot pass for a prose search. */
 const PROSE = 'the weather in the afternoon was ordinary and worth nothing';
 
@@ -90,10 +98,23 @@ const TABLE_TURN = [
 ].join('\n');
 
 const jsonl = (rows: unknown[]): string => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+/**
+ * **`origin: { kind: 'human' }` ON A USER RECORD IS LOAD-BEARING SINCE
+ * 2026-09-15** — `ownerTyped()` (`src/core/anchor-pass.ts`) is the ONLY gate
+ * the `ruling` kind reads, and it is false for any record lacking this field,
+ * whatever the words say. This fixture cited a normative id in a user turn
+ * and never set the field, so the ruling half of the automatic pass never
+ * fired here — matching the pattern already pinned in `test/cli/anchors.test.ts`,
+ * `test/core/anchor-kinds.test.ts`, `test/core/anchor-per-turn.test.ts`,
+ * `test/core/anchor-report.test.ts`, `test/hooks/stop-conversation-refresh.test.ts`
+ * and `e2e/report-reach.spec.ts`, all of which already carry this field on
+ * every 'user' record for the same reason.
+ */
 const say = (role: 'user' | 'assistant', body: string, at: string): unknown => ({
   type: role,
   message: { role, content: role === 'user' ? body : [{ type: 'text', text: body }] },
   timestamp: at,
+  ...(role === 'user' ? { origin: { kind: 'human' }, promptSource: 'typed' } : {}),
 });
 
 /**
@@ -333,7 +354,7 @@ test('a table and a ruling are already marked, and nothing else is', async ({ pa
     + 'alongside the prose turn, the Hebrew turn and the shell pipeline: the owner retired that '
     + 'grammar on 2026-09-11 (441 of 613 anchors re-counted, `automatic/report` 101 to 0). A '
     + 'detector that widened, or a report detector that came back, would add a row here.',
-  ).toEqual([RULING, TABLE_LABEL].sort());
+  ).toEqual([RULING_LABEL, TABLE_LABEL].sort());
 
   // The keyed words only — the glyph beside each is `.g`, asserted as a mark
   // beside its word by the test above rather than compared as text here.
@@ -530,6 +551,15 @@ test('the automatic pass runs from a button, and reports what it changed', async
     }
   });
   await sweep.click();
+  // **THIS PRESS IS A FIRST RUN AGAIN, and correctly so** — owner ruling
+  // 2026-09-16, `TASK-a-user-who-installs-mycontext-mid-project-has-conversations`:
+  // `report.firstRun` is the SERVER's own count of the rows the pass currently
+  // owns, not a memory of whether the button was ever pressed before. Dropping
+  // every pass-owned row above put that count back to zero, so this press
+  // shows the same plan-before-you-act screen a brand new workspace would —
+  // "Mark all 2" — and has to be confirmed like one.
+  await expect(said).toContainText('Mark all 2', { timeout: 30_000 });
+  await said.locator('.convanchsweepgo').click();
   await expect(said).toContainText('2 newly marked', { timeout: 30_000 });
   await expect(said).toContainText('Nothing you marked yourself was touched');
   await expect(page.locator('.convanchor')).toHaveCount(2, { timeout: 20_000 });

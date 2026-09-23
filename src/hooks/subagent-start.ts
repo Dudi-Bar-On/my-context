@@ -11,7 +11,7 @@ import {
 } from '../core/workspace.ts';
 import {
   configUnreadableLine, hookBlockDecision, hookContext, hookParseErrorLine, ledgerKey,
-  parseHookInput, readStdinAsync, type HookInput,
+  parseHookInput, readStdinAsync, unrecordedHookLine, type HookInput,
 } from './io.ts';
 
 /**
@@ -271,7 +271,7 @@ export function buildSubagentStartOutput(input: HookInput, fallbackCwd: string):
     const projectRoot = findProjectRoot(cwd);
     if (!projectRoot) return '';
 
-    recordAudit(projectRoot, {
+    const attempted = recordAudit(projectRoot, {
       kind: 'injection',
       op: 'subagent-start',
       hook: 'SubagentStart',
@@ -286,6 +286,25 @@ export function buildSubagentStartOutput(input: HookInput, fallbackCwd: string):
       tokens: 0,
       note: `delivery=attempted agent=${agentId}`,
     });
+    // **THE LOAD-BEARING ONE, THIRD OF THREE.** The file header calls this row
+    // the whole mechanism: *"Writing it first turns a kill into evidence: one
+    // `subagent-start` row saying `delivery=attempted agent=<id>` and no
+    // matching `delivery=complete` for that agent."* An append that failed
+    // leaves a killed lane looking exactly like a lane that never started, and
+    // spends the cost of writing the row before the work for nothing.
+    //
+    // Disclosed HERE and immediately, before the selection runs, because the
+    // selection is the part that can be killed — a line written after it would
+    // share the fate of the row it is reporting on. The dispatch is not
+    // touched: `SubagentStart` blocks the lane it fires for, and refusing one
+    // over a log line is exactly what `INV-hooks-fail-open` forbids.
+    if (!attempted.written) {
+      process.stderr.write(unrecordedHookLine(
+        'SubagentStart', 'subagent-start', attempted.error ?? 'unknown',
+        `the delivery=attempted row for agent ${agentId} was NOT written, so if this lane is ` +
+        'killed there will be nothing to distinguish it from a lane that never started',
+      ));
+    }
 
     const injection = buildInjectionResult(cwd, {
       event: 'subagent',
@@ -293,6 +312,29 @@ export function buildSubagentStartOutput(input: HookInput, fallbackCwd: string):
       ...(dedupeKey === null ? {} : { dedupeKey }),
       agentId,
     });
+    // **The injection's OWN audit record** — `Injection.unrecorded`, returned
+    // rather than written from `core/inject.ts` because that builder is shared
+    // with the `load_context` MCP tool, which has no channel a person reads.
+    //
+    // **It is the `delivery=complete` half of the pair above.** The
+    // `delivery=attempted` row is disclosed thirty lines up on the grounds
+    // that an unwritten one leaves a killed lane looking like a lane that
+    // never started; this is the row that CLOSES that pair, and losing it
+    // leaves the opposite false reading — a lane that ran to completion
+    // looking exactly like one that was killed mid-selection, which is
+    // precisely the pair `core/inject.ts` relaxes its own record guard to
+    // keep apart. Both halves of that mechanism now say when they are gone.
+    //
+    // The dispatch is untouched: `INV-hooks-fail-open`, and a lane is not
+    // refused over a log line.
+    if (injection.unrecorded !== null) {
+      process.stderr.write(unrecordedHookLine(
+        'SubagentStart', injection.unrecorded.op, injection.unrecorded.error,
+        `this lane was delivered ${injection.deliveredIds.length} item(s) and nothing recorded ` +
+        `the completion, so the delivery=attempted row for agent ${agentId} has no partner and ` +
+        'this dispatch is indistinguishable in the log from a lane killed mid-selection',
+      ));
+    }
     /**
      * **D41's third door, and the one that carries the weight** (spec §8.1,
      * `plan:store seq:2` Task 7).

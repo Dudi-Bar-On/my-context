@@ -10,8 +10,9 @@
  * and reading happens on `/doc.html` in a new tab. The renderer did NOT go
  * with it: `markdownNodes` still draws every corpus item body in the detail
  * pane, under a policy that refuses raw HTML outright, and it is the only
- * thing standing between an agent-authored body and a page on a server that
- * sends no Content-Security-Policy.
+ * thing standing between an agent-authored body and a page — with the
+ * Content-Security-Policy the server sends since 2026-09-23 (ruling E) as the
+ * second net, never the first.
  *
  * So the screen's own tests went with the screen, and every assertion about
  * what the RENDERER produces is here, unchanged in what it asks. The three

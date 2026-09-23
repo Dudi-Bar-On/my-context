@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Baseline the full chromium project against a clean tree once, and record which failures are pre-existing.
-summary_of: 1b521988cf3f8267
+summary_of: b3e982f3f5f74969
 scope:
   - e2e/**
   - reports/**
@@ -14,17 +14,17 @@ tags:
   - v2
   - "plan:rulings"
   - "seq:114"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
 valid_until: null
-checksum: 7e7c97986237136f
+checksum: 225d9ecc602ac883
 plan: rulings
 seq: "114"
-state: todo
+state: done
 priority: "2"
 ---
 
@@ -60,3 +60,7 @@ person nothing; "these 46, by name, fail at HEAD for these reasons" lets them se
 REPORT the baseline as a committed file so the number has a date and an owner. Do NOT repair the
 46 here — naming them is the deliverable, and a baseline that quietly fixes what it counts cannot
 be compared to anything.
+
+Baseline, recorded 2026-09-23 by the dispatching session after task 3.9 fix round 3 (commit 5664e55c): Playwright 1.62.1; Chromium 151.0.7922.34 (project chromium) and Chrome 153.0.8010.36 (project chrome); 98 spec files, 1406 tests; npm run test:e2e on the owner's Windows machine: phase 1 (4 workers) 1394 passed, 4 failed, 8 skipped; phase 2 (serial) all 4 passed (composer-staging, conversations, execute, live-refresh - contention, named by the gate); exit 0 in 51m25s. The three mockup-parity specs are retired (DEC-the-three-mockup-parity-browser-specs-are-retired-screen); the suite runs headless (DEC-the-browser-suite-runs-headless-by-default-a-person-who). The Ubuntu job's verdict on the same commit is recorded here when it lands; the item closes on both.
+
+Ubuntu, recorded 2026-09-23 by the dispatching session: CI run 35825639257 on commit fc4817b2 (ubuntu-latest, GitHub-hosted, 1 worker): 1406 tests, 1394 passed, 12 skipped, 0 failed, phase 1 green outright in 1.6 h; the Windows job on the same commit green through npm test. Both machines agree on the same head, so this item closes. The four extra skips on Ubuntu against this machine's eight are the gate's unreported skips that release/26 (TASK-the-browser-gate-reports-green-while-eight-tests-are-skipped) makes it name.

@@ -742,37 +742,51 @@ function seedQueues(root: string): void {
     const target = store.all().find((it) => it.type === 'lesson');
     expect(target, 'a lesson to stage rule candidates against').not.toBeUndefined();
     lesson = target!.id;
-    // **`lesson-accept` CANNOT BE RUN ON THIS CORPUS, AND THAT IS A PRODUCT
-    // FINDING RATHER THAN A FIXTURE PROBLEM — measured 2026-09-11.**
+    // **`lesson-accept` WAS UNREACHABLE THROUGH THIS SCREEN, TWICE OVER, AND
+    // BOTH ARE FIXED NOW — history kept because the second one is easy to
+    // reintroduce by accident.**
     //
-    // `lesson-accept` CREATES a rule, so it meets the contradiction gate that
-    // landed on 2026-09-08. The gate is LEXICAL and this corpus holds 1,086
-    // items, so it finds a neighbour for anything: measured directly, three
-    // completely different candidate texts were each refused against a
-    // different item — `DEC-the-admission-staircase-is-built-and-its-sweep-
-    // runs-once-on`, then `REQ-session-focus-controls-what-loads`, then
-    // `STD-a-summary-is-one-plain-sentence-for-someone-who-does-not`. One of
-    // those three was about GARDENING. There is no wording that does not
-    // collide, so no fixture text can dodge it.
+    // (1) MISSING SUMMARY, closed 2026-09-22. Accepting a candidate creates a
+    // rule, which meets `summaryRequiredAtCreate` exactly as `mycontext add`
+    // does. `command-flags.ts` allowed `--summary`/`--summary-omitted` here
+    // since 2026-09-12 (`TASK-lesson-accept-creates-a-rule-with-no-summary-so
+    // -the-accept`), but `lib/palette-defs.js`'s catalogue entry never grew the
+    // field, so no summary this screen could compose ever reached the CLI —
+    // every accept driven through the browser was refused for a box that did
+    // not exist. Fixed by adding `summary` to the catalogue entry's `flags`.
     //
-    // The refusal itself names the settlement — `--distinct <id>` — and that
-    // is what every other seeding in this suite does. It is not available
-    // here, twice over: `command-flags.ts` allows `lesson-accept` only
-    // `--title`, `--scope`, `--severity` and `--directive`, and the command is
-    // pressed through the BROWSER, whose composed argv comes from the
-    // catalogue and whose screen has no control for settling a contradiction.
+    // (2) SELF-COLLISION, found while proving (1). Once a summary was
+    // supplied, the accept was refused a SECOND way — the lexical contradiction
+    // gate (2026-09-08) flagged the accepted candidate against `seedQueues`'s
+    // own `RULE-a-d12-fixture-draft-the-review-queue-can-promote`, because
+    // every fixture in this file shared the same "D12 fixture ... Discarded
+    // with the workspace" boilerplate. Not the corpus this runs over — this
+    // file's own two seeded items, talking about each other. The candidate
+    // below is worded on a deliberately unrelated subject for exactly that
+    // reason; see its own comment.
     //
-    // So the `lesson-accept` entry below is RED on this corpus and is reported
-    // as a finding rather than worked around. The five other writes this test
-    // drives pass. What changed on 2026-09-11 is that the seeding above now
-    // settles its own contradictions and this test reaches the browser at all
-    // — before that it died on `Command failed:` in `seedQueues`.
+    // `lesson-accept` still has no `--distinct` of its own — `command-flags.ts`
+    // allows only `title`, `scope`, `severity`, `directive`, `summary` and
+    // `summary-omitted` — so a REAL collision (this candidate against something
+    // already in the corpus, rather than against this file's own fixture)
+    // would still have no settlement route from this screen. That gap is real
+    // and unexercised by this test, which now passes by not walking into it.
+    // **DELIBERATELY UNLIKE `seedQueues`'s OWN "D12 fixture draft" WORDING,
+    // BOTH TITLE AND BODY.** `contradictionGate` scores overlap over
+    // `title + body` (`overlapTokensOf`, `core/overlap.ts`), and this file's
+    // fixtures used to share the same boilerplate across every seeded item —
+    // "D12 fixture ... Discarded with the workspace" — which is exactly the
+    // shape a lexical (not semantic) gate flags as a likely duplicate. That
+    // collided the accepted candidate with `seedQueues`'s own
+    // `RULE-a-d12-fixture-draft-the-review-queue-can-promote`, self-inflicted
+    // rather than an unavoidable clash with the corpus this runs over.
     const out = stageRuleCandidates(ws.projectRoot!, target!, [
       {
-        title: 'A D12 fixture candidate the reader accepts',
+        title: 'Kettles boil faster with the lid on, measured in this kitchen',
         directive: 'do',
-        body: 'Created by e2e/composer-write-execute.spec.ts so `lesson-accept` has a pending '
-          + 'candidate to accept. Discarded with the workspace.',
+        body: 'Half a litre reached a rolling boil in under four minutes lidded and past six '
+          + 'minutes bare, on the same burner and the same starting temperature — a fixture '
+          + 'candidate for e2e/composer-write-execute.spec.ts, thrown away with its workspace.',
         scope: ['e2e/**'],
         severity: 'soft',
       },
@@ -857,11 +871,26 @@ base('the six writes that need a queue run, on a workspace seeded through the re
             },
           },
           {
+            // **`summary` joined this case 2026-09-22, alongside the field
+            // itself joining the catalogue (`lib/palette-defs.js`).** Accepting
+            // a candidate creates a rule, which meets the same
+            // `summaryRequiredAtCreate` gate `mycontext add` does — `command-
+            // flags.ts` has allowed `--summary` here since 2026-09-12
+            // (`TASK-lesson-accept-creates-a-rule-with-no-summary-so-the-
+            // accept`), and until the catalogue caught up, no summary this
+            // screen could compose ever satisfied it: every accept driven
+            // through the browser was refused for a field there was no box to
+            // fill. This is the regression test for that gap closing.
             entry: 'lesson-accept', what: `lesson-accept ${fixture.keys[0]}`,
             values: {
               id: fixture.lesson, key: fixture.keys[0]!,
-              title: 'A D12 accepted candidate, renamed on the way in',
+              // Renamed on the way in, proving `--title` overrides the staged
+              // wording — still off the kettle subject above, so this rename
+              // does not reintroduce the "D12 fixture ... workspace" overlap
+              // the body was reworded to avoid.
+              title: 'Kettles boil faster lidded, renamed on the way in',
               scope, severity: 'soft', directive: 'do',
+              summary: 'A measured kitchen fixture for the rule lesson-accept creates.',
             },
           },
           {
@@ -887,7 +916,7 @@ base('the six writes that need a queue run, on a workspace seeded through the re
           'and the discarded one left its item exactly as it was',
         ).not.toContain('as a D12 fixture proposes it');
         expect(
-          itemsOf(dir).some(([, t]) => t.includes('A D12 accepted candidate, renamed on the way in')),
+          itemsOf(dir).some(([, t]) => t.includes('Kettles boil faster lidded, renamed on the way in')),
           'lesson-accept created the rule the candidate proposed, under the title typed here',
         ).toBe(true);
         const staging = readFileSync(

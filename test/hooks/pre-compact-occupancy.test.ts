@@ -1,3 +1,10 @@
+// @basis TASK-one-number-means-nothing-cited-could-not-read-and-read-only,
+//   STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is
+//
+// Only the transcript clause of `nothing the hook already recorded or wrote
+// changed` rests on that item. Everything else in this file is about the
+// occupancy pair and predates the basis rule (`scripts/basis-undeclared.txt`);
+// no claim is made about it here.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync } from 'node:fs';
@@ -288,6 +295,13 @@ test('nothing the hook already recorded or wrote changed', () => {
   const row = preCompactRow({ trigger: 'auto', percent: 92.7, seen: ['CONST-a'] });
   assert.deepEqual(row.itemIds, ['CONST-a']);
   assert.match(row.note, /1 from the seen file/u);
-  assert.match(row.note, /0 cited in the transcript/u);
+  // This payload carries NO `transcript_path`, and until
+  // `TASK-one-number-means-nothing-cited-could-not-read-and-read-only` the
+  // clause here read `0 cited in the transcript` — the unmeasured case wearing
+  // the measured one's number, which is the defect that item names. The
+  // assertion is kept, pointed at the answer that case now gets: strictly more
+  // is pinned than before, not less.
+  assert.match(row.note, /no transcript was scanned \(no transcript_path on the payload\)/u);
+  assert.doesNotMatch(row.note, /0 cited in the transcript/u);
   assert.match(row.note, /1 captured/u);
 });

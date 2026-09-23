@@ -2,11 +2,11 @@
 id: TASK-the-tree-walker-must-ignore-the-design-s-own-proposed
 type: task
 title: the tree walker must ignore the design s own PROPOSED annotation
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: The comparison keeps reporting the design's own note to itself as a missing feature; teach it to skip that, and only that.
-summary_of: f760e50a39a91e5a
+summary_of: b656370f2bd8fa9a
 scope: []
 tags:
   - v2
@@ -21,8 +21,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-24
-valid_until: null
-checksum: 5aa77695a360a1fb
+valid_until: 2026-09-22
+checksum: 16fdb7599f306a95
 plan: walk
 seq: "4"
 state: todo
@@ -61,3 +61,5 @@ which reads as a placement bug and is not one. Getting this wrong in either
 direction is bad: a blanket skip hides the app drawing a proposal chip the
 design does not, and no skip keeps three false findings on proc, port and
 packs.
+
+Retired 2026-09-22 (release phase 2, owner ruling H, runbook §7.2): e2e/tree-parity.spec.ts only measures and is itself retired by decision B in phase 3.

@@ -18,17 +18,17 @@ tags:
   - disclosure
   - "plan:walk"
   - "seq:147"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 928ef3b2a275fcd5
+checksum: 69e12a870a97e846
 plan: walk
 seq: "147"
-state: todo
+state: done
 priority: "2"
 ---
 

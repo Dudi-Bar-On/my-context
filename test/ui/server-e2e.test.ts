@@ -1,3 +1,4 @@
+// @basis TASK-release-phase-3-the-defects, TASK-no-content-security-policy-header-and-no-meta-on-a-local
 /**
  * Endpoints tested as the MCP server is: spawn a real process, make real
  * requests (spec §6). Security assertions are first-class here.
@@ -77,21 +78,36 @@ async function api(
 function assertSecurityHeaders(
   response: Response, what: string, expectedCacheControl: 'no-store' | 'no-cache' = 'no-store',
 ): void {
-  // **The CSP is asserted ABSENT, on purpose.**
+  // **The CSP is asserted by its EXACT VALUE, on purpose — owner ruling E,
+  // 2026-09-21.**
   //
-  // Spec §2 specifies one; the owner retired it on 2026-08-22 and
-  // `security.ts` records why at length. Asserting the absence is what keeps
-  // that a decision rather than a drift: a CSP reappearing without anyone
-  // choosing it fails here, and so does one silently vanishing again if it is
-  // ever restored. `INV-nothing-is-dropped-silently` applies to a header the
-  // same as to an item.
+  // This assertion stood the other way up from 2026-08-22 until today: it
+  // required the header to be ABSENT, because the owner had retired it and a
+  // CSP reappearing without anyone choosing it would have been a drift. That
+  // reasoning is unchanged and only its direction moved. Ruling E turns the
+  // header back on under one condition — that every command-executing screen
+  // is PROVED to still execute its commands under it, which
+  // `e2e/csp-executes.spec.ts` does in a browser — and `security.ts` carries
+  // the ruling, the policy and what the proof measured.
+  //
+  // The whole STRING rather than a substring or a presence check, and that is
+  // the point of it: `script-src 'self'` is the directive the header exists
+  // for, and a policy silently widened to `'unsafe-inline'` by a future fix
+  // would pass any check that only asked whether a CSP was sent.
+  // `INV-nothing-is-dropped-silently` applies to a directive the same as to an
+  // item. Changing this value is a deliberate act: change it in the same
+  // commit that changes `SECURITY_HEADERS`, and re-run the browser proof.
   assert.equal(
-    response.headers.get('content-security-policy'), null,
-    `${what}: the CSP is retired (see security.ts). Re-adding it is a deliberate
-     act — update this assertion in the same commit that sends the header.`,
+    response.headers.get('content-security-policy'),
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    + "img-src 'self' data:; connect-src 'self'",
+    `${what}: the CSP is sent under owner ruling E (see security.ts), and this is its exact
+     value. Changing it is a deliberate act — update this assertion in the same commit that
+     changes the header, and re-run e2e/csp-executes.spec.ts.`,
   );
-  // Stands in for the retired `frame-ancestors 'none'`: the framing half of
-  // the DNS-rebinding defence for a loopback server holding a private corpus.
+  // Carries `frame-ancestors 'none'`, which the policy above deliberately does
+  // NOT restate: the framing half of the DNS-rebinding defence for a loopback
+  // server holding a private corpus, spelled once.
   assert.equal(response.headers.get('x-frame-options'), 'DENY', what);
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff', what);
   assert.equal(response.headers.get('referrer-policy'), 'no-referrer', what);
@@ -183,14 +199,24 @@ test('wrong token 403, missing header 401, bad Origin 403 — and no CORS header
     // transcript nor a session that dispatched no lanes. Its three real states
     // are held apart in `test/cli/statusline-session-scale.test.ts`, which owns
     // the reads both surfaces make.
+    // `codeUnmeasured` (`TASK-an-install-whose-sources-cannot-be-walked-
+    // reports-its-code`) is the fifth field and it is `staleCode`'s other half:
+    // that one became `boolean | null`, where `null` says the server never
+    // managed to walk its own sources, and this one names which directory and
+    // which error. Present either way, for the reason `git` is present either
+    // way on `/api/meta`. Its unmeasured state is driven end to end in
+    // `test/ui/code-skew.test.ts`, which owns the three readings.
     const body = await good.json() as {
-      ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null }; occupancy: unknown;
+      ok: boolean; staleCode: boolean | null; codeUnmeasured: unknown;
+      corpus: { drifted: boolean | null }; occupancy: unknown;
       session: unknown;
     };
-    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'occupancy', 'ok', 'session', 'staleCode']);
+    assert.deepEqual(Object.keys(body).sort(),
+      ['codeUnmeasured', 'corpus', 'occupancy', 'ok', 'session', 'staleCode']);
     assert.equal(body.session, null, 'a ping that names no session asked nothing of the disk either');
     assert.equal(body.ok, true);
-    assert.equal(typeof body.staleCode, 'boolean');
+    assert.ok(body.staleCode === null || typeof body.staleCode === 'boolean',
+      'the heartbeat must always carry a code finding, even when it is "not known"');
     assert.ok(
       body.corpus.drifted === null || typeof body.corpus.drifted === 'boolean',
       'the heartbeat must always carry a corpus finding, even when it is "not known"',

@@ -1666,6 +1666,13 @@ flowchart LR
 הנעוץ באישור שלכידה נורמטיבית כבר מזכה בו, כך שנעיצה לעולם אינה מאושרת כמילה שנשמעת
 חינמית. <span dir="ltr">`mycontext unpin <id>`</span> מוציאה אותו משם בחזרה.
 
+קורפוס שעדיין לא נעץ שום דבר אומר זאת, באותן מילים, בשני הרגעים שבהם אתה נמצא במצב לפעול
+על כך: מיד אחרי <span dir="ltr">`mycontext init`</span>, ובאישור שמציגה
+<span dir="ltr">`mycontext add`</span> עבור הלכידה הנורמטיבית הראשונה שקורפוס לא-נעוץ יכול
+לבצע —
+<span dir="ltr">`my_context: nothing is pinned yet, so governing items arrive as titles until one is pinned with --always or \`mycontext pin\`.`</span>
+ברגע שמשהו נעוץ, אף אחד משני המקומות לא מדפיס זאת שוב.
+
 ### בדיוק בזמן — אלה שחלים על מה שאתה נוגע בו
 
 `scope` הוא רשימה של תבניות קבצים. כש-Claude עומד לקרוא או לערוך קובץ, my_context מחפש
@@ -2704,62 +2711,73 @@ Bodies carry passwords and reset tokens; logs are retained for 90 days.
 What may be changed on a `rule`, and by which command.
 
 Every `normative`-tier item:
-┌────────────┬───────────┬───────────────────────┬────────────────────────┬────────────────────────┐
-│ name       │ stored as │ values                │ how to change it       │ what it is             │
-├────────────┼───────────┼───────────────────────┼────────────────────────┼────────────────────────┤
-│ title      │ field     │ free text             │ mycontext edit <id>    │ The one-line name.     │
-│            │           │                       │ --title "…"            │ Changing it does not   │
-│            │           │                       │                        │ change the id.         │
-│ body       │ field     │ free text             │ mycontext edit <id>    │ What the item actually │
-│            │           │                       │ --body "…" | --file    │ says. On a governing   │
-│            │           │                       │ <path>                 │ item this is gated and │
-│            │           │                       │                        │ previewed.             │
-│ summary    │ field     │ free text             │ mycontext edit <id>    │ One plain sentence     │
-│            │           │                       │ --summary "…"          │ saying what this item  │
-│            │           │                       │                        │ IS and why it matters, │
-│            │           │                       │                        │ for a reader who does  │
-│            │           │                       │                        │ NOT know this codebase │
-│            │           │                       │                        │ - plain words, no ids, │
-│            │           │                       │                        │ no paths, no numbers.  │
-│            │           │                       │                        │ Max 250 chars; the     │
-│            │           │                       │                        │ body keeps the         │
-│            │           │                       │                        │ precision.             │
-│            │           │                       │                        │ `--summary=` removes   │
-│            │           │                       │                        │ it.                    │
-│ scope      │ field     │ free text             │ mycontext edit <id>    │ The globs this         │
-│            │           │                       │ --scope "a/**,b/**"    │ governs. Empty means   │
-│            │           │                       │                        │ everywhere, unless the │
-│            │           │                       │                        │ category sets          │
-│            │           │                       │                        │ scopePolicy required.  │
-│ tags       │ tag       │ free text             │ mycontext edit <id>    │ REPLACES the whole     │
-│            │           │                       │ --tags "a,b"           │ list. Read the current │
-│            │           │                       │                        │ tags back first or the │
-│            │           │                       │                        │ others are dropped.    │
-│ status     │ field     │ draft, active,        │ mycontext edit <id>    │ Whether it governs.    │
-│            │           │ validated,            │ --status <status>      │ Moving a normative     │
-│            │           │ deprecated,           │                        │ item into active or    │
-│            │           │ superseded            │                        │ validated is gated and │
-│            │           │                       │                        │ previewed.             │
-│ severity   │ field     │ hard, soft            │ mycontext harden <id>  │ Binding or advisory.   │
-│            │           │                       │ | mycontext soften     │ `edit --severity` is   │
-│            │           │                       │ <id>                   │ the same change under  │
-│            │           │                       │                        │ another name.          │
-│ always     │ field     │ true, false           │ mycontext pin <id> |   │ Injected at every      │
-│            │           │                       │ mycontext unpin <id>   │ session start. `edit   │
-│            │           │                       │                        │ --always=true` is the  │
-│            │           │                       │                        │ same change under      │
-│            │           │                       │                        │ another name.          │
-│ continuity │ field     │ true, false           │ mycontext edit <id>    │ Re-delivered on every  │
-│            │           │                       │ --continuity[=false]   │ session start and      │
-│            │           │                       │                        │ after every            │
-│            │           │                       │                        │ compaction, against    │
-│            │           │                       │                        │ its own budget. For    │
-│            │           │                       │                        │ what the NEXT session  │
-│            │           │                       │                        │ needs in order not to  │
-│            │           │                       │                        │ start over — a pointer │
-│            │           │                       │                        │ plus a bounded digest, │
-│            │           │                       │                        │ never a document.      │
-└────────────┴───────────┴───────────────────────┴────────────────────────┴────────────────────────┘
+┌─────────────┬───────────┬───────────────────────┬───────────────────────┬────────────────────────┐
+│ name        │ stored as │ values                │ how to change it      │ what it is             │
+├─────────────┼───────────┼───────────────────────┼───────────────────────┼────────────────────────┤
+│ title       │ field     │ free text             │ mycontext edit <id>   │ The one-line name.     │
+│             │           │                       │ --title "…"           │ Changing it does not   │
+│             │           │                       │                       │ change the id.         │
+│ body        │ field     │ free text             │ mycontext edit <id>   │ What the item actually │
+│             │           │                       │ --body "…" | --file   │ says. On a governing   │
+│             │           │                       │ <path>                │ item this is gated and │
+│             │           │                       │                       │ previewed.             │
+│ summary     │ field     │ free text             │ mycontext edit <id>   │ One plain sentence     │
+│             │           │                       │ --summary "…"         │ saying what this item  │
+│             │           │                       │                       │ IS and why it matters, │
+│             │           │                       │                       │ for a reader who does  │
+│             │           │                       │                       │ NOT know this codebase │
+│             │           │                       │                       │ - plain words, no ids, │
+│             │           │                       │                       │ no paths, no numbers.  │
+│             │           │                       │                       │ Max 250 chars; the     │
+│             │           │                       │                       │ body keeps the         │
+│             │           │                       │                       │ precision.             │
+│             │           │                       │                       │ `--summary=` removes   │
+│             │           │                       │                       │ it.                    │
+│ scope       │ field     │ free text             │ mycontext edit <id>   │ The globs this         │
+│             │           │                       │ --scope "a/**,b/**"   │ governs. Empty means   │
+│             │           │                       │                       │ everywhere, unless the │
+│             │           │                       │                       │ category sets          │
+│             │           │                       │                       │ scopePolicy required.  │
+│ tags        │ tag       │ free text             │ mycontext edit <id>   │ REPLACES the whole     │
+│             │           │                       │ --tags "a,b"          │ list. Read the current │
+│             │           │                       │                       │ tags back first or the │
+│             │           │                       │                       │ others are dropped.    │
+│ status      │ field     │ draft, active,        │ mycontext edit <id>   │ Whether it governs.    │
+│             │           │ validated,            │ --status <status>     │ Moving a normative     │
+│             │           │ deprecated,           │                       │ item into active or    │
+│             │           │ superseded            │                       │ validated is gated and │
+│             │           │                       │                       │ previewed.             │
+│ severity    │ field     │ hard, soft            │ mycontext harden <id> │ Binding or advisory.   │
+│             │           │                       │ | mycontext soften    │ `edit --severity` is   │
+│             │           │                       │ <id>                  │ the same change under  │
+│             │           │                       │                       │ another name.          │
+│ always      │ field     │ true, false           │ mycontext pin <id> |  │ Injected at every      │
+│             │           │                       │ mycontext unpin <id>  │ session start. `edit   │
+│             │           │                       │                       │ --always=true` is the  │
+│             │           │                       │                       │ same change under      │
+│             │           │                       │                       │ another name.          │
+│ continuity  │ field     │ true, false           │ mycontext edit <id>   │ Re-delivered on every  │
+│             │           │                       │ --continuity[=false]  │ session start and      │
+│             │           │                       │                       │ after every            │
+│             │           │                       │                       │ compaction, against    │
+│             │           │                       │                       │ its own budget. For    │
+│             │           │                       │                       │ what the NEXT session  │
+│             │           │                       │                       │ needs in order not to  │
+│             │           │                       │                       │ start over — a pointer │
+│             │           │                       │                       │ plus a bounded digest, │
+│             │           │                       │                       │ never a document.      │
+│ source_file │ field     │ free text             │ mycontext edit <id>   │ The file this item was │
+│             │           │                       │ --detach-source --yes │ snapshotted from, and  │
+│             │           │                       │                       │ its checksum — set at  │
+│             │           │                       │                       │ capture, never         │
+│             │           │                       │                       │ writable after. The    │
+│             │           │                       │                       │ one supported edit     │
+│             │           │                       │                       │ clears both: for a     │
+│             │           │                       │                       │ source that no longer  │
+│             │           │                       │                       │ exists, or was         │
+│             │           │                       │                       │ recorded outside the   │
+│             │           │                       │                       │ repository.            │
+└─────────────┴───────────┴───────────────────────┴───────────────────────┴────────────────────────┘
 
 And on a `rule` in particular:
 ┌───────────┬───────────┬──────────┬───────────────────────────────┬───────────────────────────────┐
@@ -3007,7 +3025,7 @@ changes, can be.
 | פקודה | מה היא עושה |
 |---|---|
 | <span dir="ltr">`mycontext export --out <path>`</span> | כותבת את הקורפוס הזה לנתיב שמחוץ לסביבת העבודה, כספרייה (ברירת המחדל) או כקובץ ZIP אחד עם <span dir="ltr">`--format zip`</span>. <span dir="ltr">`--as-pack --pack-name <name> --pack-version <text>`</span> מקרינה אותו עבור זר; <span dir="ltr">`--type`, `--status`</span> ו-<span dir="ltr">`--tag`</span> מצמצמות את מה שנוסע; <span dir="ltr">`--no-history`</span> מונעת את רשומות השינויים; <span dir="ltr">`--dry-run`</span> מדפיסה את התצוגה המקדימה ואינה כותבת דבר. היא מסרבת ליעד שכבר מחזיק משהו, ולעולם אינה כותבת בתוך <span dir="ltr">`.my_context/`</span>. [מה נוסע, ומה לא](#מסירת-הקורפוס-הלאה--mycontext-export) |
-| <span dir="ltr">`mycontext pack import <path>`</span> | קוראת ארטיפקט שמישהו אחר כתב ומנחיתה את פריטיו כאן **כטיוטות** — שום דבר שהיא מביאה אינו שולט בדבר עד שתקדמו אותו. היא מדפיסה דוח התנגשויות לפני שהיא שואלת משהו, בכל מסלול ובכלל זה עם <span dir="ltr">`--yes`</span>; <span dir="ltr">`--name <text>`</span> מתייקת אותה תחת שם שאתם בוחרים, <span dir="ltr">`--dry-run`</span> אינה כותבת דבר, ו-<span dir="ltr">`--overwrite-changed`</span> עונה על האישור ה**שני** — זה ש-<span dir="ltr">`--yes`</span> במכוון אינו עונה עליו. [שתי שאלות, לא אחת](#הבאת-אחת-פנימה--mycontext-pack-import) |
+| <span dir="ltr">`mycontext pack import <path>`</span> | קוראת חבילה שמישהו אחר כתב ומנחיתה את פריטיו כאן **כטיוטות** — שום דבר שהיא מביאה אינו שולט בדבר עד שתקדמו אותו. היא מדפיסה דוח התנגשויות לפני שהיא שואלת משהו, בכל מסלול ובכלל זה עם <span dir="ltr">`--yes`</span>; <span dir="ltr">`--name <text>`</span> מתייקת אותה תחת שם שאתם בוחרים, <span dir="ltr">`--dry-run`</span> אינה כותבת דבר, ו-<span dir="ltr">`--overwrite-changed`</span> עונה על האישור ה**שני** — זה ש-<span dir="ltr">`--yes`</span> במכוון אינו עונה עליו. [שתי שאלות, לא אחת](#הבאת-אחת-פנימה--mycontext-pack-import) |
 | <span dir="ltr">`mycontext pack list`</span> | כל חבילה שיובאה לכאן: הגרסה שלה, כמה פריטים הביאה, מתי, ומהיכן. זו הרשומה ש-<span dir="ltr">`mycontext review promote --all --pack <name>`</span> קוראת |
 
 </div>
@@ -3052,9 +3070,7 @@ review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
 current text. Read them as diffs with `mycontext review revisions`.
 
-usage: 1 session(s) recorded. 3 normative item(s) not injected in the last 20 session(s) — not
-evidence they are unused, only that they were not selected. See `mycontext decay`.
-  (only 1 session(s) recorded so far, so "cold" mostly means "new")
+usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
 
@@ -3071,6 +3087,19 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 <!-- example: doctor -->
 ```text
 my_context doctor: 0 error(s), 0 warning(s), 0 note(s) across 0 finding(s).
+
+my_context: notes about the checks themselves — what they could not measure, said once. These are
+  NOT findings, are not counted above, and nothing is owed on them.
+
+  governing_spill_coverage — about the `governing_spill_pressure` check
+    `governing_spill_pressure` did not look at this corpus's spill history at all, because the audit
+    query index has never been built in this workspace, which is an empty state and not a fault —
+    nothing here has run `mycontext audit` yet. That is an UNMEASURED run and not a clean one:
+    nothing is being asserted here about whether any governing item is spilling repeatedly, in
+    either direction. This check is READ-ONLY and deliberately so — building or catching up that
+    index is a write, and it is `mycontext audit`'s job rather than doctor's — so run `mycontext
+    audit` and this line is replaced by whatever the history actually says. Nothing else in this
+    report is affected: no other check reads the index.
 ```
 <!-- /example -->
 
@@ -3084,14 +3113,15 @@ my_context doctor: 0 error(s), 0 warning(s), 0 note(s) across 0 finding(s).
 
 <!-- example: decay --summary -->
 ```text
-my_context decay — items not injected in the last 20 session(s). The ledger holds 1 session(s).
+my_context decay — items not injected in the last 20 session(s). The ledger holds 0 session(s).
   "cold" means: not auto-injected in the last window of sessions. It does NOT mean unused — the
   ledger records injection, not reading or reliance, so a new item, and any item consulted via
   `show`, MCP `get_item`, or the Markdown file directly, look exactly like an abandoned one here.
   Do not supersede or deprecate anything on this report alone — verify real usage first.
-  (only 1 session(s) recorded so far, so "cold" mostly means "new")
+  (no sessions recorded yet — nothing here has been measured; "cold" currently means only "never
+  injected")
 
-cold 3, warm 2, of which 2 unrestricted. Rows with `mycontext decay` (default) or `--full`.
+cold 5, warm 0, of which 2 unrestricted. Rows with `mycontext decay` (default) or `--full`.
 ```
 <!-- /example -->
 
@@ -3713,10 +3743,16 @@ git bundle create ../corpus.bundle HEAD
 בדיקת גרסה ברשת, מפני שהמוצר הזה אינו מבצע שום בקשת רשת כלל. המסמך הזה הוא גם המקום שבו
 "עדכון חבילה" מתואר, מפני שהדרך היחידה לעשות זאת היא לייבא את הארטיפקט החדש שוב.
 
-<span dir="ltr">`mycontext pack import <path>`</span> קוראת ארטיפקט שמישהו אחר כתב —
+<span dir="ltr">`mycontext pack import <path>`</span> קוראת חבילה שמישהו אחר כתב —
 ספרייה או ZIP — ומנחיתה את פריטיו בסביבת העבודה הזאת **כטיוטות**. זה נכון לכל פריט בכל
 חבילה, בשני הדרגים: פריט שהיה <span dir="ltr">`active`</span> בקורפוס של המחבר מגיע אליכם
 <span dir="ltr">`draft`</span>, ואינו שולט בדבר עד שתקדמו אותו.
+
+**ייצוא מלא מסורב על הסף, לפני שדבר נוסף בו נקרא בכלל.** הוא ארכיון להעתיק בחזרה — עם
+<span dir="ltr">`cp`</span>, <span dir="ltr">`git clone`</span>, או בכל דרך שבה הוא הגיע —
+ולא משהו שהפקודה הזאת מייבאת. <span dir="ltr">`mycontext export --as-pack`</span> (למעלה)
+הוא מה שמקרין קורפוס למשהו ש-<span dir="ltr">`pack import`</span> קוראת; <span dir="ltr">`mycontext export`</span>
+רגילה כותבת את הסוג האחר, וזאת הפקודה שלא תיקח כזה, כולל <span dir="ltr">`--name`</span>.
 
 **המניפסט מאומת לפני שמשהו מנותח, וכישלון הוא סירוב.** ארטיפקט שהבתים שלו לא הגיעו שלמים
 אינו מיובא חלקית, ובמכוון אין דגל לבקש זאת. אותו דבר נכון לכל סירוב אחר —
@@ -3753,7 +3789,8 @@ git bundle create ../corpus.bundle HEAD
 ב-<span dir="ltr">`mycontext pack list`</span> ולא רק לפי המקום שכל אחת הגיעה ממנו. אין זה מה
 ששומר על הרשומות שלהן בנפרד: ייבוא מתויק תחת השם שלו *וגם* תחת מיקום הארטיפקט שסביבת העבודה
 הזאת קראה ממנו, ולכן אף אחת מהן אינה יכולה לנחות על רשומת החברות של האחרת, בין אם העברתם את
-הדגל ובין אם לאו. הוא גם **נדרש** עבור ייצוא מלא, שאינו נושא שם כלל.
+הדגל ובין אם לאו. ייצוא מלא כלל אינו מגיע לדגל הזה: הוא אינו נושא שם והוא מסורב על הסף
+לפני ש-<span dir="ltr">`--name`</span> נשקל בכלל — ראו למעלה.
 
 **<span dir="ltr">`mycontext init --pack <path>`</span> מייסדת סביבת עבודה מארטיפקט, בפקודה
 אחת.** זו אותה מימוש בדיוק, מגיעים אליו מהפקודה היחידה שרצה *לפני* שקיימת סביבת עבודה:
@@ -3775,8 +3812,9 @@ git bundle create ../corpus.bundle HEAD
 נדחה עוד לפני שקיימת ספרייה. כישלון אחרי הנקודה הזאת מוחק את מה שנוצר ואומר מי משני
 המקרים קרה, מפני ש"initialized" אינה מילה שהפקודה הזאת מדפיסה על קורפוס שאינו שם.
 ל-<span dir="ltr">`init`</span> אין <span dir="ltr">`--name`</span>, ולכן ייצוא מלא — שאינו
-נושא שם — מסורב שם ומופנה אל
-<span dir="ltr">`mycontext pack import <path> --name <text>`</span>.
+נושא שם — מסורב גם שם, אותו ארטיפקט בדיוק ש-<span dir="ltr">`pack import`</span> גם הוא לא
+ייקח: הריצו קודם <span dir="ltr">`mycontext export --as-pack`</span> כדי לכתוב משהו
+ששתי הפקודות יכולות לייסד ממנו סביבת עבודה.
 
 **ההיסטוריה של חבילה מתויקת בנפרד משלכם, ומה שלא ניתן היה לקרוא נספר.** רשומות השינויים
 שלה נוחתות תחת <span dir="ltr">`.audit/imported/<pack>/`</span> — ספרייה שהמונה של היומן
@@ -4108,9 +4146,7 @@ review queue: 1 draft(s) pending review — walk it with `mycontext review`.
 1 pending revision(s) on 1 item(s) — proposed by an agent and NOT applied; the items keep their
 current text. Read them as diffs with `mycontext review revisions`.
 
-usage: 1 session(s) recorded. 3 normative item(s) not injected in the last 20 session(s) — not
-evidence they are unused, only that they were not selected. See `mycontext decay`.
-  (only 1 session(s) recorded so far, so "cold" mostly means "new")
+usage: no sessions recorded yet — decay reporting starts once items begin to be injected.
   2 active normative item(s) carry no scope, so they apply to every file and compete for the jit
   budget on every file operation.
 
@@ -4349,9 +4385,9 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 
 | דגל | מה הוא עושה | היכן הוא עובד |
 |---|---|---|
-| <span dir="ltr">`--name <text>`</span> | איך לקרוא לחבילה **כאן**: הספרייה שההיסטוריה שלה מתויקת תחתיה, והשם ש-<span dir="ltr">`mycontext pack list`</span> מציג. ברירת המחדל היא השם שהמניפסט של החבילה מצהיר עליו, והוא **נדרש** עבור ייצוא מלא, שאינו נושא שם. שתי חבילות שקוראות לעצמן אותו דבר נשמרות בנפרד גם בלעדיו — כל ייבוא מתויק תחת השם שלו *וגם* תחת המקום שממנו נקרא — ולכן זו הדרך להבדיל ביניהן לפי שם ולא לפי מקור | <span dir="ltr">`pack import`</span> |
+| <span dir="ltr">`--name <text>`</span> | איך לקרוא לחבילה **כאן**: הספרייה שההיסטוריה שלה מתויקת תחתיה, והשם ש-<span dir="ltr">`mycontext pack list`</span> מציג. ברירת המחדל היא השם שהמניפסט של החבילה מצהיר עליו. ייצוא מלא אינו נושא שם וכלל אינו מגיע לדגל הזה: הוא מסורב על הסף לפני ש-<span dir="ltr">`--name`</span> נשקל. שתי חבילות שקוראות לעצמן אותו דבר נשמרות בנפרד גם בלעדיו — כל ייבוא מתויק תחת השם שלו *וגם* תחת המקום שממנו נקרא — ולכן זו הדרך להבדיל ביניהן לפי שם ולא לפי מקור | <span dir="ltr">`pack import`</span> |
 | <span dir="ltr">`--overwrite-changed`</span> | התשובה לאישור ה**שני** — להחליף את הפריטים ששיניתם בגרסאות של החבילה. הוא נפרד מ-<span dir="ltr">`--yes`</span> במכוון, ו-<span dir="ltr">`--yes`</span> אינו גורר אותו: הסכמה לייבוא אינה הסכמה להחליף כלל שאתם כתבתם. כל פריט שהוחלף נוחת <span dir="ltr">`draft`</span> והגרסה הקודמת שלו נשארת ביומן הביקורת. בחבילה שדלי ה-<span dir="ltr">`changed`</span> שלה ריק הוא מתקבל ואינו עושה דבר, כך שסקריפט שמייבא את אותה חבילה שוב ושוב אינו צריך לדעת מראש אם ההרצה הזאת מתנגשת. ב-<span dir="ltr">`mycontext init`</span> הוא **מסורב**, והמסר נוקב ב-<span dir="ltr">`pack import`</span>: לקורפוס שאינו קיים עדיין אין מה לדרוס, ודגל שמתקבל היכן שאינו יכול לעשות דבר הוא הבליעה השקטה שכל סירוב כאן קיים כדי למנוע | <span dir="ltr">`pack import`</span> |
-| <span dir="ltr">`--pack <path>`</span> | לייסד את סביבת העבודה הזאת מארטיפקט, באותה פקודה שיוצרת אותה. זהו הדגל היחיד ש-<span dir="ltr">`mycontext init`</span> מקבלת, וכל השאר — ארגומנט מיקומי, <span dir="ltr">`--global`, `--yes`, `--overwrite-changed`</span> — עדיין מסורבים בשמם. היא אינה שואלת דבר ואין לה <span dir="ltr">`--name`</span>, ולכן ייצוא מלא מסורב שם ומופנה אל <span dir="ltr">`pack import`</span> | `init` |
+| <span dir="ltr">`--pack <path>`</span> | לייסד את סביבת העבודה הזאת מארטיפקט, באותה פקודה שיוצרת אותה. זהו הדגל היחיד ש-<span dir="ltr">`mycontext init`</span> מקבלת, וכל השאר — ארגומנט מיקומי, <span dir="ltr">`--global`, `--yes`, `--overwrite-changed`</span> — עדיין מסורבים בשמם. היא אינה שואלת דבר ואין לה <span dir="ltr">`--name`</span>, ולכן ייצוא מלא מסורב גם שם, אותו ארטיפקט ש-<span dir="ltr">`pack import`</span> גם הוא לא ייקח | `init` |
 | <span dir="ltr">`--pack <name>`</span> | ב-<span dir="ltr">`review promote`</span>, של איזו חבילה הטיוטות ש-<span dir="ltr">`--all`</span> מקדמת — **שם**, לא נתיב: זה ש-<span dir="ltr">`mycontext pack list`</span> מציגה, השם שהחבילה תויקה תחתיו כאן. שם שאין לו רשומת ייבוא מסורב ומפנה לפקודה ההיא; גם <span dir="ltr">`--pack`</span> בלי <span dir="ltr">`--all`</span> מסורב, במקום להתקבל היכן ששום דבר לא היה קורא אותו | <span dir="ltr">`review promote`</span> |
 | <span dir="ltr">`--source <path>`</span> | איזה ייבוא של אותה חבילה, כששתי חבילות שיובאו לכאן קוראות לעצמן באותו שם. הוא מותאם מול המקור ש-<span dir="ltr">`mycontext pack list`</span> מדפיסה, בית אחר בית ובלי שום פתרון נתיבים, ורב-משמעות מסורבת עם רשימת המועמדים במקום להיפתר בניחוש | <span dir="ltr">`review promote`</span> |
 
@@ -4597,6 +4633,10 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
   Re-delivered on every session start and after every compaction, against its
   own budget. For what the NEXT session needs in order not to start over — a
   pointer plus a bounded digest, never a document.
+- **`source_file`** — a field; free text; `mycontext edit <id> --detach-source --yes`
+  The file this item was snapshotted from, and its checksum — set at capture,
+  never writable after. The one supported edit clears both: for a source that
+  no longer exists, or was recorded outside the repository.
 
 **Every `rationale`-tier item:**
 
@@ -4626,6 +4666,10 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
   Accepted on this tier, unlike severity and always: the continuity tier is not
   a governance tier and never consults isNormative, so a reference can carry
   it.
+- **`source_file`** — a field; free text; `mycontext edit <id> --detach-source --yes`
+  The file this item was snapshotted from, and its checksum — set at capture,
+  never writable after. The one supported edit clears both: for a source that
+  no longer exists, or was recorded outside the repository.
 
 **`contract`** — the `normative` rules above, and 3 of its own:
 

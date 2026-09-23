@@ -569,4 +569,4 @@ function main(): number {
   return gates.length > 0 ? 1 : 0;
 }
 
-if (isMainEntry(import.meta.filename, process.argv[1])) process.exit(main());
+if (isMainEntry(import.meta.filename, process.argv[1])) process.exitCode = main();

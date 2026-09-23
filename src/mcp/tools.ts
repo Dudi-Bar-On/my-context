@@ -1,12 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  auditFailureNote, kindOf, PROGRESS_OPS, readAudit, recordAudit, recordItemRead,
+  auditFailureNote, auditReadFailureNote, kindOf, PROGRESS_OPS, readAudit, recordAudit,
+  recordItemRead,
 } from '../core/audit.ts';
 import { RULE_DIRECTIVES } from '../core/command-flags.ts';
 import { askHandoverNow } from '../core/handover-ask.ts';
 import { computeDecay } from '../core/decay.ts';
-import { Ledger } from '../core/ledger.ts';
+import { Ledger, ledgerReadFailureNote } from '../core/ledger.ts';
 import { topUpLedger } from '../core/ledger-replay.ts';
 import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
@@ -56,7 +57,7 @@ import {
 } from '../lesson/derive.ts';
 import { readStagingDir } from '../lesson/staging.ts';
 import { illegibleExisting, renderCollisionReport, type CollisionReport } from '../pack/collide.ts';
-import { planImport } from '../pack/import.ts';
+import { FULL_EXPORT_REFUSAL, planImport } from '../pack/import.ts';
 import { readImportRecords } from '../pack/imported-audit.ts';
 import { readArtefact } from '../pack/reader.ts';
 // **The argument vocabulary every spec below is written in**, moved out by
@@ -199,6 +200,35 @@ function isDoctorDisclosure(finding: Finding): boolean {
   return typeof finding.about === 'string' && finding.about !== '';
 }
 
+/**
+ * **The one place the "could not measure" sentence is written, called by
+ * every tool that partitions `isDoctorDisclosure` findings out of its own
+ * counts.**
+ *
+ * `doctor` and `status_report` both run `isDoctorDisclosure` to keep a
+ * disclosure out of the health/finding counts it is not — a disclosure is a
+ * note a check makes about itself, never a defect (see `Finding.about`). A
+ * count that excludes a disclosure and a report that never PRINTS it are two
+ * different things; `status_report` used to do only the first, so an agent
+ * reading it saw a clean health line drawn over a check that stated, in the
+ * same run, it could not measure something. `TASK-status-report-drops-every
+ * -could-not-measure-disclosure-and` names that exact drop, and
+ * `INV-nothing-is-dropped-silently` is the invariant it violated. Extracted
+ * here so the two tools cannot drift back apart into saying it two ways on
+ * one surface.
+ */
+function appendDisclosures(lines: string[], disclosures: Finding[]): void {
+  if (disclosures.length === 0) return;
+  lines.push(
+    '',
+    'notes about the checks themselves — what they could not measure, said once. These ' +
+    'are NOT findings, are not counted above, and nothing is owed on them.',
+  );
+  for (const f of disclosures) {
+    lines.push(`  ${f.code} — about the "${f.about}" check: ${f.message}`);
+  }
+}
+
 /** Presentation only, for the `ready` tool's held rows — the same four
  * sentences `cli/commands/ready.ts`'s own `HELD_REASON` prints, kept in step
  * by `test/mcp/tools.test.ts` rather than imported: that module writes to a
@@ -229,22 +259,67 @@ const DECAY_COLD_CAVEAT =
  * `cli/commands/status.ts`'s own (unexported, near-identical) helpers take,
  * duplicated here for the same module-scope reason `DECAY_COLD_CAVEAT` is. An
  * unreadable audit log must not take a report down; the answer is then
- * computed from whatever the ledger already holds. */
+ * computed from whatever the ledger already holds.
+ *
+ * **Both degradations are now SAID, and both catches used to be bare.** This
+ * helper is the third copy of a shape whose other two copies
+ * (`cli/commands/status.ts`, `cli/commands/decay.ts`) were fixed by
+ * `TASK-one-unreadable-directory-makes-the-audit-projection-look` and
+ * `TASK-nine-sites-report-a-measured-zero-for-something-they-could` (M9). This
+ * one was missed, so `status_report` and `decay_report` — the surface an AGENT
+ * reads, where an under-count is acted on rather than merely read — kept
+ * under-counting in silence after the two human-facing commands had stopped.
+ *
+ *   - The INNER catch: the ledger opened but could not be brought up to date
+ *     from the audit log, so every count is a FLOOR. `auditReadFailureNote`.
+ *   - The OUTER catch: the ledger did not answer at all, so there is no count.
+ *     `ledgerReadFailureNote`, and `sessionsRecorded` is `null` rather than
+ *     `0`, because `0` is what drives *"no sessions recorded yet"* and
+ *     *"nothing here has been measured"* — the sentences a brand-new corpus
+ *     correctly gets (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-
+ *     thing-is`).
+ *
+ * The wordings are IMPORTED from `core/`, not written here: two surfaces
+ * inventing their own phrasing for one condition is how `status` and
+ * `status_report` come to disagree about what an unreadable ledger means, and
+ * this tool's own docblock forbids exactly that drift for its numbers. */
 function readLedgerView(
   root: string, dbPath: string, window: number,
-): { usage: ReturnType<Ledger['allUsage']>; recentlyUsed: string[]; sessionsRecorded: number } {
+): {
+  usage: ReturnType<Ledger['allUsage']>;
+  recentlyUsed: string[];
+  /** `null` when the ledger could not be read at all — never `0`, which is a
+   * real and different answer a fresh corpus legitimately produces. */
+  sessionsRecorded: number | null;
+  /** Why a count is short or missing, or `null` when nothing is wrong. Never
+   * absent, so a caller can tell "checked" from "this build does not say". */
+  logUnreadable: string | null;
+} {
   let ledger: Ledger | null = null;
+  let logUnreadable: string | null = null;
   try {
     ledger = Ledger.open(dbPath);
-    try { topUpLedger(root, ledger); } catch { /* aggregate from what is there */ }
+    try {
+      topUpLedger(root, ledger);
+    } catch (err) {
+      // Aggregate from what is there — and say that that is what happened.
+      logUnreadable = auditReadFailureNote(err);
+    }
     const recent = ledger.recentSessions(window);
     return {
       usage: ledger.allUsage(),
       recentlyUsed: ledger.itemsUsedIn(recent),
       sessionsRecorded: ledger.sessionCount(),
+      logUnreadable,
     };
-  } catch {
-    return { usage: [], recentlyUsed: [], sessionsRecorded: 0 };
+  } catch (err) {
+    // `logUnreadable ??`: if the top-up already failed and a read then threw,
+    // the top-up's reason is the earlier and more specific one, and
+    // overwriting it would drop one disclosure to make room for another.
+    return {
+      usage: [], recentlyUsed: [], sessionsRecorded: null,
+      logUnreadable: logUnreadable ?? ledgerReadFailureNote(err),
+    };
   } finally {
     try { ledger?.close(); } catch { /* nothing to close */ }
   }
@@ -1394,6 +1469,29 @@ const SPECS: ToolSpec[] = [
         }
       }
 
+      // The drafts, on every path, exactly as `cli/commands/ready.ts` says
+      // them — `TASK-mycontext-ready-counts-a-review-draft-as-open-work-so-the`.
+      // `readyReport` leaves them out of ready, held and open; leaving them
+      // unsaid HERE would make this surface the one that drops them silently.
+      // Scoped to the work categories in the same words the CLI uses, and for
+      // the reason its docblock gives: this counts draft TASKS and
+      // `mycontext review list` lists every project-layer draft of every type,
+      // so the sentence says which population it counted. Two surfaces, one
+      // wording — the drift this tool exists to make impossible.
+      if (report.drafts > 0) {
+        lines.push(
+          '',
+          `${report.drafts} draft(s) in the work categor(ies) this report covers ` +
+          `(${workCategories.join(', ')}) await review and are counted in none of the numbers ` +
+          'above. A draft is indexed and searchable but governs nothing, is never injected, ' +
+          'and is not work anyone can dispatch until a person promotes it — which is also ' +
+          `where it gains a "${PLAN_FIELD}" and a "${SEQ_FIELD}", so it carries no plan to ` +
+          'narrow by. mycontext review list lists them, and lists every other project-layer ' +
+          'draft besides: this count is only the ones that would otherwise have been open ' +
+          'work, so the two numbers are not the same number.',
+        );
+      }
+
       lines.push(
         '',
         `Readiness is derived on every run from "${NEEDS_FIELD}" and the "${STATE_FIELD}" of ` +
@@ -1495,16 +1593,7 @@ const SPECS: ToolSpec[] = [
         for (const e of errors) lines.push(`  ${e.file}: ${e.message}`);
       }
 
-      if (disclosures.length > 0) {
-        lines.push(
-          '',
-          'notes about the checks themselves — what they could not measure, said once. These ' +
-          'are NOT findings, are not counted above, and nothing is owed on them.',
-        );
-        for (const f of disclosures) {
-          lines.push(`  ${f.code} — about the "${f.about}" check: ${f.message}`);
-        }
-      }
+      appendDisclosures(lines, disclosures);
 
       return lines.join('\n');
     },
@@ -1683,21 +1772,43 @@ const SPECS: ToolSpec[] = [
       const ledger = readLedgerView(projectRoot, ws.dbPath, window);
       const report = computeDecay({
         items, config: ws.config, usage: ledger.usage, recentlyUsed: ledger.recentlyUsed,
-        window, sessionsRecorded: ledger.sessionsRecorded,
+        // `?? 0` only to satisfy `computeDecay`'s own hedge arithmetic. The
+        // unmeasured fact travels past it in `ledger.logUnreadable`, printed
+        // FIRST below, and the count this report prints is
+        // `ledger.sessionsRecorded`, which stays `null`.
+        window, sessionsRecorded: ledger.sessionsRecorded ?? 0,
       });
 
       if (report.cold.length === 0 && report.warm.length === 0) {
-        return 'my_context: nothing to report — no active normative items in this project yet.'
+        // **Before the empty answer, deliberately** — `cli/commands/decay.ts`
+        // puts it in the same place for the same reason. "Nothing to report"
+        // is the shortest report this tool has and the one in which a hole in
+        // the measurement is least visible, and an agent acts on it.
+        return (ledger.logUnreadable === null ? '' : `${ledger.logUnreadable}\n\n`)
+          + 'my_context: nothing to report — no active normative items in this project yet.'
           + loadErrorNote(errors);
       }
 
-      const lines: string[] = [
+      const lines: string[] = [];
+      if (ledger.logUnreadable !== null) lines.push(ledger.logUnreadable, '');
+      lines.push(
         `my_context decay — items not injected in the last ${report.window} session(s). ` +
-        `The ledger holds ${report.sessionsRecorded} session(s).`,
+        (ledger.sessionsRecorded === null
+          ? 'How many session(s) the ledger holds is UNKNOWN — see the note above.'
+          : `The ledger holds ${ledger.sessionsRecorded} session(s).`),
         DECAY_COLD_CAVEAT,
         'Do not supersede or deprecate anything on this report alone — verify real usage first.',
-      ];
-      if (report.sessionsRecorded === 0) {
+      );
+      // Three states, not two. `null` may not borrow the sentence below it: a
+      // brand-new corpus has genuinely measured nothing and says so, while an
+      // unreadable ledger has measured nothing AND has a reason, and telling
+      // an agent the first when the second is true is M9 exactly.
+      if (ledger.sessionsRecorded === null) {
+        lines.push(
+          '(the session count is UNMEASURED, not zero — every row below is listed as cold ' +
+          'because this report has no injection history to check it against)',
+        );
+      } else if (report.sessionsRecorded === 0) {
         lines.push(
           '(no sessions recorded yet — nothing here has been measured; "cold" currently ' +
           'means only "never injected")',
@@ -2006,6 +2117,24 @@ const SPECS: ToolSpec[] = [
 
       const origin = path.resolve(cwd, source);
       const artefact = readArtefact(origin);
+
+      // Ruling C (2026-09-21): a full export is an archive to copy back, not
+      // something this tool previews an import of, and `name` cannot rescue
+      // it — that was the withdrawn behaviour this refusal replaces, letting
+      // `name` stand in for the name an export does not carry. Checked on the
+      // artefact itself, BEFORE `planImport` runs: task
+      // TASK-two-surfaces-still-describe-importing-a-full-export-after (3.5)
+      // found `preview_pack_import` on the same wrong-order shape `pack.ts`
+      // had — the config merge inside `planImport` could refuse first, with
+      // words about a category declared twice instead of this one sentence.
+      // `FULL_EXPORT_REFUSAL` (pack/import.ts) is the one sentence every door
+      // a full export reaches says; this door adds no tail of its own — see
+      // that constant's doc comment: an import says nothing was imported,
+      // `init --pack` says nothing was created, a preview says neither.
+      if (artefact.manifest.kind === 'export') {
+        throw new Error(FULL_EXPORT_REFUSAL);
+      }
+
       const plan = planImport(artefact, {
         existing: (id) => ctx.store.get(id),
         rawConfig: rawWorkspaceConfig(ctx.root),
@@ -2014,13 +2143,10 @@ const SPECS: ToolSpec[] = [
 
       const override = optStr(args, 'name');
       const name = override ?? plan.pack;
-      if (name === null || name === '') {
-        throw new Error(
-          `my_context: ${JSON.stringify(source)} is a full export and carries no pack name, so ` +
-          'there is nothing to file this preview under. Pass "name" to say what to call it. ' +
-          'Nothing was imported — this tool only previews.',
-        );
-      }
+      /* c8 ignore next 2 -- unreachable: `refuseMeta` (pack/manifest.ts) refuses a `kind: 'pack'`
+         artefact with no name, and a `kind: 'export'` one already returned above. Kept only so
+         `name` narrows to `string` for every use below. */
+      if (name === null || name === '') throw new Error('my_context: a pack plan carried no name — unreachable.');
 
       const report: CollisionReport = {
         pack: name,
@@ -2110,13 +2236,18 @@ const SPECS: ToolSpec[] = [
       const ledger = readLedgerView(projectRoot, ws.dbPath, window);
       const decay = computeDecay({
         items, config: ws.config, usage: ledger.usage, recentlyUsed: ledger.recentlyUsed,
-        window, sessionsRecorded: ledger.sessionsRecorded,
+        // `?? 0` for `computeDecay`'s hedge arithmetic only — see the same
+        // call in `decay_report`. `ledger.logUnreadable` carries the
+        // unmeasured fact, and the usage line below prints
+        // `ledger.sessionsRecorded`, which stays `null`.
+        window, sessionsRecorded: ledger.sessionsRecorded ?? 0,
       });
 
       const findings = runChecks({
         root: projectRoot, repoRoot: path.dirname(projectRoot), dbPath: ws.dbPath, items, config: ws.config,
       });
       const real = findings.filter((f) => !isDoctorDisclosure(f));
+      const disclosures = findings.filter(isDoctorDisclosure);
       const health = {
         errors: real.filter((f) => f.level === 'error').length,
         warnings: real.filter((f) => f.level === 'warn').length,
@@ -2169,9 +2300,22 @@ const SPECS: ToolSpec[] = [
         );
       }
 
+      // **Before the usage line and independent of it**, exactly where
+      // `mycontext status` prints the same sentence and for the same reason: a
+      // number a reader has already read is a number they have already
+      // believed, and the reading this makes impossible is "no sessions
+      // recorded yet" over a ledger holding thousands, or over one nobody
+      // could open. This tool's numbers may not drift from the CLI's, and a
+      // disclosure is one of its numbers.
+      if (ledger.logUnreadable !== null) lines.push('', ledger.logUnreadable);
       lines.push(
         '',
-        ledger.sessionsRecorded === 0
+        // Three states, not two — `TASK-nine-sites-report-a-measured-zero-for-
+        // something-they-could`, M9.
+        ledger.sessionsRecorded === null
+          ? 'usage: NOT MEASURED — the usage ledger could not be read (see the note above), so ' +
+            'there is no session count and nothing below it rests on injection history.'
+          : ledger.sessionsRecorded === 0
           ? 'usage: no sessions recorded yet — decay reporting starts once items begin to be injected.'
           : `usage: ${ledger.sessionsRecorded} session(s) recorded. ${decay.cold.length} normative ` +
             `item(s) not injected in the last ${window} session(s) — not evidence they are unused, ` +
@@ -2194,6 +2338,8 @@ const SPECS: ToolSpec[] = [
         lines.push('', `${errors.length} corpus load error(s):`);
         for (const e of errors) lines.push(`  ${e.file}: ${e.message}`);
       }
+
+      appendDisclosures(lines, disclosures);
 
       return lines.join('\n');
     },

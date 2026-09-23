@@ -39,13 +39,151 @@
  * five cards, not the three the item names — "Reconstruct a subject" at 4,001
  * and "What has been asked before" at 4,427 — and ran to 4,529px of scroll.
  */
-import { expect, test } from './app.ts';
+import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { removeTree } from '../test/helpers/tmp.ts';
+import { mintNonce, startUiChild, type UiHarness } from '../test/ui/helpers.ts';
+import { runCli } from '../src/cli/index.ts';
+import { projectDirName } from '../src/core/conversation-index.ts';
 
 /** The window the item measured in, and the one the owner reads in. */
 const VIEW = { width: 1280, height: 1299 } as const;
 
 test.use({ viewport: VIEW });
+
+/* == THE ARCHIVE THIS FILE REQUIRES, DECLARED RATHER THAN HOPED FOR ========
+ *
+ * **B4 fix round 3, 2026-09-23** (`TASK-two-browser-gates-are-red-before-any-
+ * lane-touches-them-and`, `TASK-forty-six-browser-failures-are-recorded-as-
+ * unknown-so-the`). Until now this file rode the ambient archive: the run's
+ * frozen corpus junctions `~/.claude/projects/<this repository>` when it
+ * exists (`e2e/frozen-corpus.ts`), and on the machine this file was written on
+ * it does. **On a clean runner it does not**, and the Ubuntu CI job on
+ * `31b8e5bd` says so in the plainest possible way — all four tests here failed
+ * with `page.waitForSelector: Test timeout of 30000ms exceeded`, waiting for a
+ * `.convanch` card that a workspace with no conversations can never draw.
+ *
+ * So the file declares what it needs, the way `e2e/item-pane.spec.ts` was
+ * taught to on 2026-09-23 and `e2e/anchors.spec.ts` and
+ * `e2e/conversations.spec.ts` already do: its own throwaway
+ * `CLAUDE_CONFIG_DIR` with its own transcripts, indexed by the real
+ * `mycontext conversation rebuild`, served by its own `startUiChild`.
+ *
+ * -- WHAT IT NEEDS, AND WHY EACH PART IS A NUMBER AND NOT A WISH -----------
+ *
+ *   MANY SESSIONS  The claim under test is that a CAP on the session list
+ *                  keeps the marks card on screen. A three-session archive
+ *                  puts that card above the fold with no cap at all, and this
+ *                  file's own anti-vacuity guard says so — it requires the
+ *                  rows region to OVERFLOW its cap. `.convlistscroll` is
+ *                  `max(240px, 22vh)`, which at this file's 1,299px window is
+ *                  286px, so `SESSIONS` is set well past what fits: 24 rows
+ *                  overflow it several times over, and the second test's
+ *                  removal proof then has a real distance to fall.
+ *
+ *   AT LEAST ONE MARK  The card is `.convanch` and it draws anchors. They
+ *                  arrive from the automatic pass inside `conversation
+ *                  rebuild`, so one session carries turns that ARE anchors by
+ *                  nature — a table, and a cited normative id — exactly as
+ *                  `e2e/anchors.spec.ts`' fixture does, with the
+ *                  `origin: { kind: 'human' }` that `ownerTyped()`
+ *                  (`src/core/anchor-pass.ts`) has required on a user record
+ *                  since 2026-09-15.
+ *
+ * **The geometry is now this FIXTURE's rather than this repository's**, and
+ * that is the trade taken deliberately. The property the item is about —
+ * "from a cold load the marks card names itself on screen" — is true of any
+ * archive whose session list overflows the cap, and is what every assertion
+ * below states. A distance measured on one maintainer's machine is not a
+ * gate, which is exactly what the runner proved.
+ */
+const SESSIONS = 24;
+const ANCHOR_SESSION = 'sess-marks-anchored';
+
+const TABLE_TURN = [
+  'Here is what was measured.',
+  '',
+  '| tokenizer | hits |',
+  '| --- | --- |',
+  '| trigram | 14 |',
+  '| unicode61 | 0 |',
+].join('\n');
+
+const RULING = 'RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number';
+
+const say = (role: 'user' | 'assistant', body: string, at: string): unknown => ({
+  type: role,
+  message: { role, content: role === 'user' ? body : [{ type: 'text', text: body }] },
+  timestamp: at,
+  ...(role === 'user' ? { origin: { kind: 'human' }, promptSource: 'typed' } : {}),
+});
+
+const jsonl = (rows: unknown[]): string => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+
+let harness: UiHarness;
+let cwd: string;
+let home: string;
+
+test.beforeAll(async () => {
+  home = mkdtempSync(path.join(tmpdir(), 'e2e-marks-home-'));
+  cwd = mkdtempSync(path.join(tmpdir(), 'e2e-marks-cwd-'));
+  const dir = path.join(home, 'projects', projectDirName(cwd));
+  mkdirSync(dir, { recursive: true });
+
+  // The session that carries the marks. Two turns that ARE anchors by nature
+  // and one that is not, so a pass that marked everything would show here.
+  writeFileSync(path.join(dir, `${ANCHOR_SESSION}.jsonl`), jsonl([
+    say('user', `follow ${RULING} here`, '2026-09-10T09:00:00.000Z'),
+    say('assistant', TABLE_TURN, '2026-09-10T09:00:01.000Z'),
+    say('assistant', 'the weather in the afternoon was ordinary and worth nothing',
+      '2026-09-10T09:00:02.000Z'),
+  ]));
+
+  // ...and the rest of the list, which exists to be longer than the cap.
+  for (let i = 0; i < SESSIONS - 1; i += 1) {
+    const day = String(10 + (i % 18)).padStart(2, '0');
+    const hour = String(i % 10).padStart(2, '0');
+    writeFileSync(path.join(dir, `sess-marks-${String(i).padStart(2, '0')}.jsonl`), jsonl([
+      say('user', `session ${i}: what did we decide about the ${i}th question`,
+        `2026-08-${day}T${hour}:00:00.000Z`),
+      say('assistant', `Nothing was decided in session ${i}. It exists so that the session `
+        + 'list is longer than the cap this file measures.',
+      `2026-08-${day}T${hour}:00:01.000Z`),
+    ]));
+  }
+
+  process.env['CLAUDE_CONFIG_DIR'] = home;
+  const previous = process.cwd();
+  process.chdir(cwd);
+  try {
+    runCli(['init'], cwd, () => {});
+    // The index, the words and the automatic anchors all arrive from this one
+    // CLI write, which is how a person meets them.
+    runCli(['conversation', 'rebuild'], cwd, () => {});
+  } finally {
+    process.chdir(previous);
+  }
+  harness = await startUiChild(cwd);
+});
+
+test.afterAll(async () => {
+  await harness?.stop();
+  delete process.env['CLAUDE_CONFIG_DIR'];
+  if (cwd) removeTree(cwd);
+  if (home) removeTree(home);
+});
+
+/** Boot the app against this file's own server, authenticated. */
+async function open(page: Page): Promise<void> {
+  const nonce = await mintNonce(harness.port);
+  await page.goto(`http://127.0.0.1:${harness.port}/#${nonce}`);
+  await expect(page.locator('.nav').first(),
+    'the app never rendered a rail button - it probably has no token')
+    .toBeVisible({ timeout: 15_000 });
+}
 
 interface Geometry {
   /** `main.body`'s own visible height — the fold, in the only units that matter. */
@@ -122,8 +260,9 @@ async function geometry(page: Page): Promise<Geometry> {
 
 /* ══ THE MEASUREMENT THAT CLOSES THE ITEM ═════════════════════════════════ */
 
-test('from a cold load the marks card is on the screen, with nothing scrolled', async ({ app }) => {
-  const at = await geometry(app.page);
+test('from a cold load the marks card is on the screen, with nothing scrolled', async ({ page }) => {
+  await open(page);
+  const at = await geometry(page);
   const fold = at.foldTop + at.foldHeight;
   console.log(`[reach] scroller main.body is ${at.foldHeight}px tall, starting at ${at.foldTop}; `
     + `the fold is therefore at ${fold}. Screen scrolls ${at.scrollHeight}px.`);
@@ -186,11 +325,12 @@ test('from a cold load the marks card is on the screen, with nothing scrolled', 
  * stylesheet behind for a sibling spec — the reason `INSTR-…` refuses a suite
  * that writes what it tests.
  */
-test('and it falls back under the fold the moment the cap is removed', async ({ app }) => {
-  const before = await geometry(app.page);
+test('and it falls back under the fold the moment the cap is removed', async ({ page }) => {
+  await open(page);
+  const before = await geometry(page);
   const fold = before.foldTop + before.foldHeight;
 
-  const removed = await app.page.evaluate(() => {
+  const removed = await page.evaluate(() => {
     let gone = 0;
     for (const sheet of document.styleSheets) {
       let rules: CSSRuleList;
@@ -213,9 +353,9 @@ test('and it falls back under the fold the moment the cap is removed', async ({ 
     + 'nothing was removed and the re-measurement below is of the same page').toBe(1);
 
   await expect
-    .poll(async () => (await geometry(app.page)).marksHeadBottom, { timeout: 10_000 })
+    .poll(async () => (await geometry(page)).marksHeadBottom, { timeout: 10_000 })
     .toBeGreaterThan(fold);
-  const after = await geometry(app.page);
+  const after = await geometry(page);
   console.log(`[reach] cap removed: marks card ${before.marksTop} -> ${after.marksTop} `
     + `(fold ${fold}); session rows ${before.rows?.clientHeight} -> ${after.rows?.clientHeight}px.`);
   expect(after.rows!.clientHeight, 'the rows region did not grow when its cap was deleted, so '
@@ -225,12 +365,13 @@ test('and it falls back under the fold the moment the cap is removed', async ({ 
 
 /* ══ AND NOTHING WAS HIDDEN TO ACHIEVE IT ═════════════════════════════════ */
 
-test('every session the list held is still in it, reachable inside the card', async ({ app }) => {
-  const at = await geometry(app.page);
+test('every session the list held is still in it, reachable inside the card', async ({ page }) => {
+  await open(page);
+  const at = await geometry(page);
   // The item forbids option 2 (marks first) outright and warns against option 1
   // (collapse past a few rows) for HIDING a list some readers scan. A cap that
   // truncated instead of scrolling would be option 1 wearing option 4's name.
-  const bound = (await app.page.locator('.convresults .bound p').first().textContent() ?? '').trim();
+  const bound = (await page.locator('.convresults .bound p').first().textContent() ?? '').trim();
   console.log(`[reach] ${at.rows!.count} rows drawn, bound line reads "${bound}"`);
   expect(at.rows!.count, 'the capped list drew no rows at all').toBeGreaterThan(0);
   expect(
@@ -241,7 +382,7 @@ test('every session the list held is still in it, reachable inside the card', as
 
   // The last row is reachable by scrolling INSIDE the card — the whole of what
   // "scrolls inside its own card" means, and the thing a truncation could not do.
-  const reached = await app.page.evaluate(() => {
+  const reached = await page.evaluate(() => {
     const rows = document.querySelector('.convresults .rows');
     if (rows === null) return null;
     const last = rows.querySelector('.convrow:last-of-type');
@@ -261,12 +402,13 @@ test('every session the list held is still in it, reachable inside the card', as
     .toBe(true);
 });
 
-test('the bounded list is keyboard-operable, because it is now a scroll region', async ({ app }) => {
-  await geometry(app.page);
+test('the bounded list is keyboard-operable, because it is now a scroll region', async ({ page }) => {
+  await open(page);
+  await geometry(page);
   // A scroller a wheel can move and a keyboard cannot is a list half this
   // product's readers cannot reach — `.tvscroll`'s own reason for the same
   // three attributes.
-  const shape = await app.page.evaluate(() => {
+  const shape = await page.evaluate(() => {
     const rows = document.querySelector<HTMLElement>('.convresults .rows');
     if (rows === null) return null;
     return {
@@ -283,7 +425,7 @@ test('the bounded list is keyboard-operable, because it is now a scroll region',
   expect(shape!.label.length, 'the scroll region has no accessible name, so it is announced as '
     + '"region" and a reader is told only that something is there').toBeGreaterThan(0);
 
-  const moved = await app.page.evaluate(async () => {
+  const moved = await page.evaluate(async () => {
     const rows = document.querySelector<HTMLElement>('.convresults .rows');
     if (rows === null) return false;
     rows.scrollTop = 0;
@@ -291,8 +433,8 @@ test('the bounded list is keyboard-operable, because it is now a scroll region',
     return document.activeElement === rows;
   });
   expect(moved, 'the rows region refused focus').toBe(true);
-  await app.page.keyboard.press('PageDown');
-  await expect.poll(async () => await app.page.evaluate(
+  await page.keyboard.press('PageDown');
+  await expect.poll(async () => await page.evaluate(
     () => document.querySelector('.convresults .rows')?.scrollTop ?? 0,
   ), { timeout: 5_000 }).toBeGreaterThan(0);
 });

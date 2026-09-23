@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A budget you tried out successfully can be carried straight into the settings screen instead of being retyped.
-summary_of: da27bd01c23675af
+summary_of: 7eaa1bb00ce79c6b
 summary_was:
   - 2026-09-07 After trying out a setting and liking the result, carry it straight to the settings screen as a proposed change instead of retyping it.
 scope: []
@@ -26,7 +26,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-25
 valid_until: null
-checksum: a2024cfa1ee31c60
+checksum: feca8a667377f585
 plan: walk
 seq: "14"
 state: todo
@@ -65,3 +65,5 @@ only happen after a simulation SUCCEEDED - that was the point of the item.
 
 ONE QUESTION FOR THE OWNER BEFORE BUILDING: is the URL carry still wanted, now that nothing has to
 survive a paste?
+
+Owner ruling G, recorded 2026-09-22: still wanted; build the carry only after a simulation succeeded. Lands in release phase 7. See DEC-the-budget-carry-from-the-simulator-is-still-wanted-and-it.

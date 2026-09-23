@@ -453,12 +453,25 @@ const REFUSAL_STATUSES: readonly number[] = [401, 403];
  *
  * **Synchronous, and never throws.** `recordAudit` appends and returns
  * `{ written: false, error }` on failure, so this is called BEFORE the response
- * goes out (field rule 7) and a refusal cannot be answered and then lost. The
- * `AuditWriteResult` is returned for the same reason `recordAudit` returns it —
- * and the server DISCARDS it, exactly as the hooks discard theirs (field rule
- * 8): there is no one to tell, and telling the refused party would be the echo
- * ruling 11 removed. A log that has stopped being writable stays discoverable
- * through `doctor`'s `audit_log_size` check.
+ * goes out (field rule 7) and a refusal cannot be answered and then lost.
+ *
+ * **The `AuditWriteResult` is returned for the same reason `recordAudit`
+ * returns it, and the server now READS it** (field rule 8, rewritten
+ * 2026-09-23). It used to say the server discarded it *"exactly as the hooks
+ * discard theirs"*, and that precedent was reversed by
+ * `TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen`: since
+ * 199dfcc3 every hook reads its result and discloses a failed append on the
+ * channel whose reader can act. `server.ts`'s `refuse` does the same on
+ * `onSessionStoreIssue`, the line `mycontext ui` prints for the person running
+ * it, and the argument for that channel is there rather than restated here.
+ *
+ * **What has NOT changed is who is not told.** The refused party still gets a
+ * status line and nothing else — ruling A4, held structurally by `sendRefusal`
+ * having no body parameter — and telling them would be the echo ruling 11
+ * removed, now with a fact about this machine's disk attached to it. A log
+ * that has stopped being writable also stays discoverable later through
+ * `doctor`'s `audit_log_size` check; the disclosure is what makes it
+ * discoverable at the moment the specific lost record existed.
  */
 export function recordRefusal(root: string, refusal: RefusalDetail): AuditWriteResult {
   if (!REFUSAL_CHECKS.includes(refusal.check) || !REFUSAL_STATUSES.includes(refusal.status)) {
@@ -552,7 +565,7 @@ export function recordNonceMint(root: string, detail: NonceMintDetail): AuditWri
 /**
  * **Spec §2's response-header table, on EVERY response including the static
  * assets** — a correction to the plan's Task 13 sample, which set only
- * `Cache-Control` and dropped the other three.
+ * `Cache-Control` and dropped the other four.
  *
  * They are not decoration and one of them was already being asserted as a fact:
  * this module explains above that echoing a submitted value in a refusal reason
@@ -568,7 +581,7 @@ export function recordNonceMint(root: string, detail: NonceMintDetail): AuditWri
  * route writes its own head — the dispatch loop hands a `kind: 'stream'`
  * handler the raw `ServerResponse` — and `server.ts` already imports that
  * module to register its routes, so importing back would be a cycle. The
- * alternative was a second spelling of the four headers in the one response
+ * alternative was a second spelling of the five headers in the one response
  * this file's own sentence below says cannot be allowed to ship without them.
  *
  * Why each, in the spec's own words:
@@ -582,20 +595,86 @@ export function recordNonceMint(root: string, detail: NonceMintDetail): AuditWri
  *     upside. The spec scopes this one to `/api`; it is sent on the static
  *     assets too, because `static.ts`'s interface hands the caller that
  *     decision and an ephemeral app has nothing worth revalidating.
- *   - `X-Frame-Options: DENY` — see below; it stands in for one property the
- *     retired CSP used to carry.
+ *   - `X-Frame-Options: DENY` — see below; it carries the framing half of the
+ *     DNS-rebinding defence, and it keeps carrying it now the CSP is back,
+ *     because `frame-ancestors` is deliberately left out of the policy.
+ *   - `Content-Security-Policy` — owner ruling E, 2026-09-21; see below for
+ *     the ruling, its condition, and what the proof measured.
  *
  * One object, spread by every sender — `sendJson`, `sendRefusal` and the static
  * branch in `server.ts`, and the stream route's three heads in
  * `watch-model.ts` — so a response cannot be added that quietly ships without
  * them.
  *
- * ── THE CSP IS SUSPENDED, DELIBERATELY ─────────────────────────────────────
+ * ── THE CSP IS BACK, UNDER OWNER RULING E (2026-09-21), AND WHAT CHANGED
+ *    HIS MIND WAS A MEASUREMENT AND NOT AN ARGUMENT ─────────────────────────
  *
- * Spec §2 specifies a `Content-Security-Policy` and this object no longer
- * sends one. **That is an owner's decision taken on 2026-08-22, not an
- * oversight, and `server-e2e.test.ts` asserts the ABSENCE** so that re-adding
- * it is as deliberate as removing it was and neither can happen by drift.
+ * The ruling, in the owner's own words: *"Content-Security-Policy on,
+ * `script-src 'self'`, styles unrestricted, AND the lane proves every
+ * command-executing screen (composer, palette, builder, config) still executes
+ * its commands under the header before it lands."*
+ *
+ * It reverses `TASK-no-content-security-policy-header-and-no-meta-on-a-local`,
+ * whose own framing was that the absence is *"NOT a live vulnerability … It is
+ * cheap insurance for a local server that composes and executes shell
+ * commands."* Nothing about that framing has been found wrong. What was
+ * missing was the price of the insurance, and it is now measured rather than
+ * feared. The policy sent is:
+ *
+ *     default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+ *     img-src 'self' data:; connect-src 'self'
+ *
+ * `script-src 'self'` is the directive the whole thing exists for — item
+ * titles and bodies are authored by agents and by ingest and this page renders
+ * them, so a stray `<img src=x onerror=…>` in a body now has nowhere to go
+ * whether or not every future screen remembers to assign `textContent`. A
+ * header holds when someone forgets; a convention does not.
+ *
+ * **"Styles unrestricted" is the ruling's phrase and `style-src 'self'
+ * 'unsafe-inline'` is what it buys**: a `<style>` element may be injected to
+ * try a fix in a live page, and a `style="…"` attribute is legal again. Both
+ * are the friction the 2026-08-22 decision was actually paid to remove (see
+ * the history below), and neither is what the header is here to stop.
+ *
+ * `img-src 'self' data:` and `connect-src 'self'` are the two the screens
+ * need stated rather than inherited: nothing here loads an image from anywhere
+ * but this server, and every `fetch` and the SSE stream go to this origin.
+ *
+ * **`frame-ancestors` is deliberately NOT in the policy.** `X-Frame-Options:
+ * DENY` above already carries it, it is one header rather than a directive
+ * with a syntax, and having the same refusal spelled twice invites the two to
+ * disagree.
+ *
+ * ── WHAT THE PROOF MEASURED, WHICH IS THE CONDITION AND NOT A FORMALITY ────
+ *
+ * `e2e/csp-executes.spec.ts` drives a real command from each of the four
+ * screens the ruling names — the Composer (`mycontext status`), a palette
+ * catalogue entry that takes an argument (`mycontext show <id>`), Capture,
+ * which is `lib/builder.js` on a screen that is not the Composer, and
+ * Configure's Profile pane — and asserts the SERVER's own `execute-done` row
+ * as well as the receipt the screen drew. It watches for a refusal twice over:
+ * the browser console, and the `securitypolicyviolation` DOM event armed
+ * before the document's first byte.
+ *
+ * It was run BEFORE this header existed and it was green: 8 of 8 (four screens
+ * across two browser projects), 2.8 minutes, zero violations. That baseline is
+ * the half of the proof that is easy to skip and impossible to reconstruct
+ * afterwards — without it, a green run under the header cannot be told apart
+ * from four screens that were already broken and a spec that never noticed.
+ *
+ * What it found on the way was NOT a CSP defect and is recorded where it was
+ * found: Capture composes an `add` with no `summary` and no `--summary-omitted`
+ * (`src/ui/public/screens/capture.js`' `FIELDS`), so the CLI refuses it and the
+ * confirm never opens — before this header and after it, identically. That
+ * phase therefore asserts the round trip it can reach and says so in its own
+ * words rather than pretending to a run it cannot make.
+ *
+ * ── THE 2026-08-22 HISTORY, KEPT BECAUSE IT IS STILL TRUE ──────────────────
+ *
+ * Spec §2 specified a CSP; the owner retired it on 2026-08-22 and
+ * `server-e2e.test.ts` asserted the ABSENCE so that re-adding it would be as
+ * deliberate as removing it was. This is that deliberate act, and the same
+ * test now asserts the exact VALUE for the same reason.
  *
  * What it did NOT cost, measured rather than assumed. It is tempting to say a
  * strict `style-src` stops a chart drawing a bar whose length is a number. It
@@ -609,41 +688,32 @@ export function recordNonceMint(root: string, detail: NonceMintDetail): AuditWri
  * the CSSOM. So the nine `setProperty` calls under `src/ui/public/screens/`
  * were never blocked, and `screens/parts.js` says why in its own header — "No
  * `innerHTML`, and no `style` attribute" — the screens were written to the
- * narrow path on purpose. Retiring the CSP does not unblock a chart, because no
- * chart was blocked.
+ * narrow path on purpose. Restoring the CSP does not block a chart, because no
+ * chart was ever blocked; and `'unsafe-inline'` above means the attribute is
+ * not blocked either.
  *
  * What it actually cost was reach-for-it speed: a `<style>` element could not
  * be injected to try a fix in a live page, and the mockup's `style="display:
  * none"` on the sprite had to be restated in `styles.css`. Real friction,
- * repeatedly paid, on a project whose UI is verified by looking at it.
+ * repeatedly paid, on a project whose UI is verified by looking at it — and it
+ * is exactly what `style-src 'self' 'unsafe-inline'` gives back, which is why
+ * the ruling could restore the half that guards agent-authored bodies without
+ * restoring the half that slowed a person down.
  *
- * What it was buying. `script-src 'self'` was the directive this CSP existed
- * for: item titles and bodies are authored by agents and by ingest, and the
- * page renders them, so a stray `<img src=x onerror=…>` in a body had nowhere
- * to go. **That protection is now off.** The mitigation that remains is in the
- * renderer rather than the header — the page builds nodes and assigns
- * `textContent`; it does not assemble markup from item text. That is a weaker
- * guarantee than a header, because it holds only as long as every future
- * screen keeps doing it, and a header holds even when someone forgets.
- *
- * `frame-ancestors 'none'` was the second thing lost, and it is the framing
- * half of the DNS-rebinding defence for a server that binds a loopback port and
- * holds a private corpus. It is restored by `X-Frame-Options: DENY`, which is
- * one header, needs no policy language, and cannot block anything a developer
- * is trying to do — it only refuses to be put in someone else's frame.
- *
- * If the CSP returns, `script-src 'self'` is the directive worth having back
- * and it costs a developer nothing. Should the style half return with it, name
- * the two halves separately — `style-src-elem 'self'` to keep a stylesheet from
- * being injected, `style-src-attr 'unsafe-inline'` for the attribute — so that
- * a live experiment stays possible without reopening what guards agent-authored
- * bodies.
+ * That split is the shape the retired block recommended for the day the CSP
+ * returned, and the recommendation is honoured with one difference worth
+ * naming: it proposed `style-src-elem` / `style-src-attr` as two directives.
+ * The ruling says "styles unrestricted", which is one directive and no
+ * question about which browser implements the pair.
  */
 export const SECURITY_HEADERS: Record<string, string> = {
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
   'cache-control': 'no-store',
   'x-frame-options': 'DENY',
+  'content-security-policy':
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    + "img-src 'self' data:; connect-src 'self'",
 };
 
 /**

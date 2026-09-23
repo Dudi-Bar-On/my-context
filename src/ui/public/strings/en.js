@@ -1238,6 +1238,12 @@ export const strings = {
   'sim.recBad': 'A budget must be a positive integer written in digits. Got {typed}. Nothing was changed.',
   // ── Validation is against the whole window (plan:budget seq:3) ───────────
   'sim.winh': 'All five budgets, against the whole window',
+  // The chip's own word, so the state is never in the colour alone
+  // (`ui-gates/1`, `e2e/chip-hue-authority.spec.ts:403`). Short on purpose: the
+  // pill says WHICH state, the sentence beside it says the numbers.
+  'sim.winOkChip': 'fits',
+  'sim.winTightChip': 'tight',
+  'sim.winOverChip': 'over',
   'sim.winOk': '{total} tokens across all five tiers of a {win}-token window — {pct}% — leaving {left} tokens to work in, clearing the {res}% reserve.',
   'sim.winTight': '{total} tokens across five tiers of a {win}-token window — {pct}%. It fits, but leaves only {left} tokens free, under the {res}% reserve. Fitting with nothing left to work in is still wrong.',
   'sim.winOver': '{total} tokens across all five tiers does not fit a {win}-token window: {over} tokens over. A budget that passes alone while the five together fail is exactly what this check catches.',
@@ -2443,6 +2449,12 @@ export const strings = {
   'strip.pick.items': 'items',
   'strip.pick.corpusDrift': 'drift',
   'strip.pick.configError': 'config',
+  // The unmeasured-code chip's row, added with the chip itself
+  // (`TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`): a
+  // field the bar can draw and the dialog could not name was a field a reader
+  // had no way to turn off. Short, like every other row here — the chip's own
+  // sentence is `strip.codeUnmeasured` and the dialog lists names, not states.
+  'strip.pick.codeState': 'server code state',
   'strip.pick.doctorNotices': 'doctor notices',
   'strip.pick.reviewQueue': 'review queue',
   'strip.pick.rateVerdict': 'limit verdict',
@@ -2469,6 +2481,16 @@ export const strings = {
   'title.corpusDrifted': 'An item file under {m:items/} is newer than the last thing the audit log recorded, so this page is drawing a corpus that has moved under it. Everything live here comes from the audit log, and an item edited in an editor, by another tool, or by a branch switch writes no record at all. Reload to read the corpus as it is now.',
   'title.corpusInStep': 'Nothing under {m:items/} is newer than the last recorded change — measured, not assumed. This page reflects changes made through mycontext and through a Claude Code session; a file edited any other way would show above as changed outside the log.',
   'title.corpusDriftUnknown': 'Whether anything changed outside the log could not be measured — there is no audit log to compare against yet, or the corpus could not be read. This is "not known" rather than "nothing changed".',
+  // ── AND WHETHER THE SERVER CAN SEE ITS OWN SOURCE AT ALL ──────────────
+  // `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`. The
+  // THIRD unmeasured state on this strip and deliberately worded like the two
+  // above: "not known", never "fine". `staleCode` used to be a bare boolean,
+  // so a server that could not walk its own files answered `false` — the
+  // measured good state — and the skew banner could never fire on an install
+  // that most needed it. The chip says the state and the title carries the
+  // server's own sentence, which names which directory and which error.
+  'strip.codeUnmeasured': 'server code state not known',
+  'title.codeUnmeasured': 'This server could not examine its own source files, so whether it is running the code on disk could not be measured. This is "not known" rather than "it is current" — the banner that warns you a restart is needed cannot fire while this is true. {reason}',
   // ── THE CONTEXT OCCUPANCY, BANDED (plan:walk seq:117) ─────────────────
   // Three bands, three existing hues, and a WORD in every one of them: the
   // percentage stays a number beside the chip, so the state survives a

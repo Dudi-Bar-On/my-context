@@ -135,3 +135,7 @@ check it on screen rather than assuming.
     cannot mean here. Whatever you add must be equally honest.
   — Held by removal proofs, one per assertion, each reddening at its own line — and a proof that
     reddens NOTHING is a finding to record, never to hide. Five did today.
+
+## Request
+
+about the find dialog - the basic implementation is good, what i would like to improve: 1 - regex is complex and a regex help with examples should be added, 2 - alternatives to regex A - wildcard character pattern matching in expressions, also with help and examples, B - some logical ops the user could use especially if supportd by sqlite like AND OR LIKE NEAR etc include examples of use, 3 Bold the count and other numeric values you display

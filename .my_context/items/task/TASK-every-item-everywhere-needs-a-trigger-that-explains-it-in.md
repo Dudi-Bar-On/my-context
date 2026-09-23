@@ -21,7 +21,7 @@ tags:
   - "seq:119"
   - "state:todo"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/explain.md"
+source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-31

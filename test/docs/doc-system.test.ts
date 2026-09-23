@@ -87,7 +87,7 @@ import {
   COVERAGE_DOC_PATH, renderCoverageDocument,
 } from '../../scripts/gen-cli-ui-coverage.ts';
 import { documentsUnder, fencesIn } from '../../scripts/check-diagrams-parse.ts';
-import { SOURCE_ROOTS, walkSources } from '../../scripts/check-cited-items.ts';
+import { sourceWalk } from '../../scripts/check-cited-items.ts';
 import { headings } from '../helpers/markdown.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -959,16 +959,16 @@ function judge(c: Citation, tree: TreeFile[]): Judgement {
   return { kind: 'weak', candidates: candidates.map((f) => f.path) };
 }
 
-/** The source tree a document citation may point into — the same four roots
- * `check-cited-items.ts` walks, read once for the whole file. */
-const CITED_TREE: TreeFile[] = (() => {
-  const files: string[] = [];
-  for (const root of SOURCE_ROOTS) walkSources(path.join(REPO, root), files);
-  return files.map((full) => ({
-    path: path.relative(REPO, full).split(path.sep).join('/'),
-    lines: readFileSync(full, 'utf8').replaceAll('\r\n', '\n').split('\n').length,
-  }));
-})();
+/** The source tree a document citation may point into — the same walk
+ * `check-cited-items.ts` uses, read once for the whole file. It was four
+ * hand-listed roots until `TASK-a-scanner-enumerates-what-it-will-skip-not-
+ * what-it-will-scan`; it is now every tracked source file, so a citation into
+ * `harness/` resolves here too. */
+const CITED_TREE: TreeFile[] = sourceWalk(REPO).scanned.map((rel) => ({
+  path: rel,
+  lines: readFileSync(path.join(REPO, rel), 'utf8')
+    .replaceAll('\r\n', '\n').split('\n').length,
+}));
 
 /**
  * **THE RED PROOF, run on every single run.** Four shapes, against a tree built

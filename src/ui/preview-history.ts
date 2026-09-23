@@ -103,10 +103,78 @@ export interface HistoryRow {
  * an edit, a supersede — which is a different question from whether the item
  * reached a context window, and answering it in the same array would put an
  * edit's timestamp under a column headed "last delivered".
+ *
+ * ── AND IT NAMES ITS INDEX, BECAUSE THE PLANNER CANNOT KNOW ───────────────
+ *
+ * `INDEXED BY idx_audit_seq_at` is `topItems`' clause, here for `topItems`'
+ * reason and measured again on this statement: `audit.at` is a VIRTUAL
+ * generated column over a jsonb blob, so reaching it by the INTEGER PRIMARY
+ * KEY — which the planner costs as the cheapest way to reach a row, having no
+ * notion that this table's columns are expensive to read — fetches and decodes
+ * a whole audit record per matching row to produce a timestamp
+ * `idx_audit_seq_at` already holds.
+ *
+ * **Measured 2026-09-23 on this repository's own projection** (B4 fix round 3,
+ * 254,466 `injected`+`spilled` `audit_item` rows against the 7,967 the header
+ * above was written at), with `idx_audit_item_role_tier` added to the
+ * projection in the same act (`audit-db.ts`):
+ *
+ *     rowid join, 2-column audit_item index      3,818 ms
+ *     named join, 2-column audit_item index      1,444 ms
+ *     rowid join, 3-column audit_item index      2,604 ms
+ *     named join, 3-column audit_item index        148 ms
+ *
+ * The four returned byte-identical rows. **Both halves are needed**: the named
+ * join stops the blob decode, and `tier` in the key is what keeps the scan
+ * inside the covering index and lets the grouping ride the index order instead
+ * of a temp b-tree.
+ *
+ * **This is what took `e2e/app-layout.spec.ts:343` and every
+ * `e2e/chip-hue-authority.spec.ts` test red**: `settleScreen` gives a screen
+ * 25 × 400 ms to finish drawing, and preview was spending five of those ten
+ * seconds inside this one statement — so on a loaded machine the When column
+ * landed after the bound and the sweep reported the screen as never measured.
+ * A read a screen issues on every render is on the reader's critical path, and
+ * five seconds of it is a product defect whatever the browser suite thinks.
+ *
+ * `MAX(a.at)` is kept exactly as it is rather than becoming the `at` of
+ * `MAX(seq)`, which would be one lookup per group instead of a join — the same
+ * rejection `topItems` records, and it is not theoretical here: this
+ * projection carries **149** places where a later `seq` holds an earlier `at`,
+ * because the log is written by concurrent hooks in separate processes.
+ *
+ * ── AND `disclosed` IS THE FOURTH ROLE THIS LIST DOES NOT WANT ────────────
+ *
+ * `audit_item.role` gained a fourth value in 2026-09
+ * (`TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where`):
+ * `disclosed`, an id the restore tier named as one it could NOT bring back —
+ * superseded, on a disabled or rationale category, hidden by the active focus,
+ * already delivered, or gone from the corpus. The `IN` list below was written
+ * before it existed, so leaving it alone would be an accident. It is a
+ * DECISION, and this is where it is recorded.
+ *
+ * Read what this list is FOR, at the top of the file: it answers *when did
+ * this item last really get delivered, and when did it last really spill*, for
+ * the rows the injection preview is drawing right now, and the client matches
+ * each answer to a preview row by `(item, role, tier)`. A disclosed id is in
+ * neither half of that question. It was never priced and never offered, so it
+ * is not in the selection the preview draws and there is no row for a
+ * timestamp to sit beside; and it did not lose to a budget, so the two labels
+ * the screen has — "last delivered" and "last spilled" — would both be false
+ * on it. Admitting it under a third role would need a label the screen does
+ * not have, and the nearest one it does have is the exact misreading the role
+ * split was made to end: a stale snapshot shown as a corpus under budget
+ * pressure.
+ *
+ * **It is not dropped, it is asked for elsewhere.** `mycontext audit --items
+ * --role disclosed` and `/api/ask/summary?report=items&role=disclosed` both
+ * answer for it by name, and `test/ui/audit-role-disclosed.test.ts` asserts
+ * the exclusion here and the reachability there in one file, so the pair
+ * cannot drift into `INV-nothing-is-dropped-silently`.
  */
-const HISTORY_SQL = `
+export const HISTORY_SQL = `
   SELECT i.item_id AS id, i.role AS role, i.tier AS tier, MAX(a.at) AS at
-    FROM audit_item i JOIN audit a ON a.seq = i.seq
+    FROM audit_item i JOIN audit a INDEXED BY idx_audit_seq_at ON a.seq = i.seq
    WHERE i.role IN ('injected', 'spilled')
    GROUP BY i.item_id, i.role, i.tier
    ORDER BY at DESC, id ASC

@@ -34,8 +34,29 @@ export interface Contribution {
   id: string;
   /** Injection records that carried this id in `injected`. */
   delivered: number;
-  /** Injection records that carried it in `spilled` — chosen, then cut. */
+  /**
+   * Injection records that carried it in `spilled` — chosen, then cut.
+   *
+   * **A budget loss only.** A record can also name an id the restore tier
+   * DISCLOSED rather than dropped silently (`SpilledRef.neverOffered`), and
+   * that id was never priced and never offered: no budget would have taken it.
+   * Counting it here would inflate `alwaysSpilled` — the cohort figure that
+   * says "injectable, never delivered, and always cut for room" — with items
+   * that were superseded, on a disabled category or gone from the corpus, and
+   * that figure is retirement evidence.
+   */
   spilled: number;
+  /**
+   * Injection records that DISCLOSED it: named it as an id the selector could
+   * not deliver and could not have delivered at any budget
+   * (`SpilledRef.neverOffered`, `TASK-the-restore-tier-drops-snapshot-ids-with-
+   * no-disclosure-where`).
+   *
+   * Counted rather than skipped, and that is `INV-nothing-is-dropped-silently`
+   * one layer along: a disclosure the tally dropped entirely would make the log
+   * name an id that no report can see.
+   */
+  disclosed: number;
   /** Every tier it was ever seen at, in first-seen order. */
   tiers: string[];
   /** The earliest and latest injection record naming it, or null if none. */
@@ -47,7 +68,7 @@ function seen(map: Map<string, Contribution>, id: string): Contribution {
   const found = map.get(id);
   if (found !== undefined) return found;
   const made: Contribution = {
-    id, delivered: 0, spilled: 0, tiers: [], firstAt: null, lastAt: null,
+    id, delivered: 0, spilled: 0, disclosed: 0, tiers: [], firstAt: null, lastAt: null,
   };
   map.set(id, made);
   return made;
@@ -88,8 +109,26 @@ export function contributions(records: AuditRecord[]): Map<string, Contribution>
     }
     for (const ref of record.spilled ?? []) {
       const row = seen(out, ref.id);
-      row.spilled += 1;
-      if (!row.tiers.includes(ref.tier)) row.tiers.push(ref.tier);
+      // **Two different facts, and `SpilledRef.neverOffered` is how the record
+      // tells them apart.** A spill is a candidate the budget priced and could
+      // not afford; a disclosure is an id the restore tier named because it
+      // could not deliver it at all — superseded, on a disabled or rationale
+      // category, hidden by a focus, already delivered, or gone from the corpus
+      // (`TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where`).
+      // Pooling them made `alwaysSpilled`, and therefore retirement evidence,
+      // count items no budget could ever have delivered.
+      //
+      // **The tier is recorded for a spill and not for a disclosure.** `tiers`
+      // answers "where was this item ever considered", and a never-offered id
+      // was considered nowhere: it was NAMED by a tier, which is not the same
+      // claim. Read on a record with no `neverOffered` field — every line
+      // written before the mark existed — this is exactly the old behaviour.
+      if (ref.neverOffered === true) {
+        row.disclosed += 1;
+      } else {
+        row.spilled += 1;
+        if (!row.tiers.includes(ref.tier)) row.tiers.push(ref.tier);
+      }
       stamp(row, at);
     }
   }

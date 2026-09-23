@@ -16,9 +16,9 @@ tags:
   - "seq:24"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7/scratchpad/ingest-summary-task-body.txt"
+source_file: null
 source_anchor: null
-source_checksum: f731c696f93fdc2a
+source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
 checksum: 7c08823bdea98f3c

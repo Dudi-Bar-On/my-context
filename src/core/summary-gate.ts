@@ -77,13 +77,15 @@
  * import would be a regression: none of those callers is a person holding new
  * prose, and refusing them would leave the corpus unmaintainable in order to
  * protect one sentence. So this module exports predicates and refusals and is
- * imported by exactly the five AUTHORED surfaces — `mycontext edit` and the MCP
- * `update_item` tool for the edit gate, `mycontext add`, the MCP `create_item`
- * tool and `mycontext lesson-accept` for the creation gate. It is deliberately
- * NOT called from `updateItem` or from `createItem`, which are the two shared
- * roads every internal caller drives down: `ingest`, pack import, `mycontext
- * lesson` and `mycontext inbox-promote` all reach `createItem` with no person
- * holding new prose, and none of them starts refusing because of this file.
+ * imported by exactly the seven AUTHORED surfaces — `mycontext edit` and the
+ * MCP `update_item` tool for the edit gate, and `mycontext add`, the MCP
+ * `create_item` tool, `mycontext lesson-accept`, `mycontext lesson` and
+ * `mycontext inbox-promote` for the creation gate. It is deliberately NOT
+ * called from `updateItem` or from `createItem`, which are the two shared
+ * roads every internal caller drives down: `ingest`, pack import,
+ * `acceptStagedRule` and `promoteRevision` all reach `createItem` or
+ * `updateItem` with no person holding new prose, and none of them starts
+ * refusing because of this file.
  *
  * ── AND THE FIFTH, WHICH WAS ON THE OTHER LIST UNTIL 2026-09-12 ────────────
  *
@@ -109,6 +111,28 @@
  * this, for the reason every other internal road does not: it is reachable by
  * import, the CLI is the only thing that reaches it, and a gate inside it
  * would be the gate in the shared road this paragraph exists to keep out.
+ *
+ * ── AND THE SIXTH AND SEVENTH, CLOSED TOGETHER (task 3.11, phase 3 review) ─
+ *
+ * `mycontext lesson "<text>"` and `mycontext inbox-promote <id> --to <cat>`
+ * were named above as mechanical callers too, on the reasoning that neither
+ * command had a place to put a summary even if a caller wanted to give one —
+ * `lesson` took `--agent` and nothing else, `inbox-promote` took `--to`,
+ * `--title` and `--yes`. That was true and it was also the defect: both are
+ * CLI commands a human or an agent types at a shell, exactly like `add`, and
+ * both mint a governing item (`lesson` a rationale-tier one, `inbox-promote`
+ * whatever `--to` names, often normative) with `createItem`. A surface being
+ * unable to accept a summary is not the same fact as nobody being present to
+ * write one, and treating the first as proof of the second is what let both
+ * commands mint items `summary_absent` would report in the very next
+ * `doctor` run, with no flag a caller could have reached for instead. Fixed
+ * the way `lesson-accept` was: `--summary`/`--summary-omitted` join each
+ * command's flag set (`command-flags.ts`), the refusal is
+ * `summaryAtCreateRefusal`/`summaryOmittedRefusal` reused under two new
+ * `CreateSurface` spellings — not a ninth and tenth wording of the same
+ * sentence — and `createItem` itself is untouched, so `ingest` and pack
+ * import, which really do reach it with nobody holding new prose, still
+ * mint exactly what they always have.
  */
 import { itemSummaryBasis, type ContentShape } from './content-hash.ts';
 import { normalizePosix } from './paths.ts';
@@ -121,17 +145,18 @@ import type { Item } from './types.ts';
  * **Which authored surface is being refused — a SPELLING, never a rule.**
  *
  * The predicates (`summaryRequiredAtCreate`, `summaryOmittedRefusal`'s first
- * clause) are identical on all three; what differs is the command or call a
+ * clause) are identical on all five; what differs is the command or call a
  * reader can actually retype, and a refusal that names one they cannot run is
  * worse than one that names nothing. That is the whole of what this type
- * decides, and it is stated as a type so a fourth surface has to come here and
+ * decides, and it is stated as a type so a sixth surface has to come here and
  * choose rather than defaulting into `add`'s wording.
  *
- * `lesson-accept` takes the CLI's flag spellings — it IS a CLI command — and
- * differs from `add` only in the command line it prints, which is why
- * `summaryOmittedRefusal` branches on `create_item` rather than on `add`.
+ * `lesson-accept`, `lesson` and `inbox-promote` all take the CLI's flag
+ * spellings — they ARE CLI commands — and differ from `add` only in the
+ * command line each prints, which is why `summaryOmittedRefusal` branches on
+ * `create_item` rather than on `add`.
  */
-export type CreateSurface = 'add' | 'create_item' | 'lesson-accept';
+export type CreateSurface = 'add' | 'create_item' | 'lesson-accept' | 'lesson' | 'inbox-promote';
 
 /**
  * The item's content as this edit would leave it — every field of
@@ -285,6 +310,56 @@ export function summaryRequired(item: Item, patch: UpdateInput): boolean {
   if (patch.summary !== undefined) return false;
   if (patch.summaryUnchanged === true) return false;
   return basisMoves(item, patch);
+}
+
+/* -------------------------------------------------------------------------- *
+ * THE HATCH SAYS TWO DIFFERENT THINGS, AND THIS MODULE OWNS WHICH
+ *
+ * `summaryUnchanged` is one flag carrying two assertions, split by whether the
+ * item has a summary at all. That split is stated in `summaryUnchangedRefusal`
+ * below and was, until 2026-09-23, re-spelled inline as
+ * `input.summaryUnchanged === true && item.summary !== null` at each of the
+ * places in `mutate.ts` that act on it — three of which carried the guard and
+ * one of which did not
+ * (`TASK-promoterevision-reuses-the-summary-unchanged-switch-and`).
+ *
+ * A condition that has to be remembered at four call sites is a condition that
+ * will be forgotten at one, and it was: the site that decides what the
+ * contradiction gate MEASURES. So the two readings are named here, next to the
+ * refusal that already owns their difference, and `mutate.ts` asks rather than
+ * re-derives.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **The hatch on an item that HAS a summary: "that sentence still stands".**
+ *
+ * This is the only reading that is a claim about MEANING, and therefore the
+ * only one that may re-stamp `summary_of`, carry a verdict onto a new basis,
+ * or let the contradiction gate measure a write against the basis the item
+ * HAD. `summaryReaffirmed` is the same assertion spelled with the sentence
+ * instead of the flag, and callers pair the two.
+ */
+export function summaryStandsUnchanged(item: Item, patch: UpdateInput): boolean {
+  return patch.summaryUnchanged === true && item.summary !== null;
+}
+
+/**
+ * **The hatch on an item that has NO summary: "it is being left without one,
+ * deliberately".**
+ *
+ * An assertion with nothing on disk to write — its whole effect is the audit
+ * note `summary-omitted`, the identical assertion `--summary-omitted` makes at
+ * capture. It says NOTHING about whether the item's meaning moved, and reading
+ * it as though it did is the defect this pair of predicates was extracted to
+ * end: the body under it may have been rewritten wholesale, and every ruling
+ * keyed to the old text must lapse exactly as it would for any other rewrite.
+ *
+ * This is also the reading `promoteRevision` (revision.ts) reaches for: a
+ * promoted revision carries no flag of its own, and a promotion that leaves a
+ * summary-less item summary-less is precisely the fact this records.
+ */
+export function summaryDeliberatelyOmitted(item: Item, patch: UpdateInput): boolean {
+  return patch.summaryUnchanged === true && item.summary === null;
 }
 
 /**
@@ -489,7 +564,18 @@ export function summaryAtCreateRefusal(
     ? `\`mycontext add ${input.type} "${title}" … --summary "<one plain sentence>"\``
     : surface === 'create_item'
       ? `create_item({ type: "${input.type}", title: "${title}", …, summary: "<one plain sentence>" })`
-      : `\`mycontext lesson-accept ${invocation} … --summary "<one plain sentence>"\``;
+      // `lesson` needs no `invocation` beyond the title it was called with —
+      // unlike `lesson-accept` and `inbox-promote`, there is no second
+      // identifier (a key, a `--to`) that the remedy has to carry back.
+      : surface === 'lesson'
+        ? `\`mycontext lesson "${title}" --summary "<one plain sentence>"\``
+        // `invocation` carries what `title` alone cannot: `lesson-accept`
+        // needs the lesson id and the candidate key, `inbox-promote` needs
+        // the origin id and the `--to` category — both are supplied by the
+        // caller, the same way `lesson-accept` already does.
+        : surface === 'inbox-promote'
+          ? `\`mycontext inbox-promote ${invocation} --summary "<one plain sentence>"\``
+          : `\`mycontext lesson-accept ${invocation} … --summary "<one plain sentence>"\``;
   const hatch = surface === 'create_item'
     ? '`summary_omitted: true`'
     : '`--summary-omitted`';

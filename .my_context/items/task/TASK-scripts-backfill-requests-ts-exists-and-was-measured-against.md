@@ -15,13 +15,15 @@ tags:
   - unconfirmed
   - "rec:decline"
   - "rec-backfilled:2026-09-15"
+  - "state:done"
 origin: review
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: c6b73960beb18801
+checksum: ab3f0eb99ad75676
+state: done
 ---
 
 # scripts/backfill-requests.ts exists and was measured against a copy only:

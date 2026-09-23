@@ -274,6 +274,46 @@ export interface Injection {
    * no such channel, does not. The model's copy travels inside `text`.
    */
   failure: string | null;
+  /**
+   * **The injection's OWN audit record, when it could not be appended** — and
+   * `null` on every run where it was, including the runs that record nothing
+   * because there was no event to record.
+   *
+   * `TASK-d70-closed-all-five-instances-and-never-built-the-gate-the`. Task 4.4
+   * read `recordAudit`'s answer at the sixteen HOOK call sites
+   * (`hooks/io.ts` · `unrecordedHookLine`); this is the seventeenth, on the
+   * core injection path those hooks call, and it was the last one still
+   * dropping `{ written, error }` on the floor.
+   *
+   * **What it costs is the same thing the JIT tier's neighbour names**: the
+   * seen-file append four blocks below justifies its own best-effort posture
+   * on the grounds that *"the audit record above holds the DELIVERY
+   * durably"*. When this write fails that sentence is false — the items were
+   * rendered into a context window and the only durable evidence that they
+   * were is gone, while the seen file that remains is dedupe state, not
+   * evidence, and nothing reads it to answer *what did this session see*.
+   *
+   * **It is RETURNED rather than written from here, for `pinnedSpill`'s
+   * reason, stated above and not restated**: this function is shared verbatim
+   * by SessionStart, SubagentStart and the `load_context` MCP tool, and only
+   * the first two have a stderr a person watches. The hook that owns the
+   * channel writes `unrecordedHookLine`; the MCP surface, which would put the
+   * line in a server log nobody reads, does not.
+   *
+   * `op` travels beside the error because the line's *"`mycontext audit --op
+   * <op>` is missing a row"* has to name the op this record would have been
+   * filed under, and that op is decided here — a caller spelling it a second
+   * time is a second answer free to disagree with the row it describes.
+   */
+  unrecorded: UnrecordedInjection | null;
+}
+
+/** The injection's own audit record, and why a reader cannot find it. */
+export interface UnrecordedInjection {
+  /** The `--op` the missing row would have carried — `InjectionOp`, verbatim. */
+  op: string;
+  /** `AuditWriteResult.error`, verbatim; `'unknown'` when the writer named none. */
+  error: string;
 }
 
 /**
@@ -367,7 +407,12 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // A MEASURED absence, not a caught one: the walk ran and found no corpus,
     // which `noWorkspaceLine` already discloses at the hook. `failure` stays
     // `null` because nothing was dropped — there was nothing to drop.
-    if (stateRoot === null) return { text: '', pinnedSpill: null, deliveredIds: [], failure: null };
+    // `unrecorded: null` for the same reason `failure` is: there is nowhere to
+    // write a row and nothing that would have gone in one, so no record is
+    // missing — this is a measured absence, not a lost write.
+    if (stateRoot === null) {
+      return { text: '', pinnedSpill: null, deliveredIds: [], failure: null, unrecorded: null };
+    }
 
     // 1. THE CORPUS, FROM MARKDOWN, PARSED ONCE. No database on the
     // injection-critical path: `select` is pure over Item[] (select.ts,
@@ -462,7 +507,7 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // to claim, and the difference is the whole of Phase 1E. It said "items
     // loaded this way are not restored after a compaction". They usually
     // ARE: `buildRestoreSnapshot` unions its delivery records with
-    // `scanTranscriptIds`, and a manual load writes every id it delivered
+    // `scanTranscript`, and a manual load writes every id it delivered
     // into the transcript, so the transcript arm catches what the missing
     // record drops. Executed, not reasoned: a manual `load_context` followed
     // by PreCompact and SessionStart(compact) re-injected the loaded item in
@@ -1083,6 +1128,24 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     }
 
     const auditAt = new Date().toISOString();
+    // `subagent` is tested before `compacting` for the same reason it is in
+    // the `select` call above: the op must name the event that fired.
+    //
+    // **Hoisted out of the record literal** so that the row and the disclosure
+    // beside it are one value. `unrecordedHookLine` sends its reader to
+    // `mycontext audit --op <op>`, and an op spelled twice is two answers free
+    // to disagree about which log the missing row is missing from.
+    const auditOp = manual ? 'manual' : subagent ? 'subagent-start'
+      : compacting ? 'compact-restore' : 'session-start';
+    /**
+     * **The injection's own audit record, read rather than dropped** —
+     * `Injection.unrecorded` carries the whole argument, including why this
+     * function returns the fact instead of printing it.
+     *
+     * `null` also covers the guard below declining to record at all: no row
+     * was owed, so none is missing.
+     */
+    let unrecorded: UnrecordedInjection | null = null;
     // **The guard is relaxed for the subagent event, and ONLY for it.**
     // Everywhere else, a selection that produced nothing in any tier records
     // nothing: there is genuinely no event, and a row per empty session start
@@ -1105,12 +1168,9 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
       subagent || injected.length > 0 || selection.spilled.length > 0
       || stagedRestore.payload !== null || stagedRestore.error !== null
     ) {
-      recordAudit(stateRoot, {
+      const recorded = recordAudit(stateRoot, {
         kind: 'injection',
-        // `subagent` is tested before `compacting` for the same reason it is
-        // in the `select` call above: the op must name the event that fired.
-        op: manual ? 'manual' : subagent ? 'subagent-start'
-          : compacting ? 'compact-restore' : 'session-start',
+        op: auditOp,
         at: auditAt,
         // The PARENT's id on the subagent event — `mycontext audit --session
         // <parent>` has to show a subagent's delivery beside the session that
@@ -1129,6 +1189,15 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
         ...(selection.spilled.length === 0 ? {} : {
           spilled: selection.spilled.map((s): SpilledRef => ({
             id: s.id, tier: s.tier, reason: s.reason,
+            // **The mark travels, and only when it is set.** A restore
+            // disclosure and a budget loss are two different facts
+            // (`Spill.neverOffered`), and a log that recorded them alike made
+            // `contributions`, `payloadTrend` and the watch ratios count a
+            // superseded id as an item the budget cut. Spread as a conditional
+            // key rather than written as `neverOffered: s.neverOffered`, so an
+            // ordinary spill's row is byte-identical to the rows written before
+            // this field existed.
+            ...(s.neverOffered === true ? { neverOffered: true as const } : {}),
           })),
         }),
         // The pinned tier's own disclosure, beside `injected` and `spilled`.
@@ -1153,6 +1222,12 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
         }),
         ...(noteParts.length === 0 ? {} : { note: noteParts.join('; ') }),
       });
+      // **The answer is read here and handed back, never swallowed.** See
+      // `Injection.unrecorded`: the append below leans on this row in writing,
+      // so a lost row is a guarantee this file asserts and no longer has.
+      if (!recorded.written) {
+        unrecorded = { op: auditOp, error: recorded.error ?? 'unknown' };
+      }
     }
 
     // 5. THE SEEN-FILE APPEND (was: the ledger write). The restored line
@@ -1205,6 +1280,7 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
       // disagreement. It must not be able to invent one.
       deliveredIds: [...new Set(injected.map((ref) => ref.id))],
       failure: null,
+      unrecorded,
     };
   } catch (err) {
     // Fail open: a knowledge base that breaks a session is worse than one
@@ -1238,6 +1314,11 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
       })`;
     return {
       text: injectionFailureNote(failure), pinnedSpill: null, deliveredIds: [], failure,
+      // An injection that was CAUGHT delivered nothing, and `failure` beside
+      // it is the whole account of this path: the block the model gets IS the
+      // failure note. Adding "and its audit row is missing" to that would name
+      // a second loss inside the first, for a delivery that did not happen.
+      unrecorded: null,
     };
   }
 }

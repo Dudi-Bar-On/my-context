@@ -45,7 +45,11 @@ function item(id: string, origin: string, validFrom: string | null = LONG_AGO): 
 
 function delivered(id: string, n: number): Map<string, Contribution> {
   return new Map([[id, {
-    id, delivered: n, spilled: 0, tiers: [], firstAt: null, lastAt: null,
+    // `disclosed` arrived with `TASK-the-restore-tier-drops-snapshot-ids-with-no-
+    // disclosure-where`: a spill record can now say it was never offered to a
+    // budget, and `Contribution` counts those apart from budget losses. Zero
+    // here, because every fixture in this file is about delivery counts.
+    id, delivered: n, spilled: 0, disclosed: 0, tiers: [], firstAt: null, lastAt: null,
   }]]);
 }
 

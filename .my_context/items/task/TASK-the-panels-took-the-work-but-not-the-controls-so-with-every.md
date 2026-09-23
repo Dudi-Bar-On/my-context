@@ -20,17 +20,17 @@ tags:
   - ui
   - "plan:semantic"
   - "seq:15"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-17
 valid_until: null
-checksum: aa6f7eedee5a57c2
+checksum: 6d08b4daccf67b1a
 plan: semantic
 seq: "15"
-state: todo
+state: done
 priority: "1"
 ---
 
@@ -195,3 +195,7 @@ scroll for one layout and left it broken in the other.
   — RUN NO GIT COMMAND THAT CHANGES REPOSITORY STATE. Leave the tree dirty; the main session commits.
   — THE SERVER ON 58888 IS THE OWNER’S. Do not kill, restart or rebind it. Start your own on another
     port and kill only that.
+
+## Request
+
+ok i am looking at AS work, the dialogs exists and it looks correct, what need work is 1 - the right menue should be updated, remove any option that is already implemented on the dialog it will leave there almost only the open dialogs and maybe 1 or 2 more commands - check and tell me, 2 - the card itself is still big and contains all the buttons and controls that should be removed because the functions now works from the floating dialogs

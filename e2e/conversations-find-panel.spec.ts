@@ -1,4 +1,6 @@
-// @basis TASK-the-find-options-the-owner-asked-for-twice-in-a-floating,
+// @basis TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the,
+// TASK-the-find-options-the-owner-asked-for-twice-in-a-floating,
 // TASK-the-find-panel-offers-regular-expressions-and-no-help-and,
 // TASK-the-find-panel-s-counts-move-as-you-type-and-the-regex-mode,
 // DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn,
@@ -754,9 +756,30 @@ for (const lang of ['en', 'he'] as const) {
      * enough to reach the edge at all; with it shut the panel is ~406 px and
      * this assertion would pass on the broken build.
      */
+    /*
+     * **AND THE HELP BEING OPEN IS A PRECONDITION, SAID AS ONE** — B4 fix
+     * round 3, 2026-09-23 (`TASK-two-browser-gates-are-red-before-any-lane-
+     * touches-them-and`). On Ubuntu CI, and only in the `he`/`chrome` variant
+     * of four, this test failed reporting a panel 162 px tall against the
+     * `> 200` guard below. 162 px is not a font metric: it is the panel with
+     * the help SHUT. A click that did not land, or a re-render that shut it,
+     * was being reported as "the panel is too short", which is a statement
+     * about the layout produced by a statement about an interaction. So the
+     * click is now followed by the retrying assertion that it took, and the
+     * state is re-asserted after the two actions that rebuild the panel —
+     * `mode()` and `find()` — because "the help stays open across a mode
+     * change" is a property this file already measures two tests up and is
+     * exactly the one this test is leaning on.
+     */
+    const helpBox = page.locator('.mcpanelhelp');
     await page.locator('.mcpanelhelp summary').click();
+    await expect(helpBox, 'the help did not open, so the panel below is the short one')
+      .toHaveAttribute('open', /.*/);
     await mode(page, 'logical');
     await find(page, 'byte AND question');
+    await expect(helpBox, 'the help was shut again by the mode change or the search, so the '
+      + 'panel measured below is not the tall one this test is about')
+      .toHaveAttribute('open', /.*/);
 
     /*
      * **AND IT IS DRAGGED DOWN FIRST, BECAUSE THE FIRST DRAFT OF THIS TEST
@@ -792,14 +815,32 @@ for (const lang of ['en', 'he'] as const) {
     const fits = await page.locator(SEARCH).evaluate((d) => {
       const box = d.getBoundingClientRect();
       return { top: Math.round(box.top), bottom: Math.round(box.bottom),
-        height: Math.round(box.height),
+        height: Math.round(box.height), content: d.scrollHeight,
         viewport: window.innerHeight, scrolls: d.scrollHeight > d.clientHeight };
     });
     console.log(`[fit ${lang}] ${JSON.stringify(fits)}`);
     expect(fits.top, 'the panel was not dragged down, so this cannot see the defect')
       .toBeGreaterThan(100);
-    expect(fits.height, 'the help did not make the panel tall enough for this to mean anything')
-      .toBeGreaterThan(200);
+    /*
+     * **THE ANTI-VACUITY GUARD IS THE PROPERTY, NOT A PIXEL COUNT** — B4 fix
+     * round 3, 2026-09-23. It used to read `fits.height > 200`, a number
+     * standing in for "this panel is tall enough that the bound below had
+     * something to do", and a number is the wrong instrument for that: panel
+     * height is font metrics times content, and the two browsers and two
+     * languages this file runs in do not agree on either.
+     *
+     * The property it MEANT is here instead, in the units the defect is in:
+     * laid out from where it actually sits, this panel's own content reaches
+     * PAST the bottom of the window. That is exactly the state
+     * `lib/panel.js`'s `max-block-size` exists for — with the bound deleted,
+     * `bottom` would be `top + content` and the next assertion fails. It
+     * cannot be satisfied by a short panel on any font, and it does not
+     * ask the help to be any particular number of pixels tall.
+     */
+    expect(fits.top + fits.content,
+      'laid out unbounded from where it sits, this panel would still have ended above the '
+      + 'bottom of the window — so the bound the next assertion is about was never under test')
+      .toBeGreaterThan(fits.viewport);
     expect(fits.bottom, 'the panel runs off the bottom of the screen and cannot be scrolled to')
       .toBeLessThanOrEqual(fits.viewport);
     expect(fits.scrolls,
@@ -899,7 +940,7 @@ for (const lang of ['en', 'he'] as const) {
      */
     const top = async (selector: string): Promise<number> => page.locator(selector)
       .evaluate((el) => Math.round(el.getBoundingClientRect().top));
-    const panelTop = await top(SEARCH);
+    const panelTop = await top(`${SEARCH} .mcpanelhead`);
 
     await find(page, 'byte');
     /*
@@ -912,7 +953,7 @@ for (const lang of ['en', 'he'] as const) {
      */
     const first = { counts: await top('.mcpanelcounts'),
       stepper: await top('.mcpanelcounts .tvnavfounds'),
-      sentence: await top('.tvroot > p.tvcount') };
+      sentence: await top('.tvroot > p.tvcount'), panel: panelTop };
     console.log(`[counts ${lang}] panel ${panelTop} ${JSON.stringify(first)}`);
 
     // Directly under the box, which is the other half of his sentence: the
@@ -936,11 +977,45 @@ for (const lang of ['en', 'he'] as const) {
 
     const after = { counts: await top('.mcpanelcounts'),
       stepper: await top('.mcpanelcounts .tvnavfounds'),
-      sentence: await top('.tvroot > p.tvcount') };
+      sentence: await top('.tvroot > p.tvcount'), panel: await top(`${SEARCH} .mcpanelhead`) };
     console.log(`[counts ${lang}] after ${JSON.stringify(after)}`);
-    expect(after.counts, 'the count block moved when the panel below it grew')
-      .toBe(first.counts);
-    expect(after.stepper, 'the stepper moved').toBe(first.stepper);
+    /*
+     * **MEASURED FROM THE PANEL'S OWN HEAD, NOT FROM THE WINDOW — corrected
+     * 2026-09-23.**
+     *
+     * The complaint this test is written from is *"pleaes put the counts it a
+     * statis place up under the edit search expression"*: they slid DOWN THE
+     * PANEL as he typed. That is a distance inside the panel. A viewport top
+     * additionally measures WHERE THE PANEL'S CONTENT IS SCROLLED TO, and that
+     * is not the reader's complaint — it is this automation's own doing.
+     *
+     * **Measured, and it is deterministic rather than a flake.** `he` on
+     * bundled Chromium, 5 runs out of 5, identical numbers every time, and
+     * REPRODUCED AGAINST PRISTINE `HEAD` SOURCES so it is nothing this round
+     * changed: opening the help grows the panel body from 310px to 876px, past
+     * the `max-block-size: calc(100vh - top - 1rem)` that `placeAt`
+     * (`src/ui/public/lib/panel.js:243`) writes, so the dialog becomes its own
+     * scroller. `option()` and `mode()` then tick controls that are now below
+     * the fold, and Playwright scrolls each one into view before clicking it —
+     * so the panel's CONTENT ends 44px higher while the dialog BOX has not
+     * moved at all (542 before, 542 after). Head 544 -> 500, counts
+     * 615 -> 571, stepper 619 -> 575: everything moved together, by the scroll.
+     *
+     * **Inside the panel nothing moved**: counts 71px under the head before and
+     * 71px after, stepper 75px and 75px. `en` never reaches it and Google
+     * Chrome never reaches it — only the Hebrew panel on Chromium grows tall
+     * enough to scroll — which is exactly the signature of a frame-of-reference
+     * bug in the measurement rather than of a layout that gives way.
+     *
+     * So the distance is taken in the frame his sentence is in: from the
+     * panel's own head, which scrolls with the block it is measuring.
+     */
+    expect(after.counts - after.panel,
+      'the count block moved DOWN THE PANEL when the panel below it grew — his own '
+      + `complaint. Head ${first.panel} -> ${after.panel}, counts ${first.counts} -> ${after.counts}`)
+      .toBe(first.counts - first.panel);
+    expect(after.stepper - after.panel, 'the stepper moved down the panel')
+      .toBe(first.stepper - first.panel);
     /*
      * **AND WHAT IS PINNED FOR THE SENTENCE, SAID EXACTLY.** The stepper is
      * above it because `.tvnavfounds` holds only short lines and `p.tvcount`

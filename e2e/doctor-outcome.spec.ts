@@ -234,7 +234,13 @@ test('the acknowledged mark and the ruling count are drawn in Hebrew too', async
   test.setTimeout(90_000);
   await serveDoctor(page, ONE_RULED_ON);
   await openDoctor(page);
-  await expect(page.locator(`${DOCTOR} span.chip.index`)).toHaveCount(1);
+  // **SCOPED TO `tbody`, never the whole section** — `${DOCTOR} .phd .verdict`
+  // draws its OWN `span.chip.index` for the pane's subtitle (`screenHead()`,
+  // `src/ui/public/screens/parts.js`, the shared neutral-verdict wrapper), one
+  // per card, unconditionally. That is a real element sharing this exact class
+  // pair for an unrelated reason, and counting the whole section conflates it
+  // with the row-level acknowledged mark this test is actually about.
+  await expect(page.locator(`${DOCTOR} tbody span.chip.index`)).toHaveCount(1);
 
   // `#lang` writes `localStorage` and reloads (`app.js`), so the page is booted
   // again from the token in `sessionStorage` — waiting on the rail rather than
@@ -248,7 +254,8 @@ test('the acknowledged mark and the ruling count are drawn in Hebrew too', async
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
   await openDoctor(page);
 
-  const mark = page.locator(`${DOCTOR} span.chip.index`);
+  // Scoped to `tbody` for the same reason as the English half above.
+  const mark = page.locator(`${DOCTOR} tbody span.chip.index`);
   await expect(
     mark,
     'the mark is gone in Hebrew, or it multiplied — `applyLang` replaces the children of a '
@@ -592,8 +599,19 @@ base('the outcome of a run lands in the viewport, on the row it was run from', a
       + 'owner\'s report in its second form: the command ran, the field was written, and the '
       + 'screen redrew identically.',
     ).toBeVisible({ timeout: 120_000 });
+    // **SCOPED TO THE `<td>`'s DIRECT CHILD, never the whole row** —
+    // `command-actions.js` draws `div.cmd > code` twice more by design once a
+    // run has completed: once inside the (by-now closed) confirm, and once
+    // inside `.execresult`'s own "What was run" echo, deliberately styled
+    // like the confirm's own argv display ("drawn as the confirm above
+    // already draws the server's own argv" — `command-actions.js` ~802).
+    // Both live several levels inside `.cmdactions`; the row's OWN persistent
+    // command box — what this assertion is actually about — is a SIBLING of
+    // `.cmdactions`, appended directly to the `<td>` by `commandRow()`
+    // (`screens/doctor.js`), so it is the only `div.cmd > code` that is a
+    // direct child of the cell.
     await expect(
-      row.locator('div.cmd code'),
+      row.locator('td > div.cmd > code'),
       'the acknowledged row lost its control — the mark is a mark, not a filter',
     ).toHaveCount(1);
 

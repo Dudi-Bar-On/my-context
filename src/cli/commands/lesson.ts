@@ -61,7 +61,9 @@ function requireWorkspace(ws: Workspace, out: Emit): boolean {
 }
 
 const LESSON_USAGE =
-  'usage: mycontext lesson "<what was learned>" | mycontext lesson <LESSON-id> [--agent]';
+  'usage: mycontext lesson "<what was learned>" --summary "<one plain sentence>" | ' +
+  'mycontext lesson "<what was learned>" --summary-omitted | ' +
+  'mycontext lesson <LESSON-id> [--agent]';
 
 /**
  * `mycontext lesson "<text>"` records the lesson AND prints the derivation
@@ -69,9 +71,18 @@ const LESSON_USAGE =
  * item that already exists rather than creating a duplicate. Both paths end
  * by printing the same request — there is exactly one place that builds it.
  *
- * `--agent` is the only flag this command takes, and it changes exactly one
- * thing: the `origin` this call claims. The comment on the `createItem` call
- * below says what it does and — the part that matters — what it does not.
+ * `--agent` changes exactly one thing: the `origin` this call claims. The
+ * comment on the `createItem` call below says what it does and — the part
+ * that matters — what it does not.
+ *
+ * **`--summary`/`--summary-omitted` are the summary gate's two flags, on its
+ * sixth authored surface** (`core/summary-gate.ts`, task 3.11 phase 3
+ * review) — reused from `acceptedSummary`, which `lesson-accept` below
+ * already defines, rather than a second parser for the identical pair. They
+ * matter ONLY on the CREATE branch: re-deriving from an existing id
+ * (`mycontext lesson <LESSON-id>`) calls `createItem` not at all, and a
+ * caller who typed neither flag on that path has asked for nothing this
+ * gate has any business refusing.
  */
 function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
   if (!requireWorkspace(ws, out)) return 1;
@@ -92,11 +103,15 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
   }
 
   // Parsed BEFORE the store is opened, so `--agent=maybe` — which `hasFlag`
-  // refuses rather than guessing either way (registry.ts) — fails without a
-  // mutation context ever having existed.
+  // refuses rather than guessing either way (registry.ts) — and a repeated
+  // or malformed `--summary` — which `acceptedSummary` refuses through
+  // `flag`/`validateSummary` — both fail without a mutation context ever
+  // having existed.
   let asAgent: boolean;
+  let summaryInput: AcceptedSummary;
   try {
     asAgent = hasFlag(args, 'agent');
+    summaryInput = acceptedSummary(args);
   } catch (err) {
     out(toCliMessage(err));
     return 1;
@@ -156,12 +171,33 @@ function cmdLesson(ws: Workspace, args: string[], out: Emit): number {
         // truthful. Enforcement lives on the MCP surface; what lives here is
         // honesty made possible, not honesty made compulsory.
         //
+        // **THE SUMMARY GATE, ON THIS COMMAND'S ONE CREATE PATH.**
+        // Reached only here — an id round-trip and a title whose id already
+        // exists both take the branches above this one and call `createItem`
+        // not at all, so the gate has no business refusing either of them
+        // over a sentence nobody was ever going to write for a capture that
+        // was never going to happen. `summaryOmittedRefusal`/
+        // `summaryRequiredAtCreate`/`summaryAtCreateRefusal` are the same
+        // three calls `add` and `lesson-accept` make — this is the sixth
+        // authored surface for the one gate (`core/summary-gate.ts`), not a
+        // fourth wording of it.
+        const gateInput: CreateInput = {
+          type: 'lesson', title: subject, status: 'active',
+          origin: asAgent ? 'agent' : 'human', ...summaryInput,
+        };
+        const omittedRefusal = summaryOmittedRefusal(gateInput, 'lesson');
+        if (omittedRefusal) {
+          out(omittedRefusal);
+          return 1;
+        }
+        if (summaryRequiredAtCreate(gateInput)) {
+          out(summaryAtCreateRefusal(gateInput, 'lesson'));
+          return 1;
+        }
+
         // `createItem` returns ids, not the item itself, so the object comes
         // from the store, which it has already upserted into.
-        const created = createItem(ctx, {
-          type: 'lesson', title: subject, status: 'active',
-          origin: asAgent ? 'agent' : 'human',
-        });
+        const created = createItem(ctx, gateInput);
         lesson = ctx.store.get(created.id) as Item;
         recorded = true;
       }

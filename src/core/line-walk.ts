@@ -93,11 +93,27 @@ export interface LineWalk {
    * `reachedEnd` is what answers it.
    */
   trailing: { bytes: Buffer; at: number } | null;
+  /**
+   * **Why the read stopped, when what stopped it was the READ** — `swallow/11`,
+   * `INV-nothing-is-dropped-silently`. `null` for every walk that ended because
+   * it ran out of file, hit the cap, or was stopped by its consumer.
+   *
+   * **This is not the module swallowing anything, and the paragraph in the
+   * header still holds exactly as written.** The error is recorded and then
+   * RE-THROWN, so the redaction copier still gets the throw it depends on —
+   * *"half a JSON record in a file being handed to somebody is the one outcome
+   * that feature exists to prevent"*. What is added is that the two callers
+   * which DO catch and keep what they got are no longer handed an account that
+   * cannot tell them why: `readBytes` and `reachedEnd` on a failed read are
+   * byte-identical to a consumer that broke out of the loop, which is the
+   * reading `TranscriptCursor` documents and the wrong one.
+   */
+  failed: string | null;
 }
 
 /** A fresh account, for a caller that wants to pass one in and read it after. */
 export function newLineWalk(): LineWalk {
-  return { readBytes: 0, reachedEnd: false, trailing: null };
+  return { readBytes: 0, reachedEnd: false, trailing: null, failed: null };
 }
 
 /**
@@ -120,7 +136,19 @@ export function* eachLine(
 
   while (walk.readBytes < options.cap) {
     const want = Math.min(chunkBytes, options.cap - walk.readBytes);
-    const read = readSync(fd, buffer, 0, want, position);
+    // **Recorded, then re-thrown** (`swallow/11`). The header's rule that this
+    // module does not swallow a read error is unchanged and is the reason for
+    // the `throw`: the redaction copier is entitled to it. What the `catch`
+    // buys is the other two callers, which keep what they got — without this
+    // line their account of a file that refused to give up a byte is identical
+    // to their account of a consumer that stopped after none.
+    let read: number;
+    try {
+      read = readSync(fd, buffer, 0, want, position);
+    } catch (err) {
+      walk.failed = err instanceof Error ? err.message : String(err);
+      throw err;
+    }
     if (read <= 0) { walk.reachedEnd = true; break; }
     const chunkAt = position;
     position += read;

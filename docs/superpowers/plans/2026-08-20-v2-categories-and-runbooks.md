@@ -199,9 +199,9 @@ a fragment and is re-checked by execution instead — the second table.
 | The line grammar a step regex sits beside | `item.ts` · `const OBSERVATION = /^-\s+\[([a-z0-9_-]+)\]\s+(.*)$/i;` · ~9 |
 | The reader it is modelled on | `item.ts` · `function parseObservations(lines: string[]): Observation[] {` · ~421 |
 | The writer, and the fixed section order | `item.ts` · `    parts.push('## Observations', ...item.observations.map(renderObservation), '');` · ~822 |
-| The checksum, which must learn `steps` or a step edit is invisible to `doctor` | `item.ts` · `export function computeItemChecksum(item: Item): string {` · ~653 |
+| The checksum, which must learn `steps` or a step edit is invisible to `doctor` | `item.ts` · `export function computeItemChecksum(item: Item): ItemChecksum {` · ~851 |
 | Content identity, which must learn `steps` or two procedures differing only in steps dedupe onto each other | `content-hash.ts` · `interface ContentShape {` · ~21 |
-| …and its item-side entry point | `content-hash.ts` · `export function itemContentHash(item: Item): string {` · ~166 |
+| …and its item-side entry point | `content-hash.ts` · `export function itemContentHash(item: Item): ContentHash {` · ~171 |
 | The injected block, which must emit steps or an `active` procedure arrives without the content it exists to deliver | `render-item.ts` · `export function renderItemBlock(item: Item): string {` · ~231 |
 | Budgeting is derived from that exact text, so emitting steps makes `itemCost` correct with no second change | `select.ts` · `function itemCost(item: Item): number {` · ~491 |
 | `Item` today | `types.ts` · `export interface Item {` · ~77 |
@@ -1641,7 +1641,7 @@ and in `renderItem`, immediately **before** the observations block
 
 - [ ] **Step 5: The two hashes**
 
-`computeItemChecksum` (`item.ts` · `export function computeItemChecksum(item: Item): string {` · ~653)
+`computeItemChecksum` (`item.ts` · `export function computeItemChecksum(item: Item): ItemChecksum {` · ~851)
 becomes a built object rather than a literal, so the key can be conditional. **Keep every existing
 key in its existing order** — the hash is over `JSON.stringify`, so order is identity:
 

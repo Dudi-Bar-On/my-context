@@ -1,3 +1,7 @@
+// @basis TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the,
+// TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every,
+// DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn
 /**
  * **What a chip is actually painted, measured on the rendered chip.**
  *
@@ -164,6 +168,12 @@ interface Chip {
   readonly ratio: number;
   /** An inline `style` colour — a restatement, which no chip may carry. */
   readonly inlineColor: string;
+  /**
+   * Whether this chip is the SCREEN HEAD's own verdict chip — `screenHead`'s
+   * neutral `chip index` inside `.phd .verdict`, which draws no glyph by
+   * ruling. See the glyph assertion below for the whole argument.
+   */
+  readonly verdict: boolean;
 }
 
 /**
@@ -228,6 +238,7 @@ const COLLECT = (rootSelector: string) => {
       ground: `rgb(${bg.r}, ${bg.g}, ${bg.b})`,
       ratio: Math.round(((Math.max(lf, lb) + 0.05) / (Math.min(lf, lb) + 0.05)) * 100) / 100,
       inlineColor: (el as HTMLElement).style.getPropertyValue('color'),
+      verdict: el.closest('.verdict') !== null,
     });
   }
   return out;
@@ -413,7 +424,37 @@ test('a chip never carries its state in colour alone', async ({ app }) => {
     'a chip says nothing without its colour — no word inside it. Colour is never the only '
     + `carrier of a state: ${evidenceOf(mute)}`,
   ).toBe(0);
-  const glyphless = all.filter((c) => c.glyph === '');
+  /**
+   * **AND ONE CHIP DRAWS NO GLYPH ON PURPOSE, BY A RULING THIS FILE HAD NOT
+   * CAUGHT UP WITH.**
+   *
+   * `screenHead` writes the screen's own note about itself as a neutral
+   * `chip index` inside `.phd .verdict`, and `styles.css` suppresses its
+   * `::before` explicitly — *"THE VERDICT CHIP DRAWS NO GLYPH AT ALL … the
+   * tick that used to sit there is exactly what
+   * `TASK-a-glyph-makes-a-kind-recognisable-without-reading-in-every`
+   * retired"*. `test/ui/glyph-set.test.ts` holds the other half: `screenHead`
+   * has no `glyph` parameter at all, *"the tick was retired by REMOVING the
+   * door"*. So a glyph there is not merely unnecessary, it is the thing that
+   * was taken away.
+   *
+   * This assertion never ran against it before 2026-09-23: the WORD check
+   * above failed first, on the Budget simulator's empty `chip ok`
+   * (`ui-gates/1`'s own first red), and the file stopped there. With that
+   * fixed, five verdict chips arrived here at once — preview, simulate, ask,
+   * watch and work — every one of them `class="chip index"` with a full
+   * sentence of words inside it and no state to carry in the first place.
+   *
+   * **The exception is therefore NARROW and is itself asserted**, not a
+   * filter that quietly drops whatever is inconvenient: a glyphless chip is
+   * allowed ONLY when it is the verdict chip AND its class is exactly
+   * `chip index`. A meaning hue in a verdict, or any other glyphless chip
+   * anywhere, still fails — which is the property the original line was
+   * written for.
+   */
+  const neutralVerdict = (c: Chip): boolean =>
+    c.verdict && c.cls.trim().split(/\s+/).sort().join(' ') === 'chip index';
+  const glyphless = all.filter((c) => c.glyph === '' && !neutralVerdict(c));
   expect(
     glyphless.length,
     `a chip drew no glyph, so it has one channel where the design specifies two: ${evidenceOf(glyphless)}`,

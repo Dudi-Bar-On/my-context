@@ -1,3 +1,4 @@
+// @basis TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
 /**
  * **The historical-citation marker, driven red before it is trusted green.**
  *
@@ -27,8 +28,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { removeTree } from '../helpers/tmp.ts';
+import {
+  CORPUS_ROOT, DOC_FILES, DOC_ROOTS, EXEMPT_SPECIMEN, NOT_SOURCE_FILE, SOURCE_EXEMPT,
+  sourcePopulation, sourceSkipReason,
+} from '../../scripts/verify-citations.ts';
+import { partition, walkSummary } from '../../scripts/tracked-walk.ts';
 
 const SCRIPT = fileURLToPath(new URL('../../scripts/verify-citations.ts', import.meta.url));
+const REPO = path.join(import.meta.dirname, '..', '..');
+const WALK_MODULE = fileURLToPath(new URL('../../scripts/tracked-walk.ts', import.meta.url));
 
 /** The one line every probe below cites, present or absent on purpose. */
 const PRESENT = 'export function present(): void {';
@@ -53,6 +61,9 @@ function probe(doc: string): Probe {
   mkdirSync(path.join(root, 'src'), { recursive: true });
   mkdirSync(path.join(root, 'docs', 'superpowers', 'plans'), { recursive: true });
   copyFileSync(SCRIPT, path.join(root, 'scripts', 'verify-citations.ts'));
+  // The script is made of two files since the source tier stopped listing
+  // roots and started walking the tracked tree; a probe carries both.
+  copyFileSync(WALK_MODULE, path.join(root, 'scripts', 'tracked-walk.ts'));
   writeFileSync(
     path.join(root, 'src', 'thing.ts'),
     `// a file with one citable line\n${PRESENT}\n}\n`,
@@ -468,6 +479,7 @@ function probeReadmes(readmes: Record<string, string | null>): Probe {
   mkdirSync(path.join(root, 'src'), { recursive: true });
   mkdirSync(path.join(root, 'docs', 'superpowers', 'plans'), { recursive: true });
   copyFileSync(SCRIPT, path.join(root, 'scripts', 'verify-citations.ts'));
+  copyFileSync(WALK_MODULE, path.join(root, 'scripts', 'tracked-walk.ts'));
   writeFileSync(
     path.join(root, 'src', 'thing.ts'),
     `// a file with one citable line\n${PRESENT}\n}\n`,
@@ -544,5 +556,142 @@ test('a missing HEBREW README stops the run on the same terms', () => {
   runReadmes({ 'README.md': '', 'docs/README.he.md': null }, (p) => {
     assert.equal(p.code, 1, p.out);
     assert.match(p.out, /docs\/README\.he\.md is named in DOC_FILES and is not a file/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The SOURCE TIER'S POPULATION.
+//
+// `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan`. The
+// source tier read four hand-listed roots — `['src', 'test', 'scripts', 'e2e']`
+// — so `harness/`, `hooks/`, `commands/` and `skills/` were answered "nothing
+// broken" by a tier that had never opened one of them. The first round of that
+// task made the list eight entries long, which is the SAME repair a second time
+// and the one this file's four sibling gates were corrected for. The population
+// is now what git tracks, through `scripts/tracked-walk.ts`.
+//
+// Three things are proved, and the third is the one that matters most: WHAT
+// THIS SCRIPT GATES DID NOT MOVE.
+// ---------------------------------------------------------------------------
+
+test('the skip decision names a reason for everything it declines, and null for source', () => {
+  assert.equal(sourceSkipReason('src/core/select.ts'), null);
+  assert.equal(sourceSkipReason('harness/sweep.mjs'), null);
+  assert.equal(sourceSkipReason('src/ui/public/app.js'), null);
+
+  assert.equal(sourceSkipReason('README.md'), NOT_SOURCE_FILE);
+  assert.equal(sourceSkipReason('docs/design/web-ui-mockup.html'), NOT_SOURCE_FILE);
+  assert.equal(sourceSkipReason('src/types.d.ts'), NOT_SOURCE_FILE);
+  assert.equal(sourceSkipReason('.my_context/items/rule/RULE-x.md'), NOT_SOURCE_FILE);
+
+  for (const exempt of SOURCE_EXEMPT) {
+    assert.equal(
+      sourceSkipReason(exempt), EXEMPT_SPECIMEN,
+      `${exempt} is exempt and must say why, not simply be absent`,
+    );
+  }
+});
+
+/**
+ * **A planted skip, and the line it must print.** A reason nobody prints is
+ * the same silence as no reason at all, so the disclosure is asserted over a
+ * planted population rather than inferred from the constants.
+ */
+test('a planted skip appears in the printed disclosure, with its reason', () => {
+  const planted = [
+    'src/core/select.ts',
+    'harness/sweep.mjs',
+    'docs/system/06-ingest.md',
+    'src/ui/public/styles.css',
+    ...SOURCE_EXEMPT,
+  ];
+  const walk = partition(planted, sourceSkipReason);
+  assert.deepEqual(walk.scanned, ['src/core/select.ts', 'harness/sweep.mjs']);
+
+  const printed = walkSummary(
+    `${walk.scanned.length} tracked source file(s) walked, ${walk.skipped.length} not.`,
+    walk,
+  );
+  assert.match(printed, /2 tracked source file\(s\) walked, 7 not\./);
+  assert.ok(
+    printed.includes(`skipped 5 — ${EXEMPT_SPECIMEN}`),
+    `the planted specimen skip is not in the disclosure:\n${printed}`,
+  );
+  assert.ok(
+    printed.includes(`skipped 2 — ${NOT_SOURCE_FILE}`),
+    `the planted non-source skip is not in the disclosure:\n${printed}`,
+  );
+  assert.match(printed, /not tracked: untracked —/);
+});
+
+test('the real run prints the population it walked and every reason it did not', () => {
+  const result = spawnSync(process.execPath, [SCRIPT], { cwd: REPO, encoding: 'utf8' });
+  const out = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+
+  const walked = /(\d[\d,]*) tracked source file\(s\) walked, (\d[\d,]*) not\./.exec(out);
+  assert.notEqual(walked, null, `no source-walk disclosure in the output:\n${out}`);
+  assert.ok(Number(walked![1]!.replaceAll(',', '')) > 1000, 'the walked count is not the tree');
+  assert.ok(
+    out.includes(`skipped ${SOURCE_EXEMPT.size} — ${EXEMPT_SPECIMEN}`),
+    'the five specimen files are skipped and the run does not say so',
+  );
+  assert.ok(out.includes(NOT_SOURCE_FILE), 'the non-source skip is not printed with its reason');
+});
+
+/**
+ * **What this script GATES is the documentation tier, and the source walk
+ * cannot reach it.** Structural rather than incidental: `isSourceFile` accepts
+ * only `.ts`/`.js`/`.mjs`/`.cjs`, and every document root and the corpus root
+ * are `.md`, so no file that gates can enter the population that does not.
+ */
+test('no document and no corpus item can enter the source population', () => {
+  const { walk, note } = sourcePopulation(REPO);
+  assert.equal(note, null, 'this repository is a git repository; the tracked walk must be used');
+
+  for (const file of DOC_FILES) {
+    assert.equal(sourceSkipReason(file), NOT_SOURCE_FILE, `${file} gates and must not be source`);
+    assert.ok(!walk.scanned.includes(file));
+  }
+  for (const root of [...DOC_ROOTS, CORPUS_ROOT]) {
+    assert.ok(
+      !walk.scanned.some((f) => f.startsWith(`${root}/`)),
+      `${root}/ is a gated tier and a file of it reached the source walk`,
+    );
+  }
+  assert.ok(walk.scanned.every((f) => /\.(ts|js|mjs|cjs)$/.test(f)));
+});
+
+/**
+ * And end to end, through the same probe every test above uses: a throwaway
+ * tree is NOT a git repository, so the source tier has no population there —
+ * and the documentation gate still fails on a broken citation, which is the
+ * whole of what this script gates.
+ */
+test('the documentation gate still fails where git cannot list the tree', () => {
+  run(`A plan. ${cite(GONE)}\n`, (p) => {
+    assert.equal(p.code, 1, p.out);
+    assert.match(p.out, /BROKEN docs\/superpowers\/plans\/probe\.md:1/);
+    assert.match(p.out, /walked over the FILESYSTEM, not over what git tracks/);
+  });
+});
+
+/**
+ * The fail-closed half, stated as its own assertion. Failing closed here is
+ * "read MORE and say so", not "read nothing quietly": a wider population can
+ * only produce more findings, and the substitution is printed. What must never
+ * happen is a count that reads as a measurement of the TRACKED tree when no
+ * tracked tree was consulted.
+ */
+test('a source tier without git says it read the filesystem, and never claims tracked', () => {
+  run('A plan with no citations at all.\n', (p) => {
+    assert.match(p.out, /walked over the FILESYSTEM, not over what git tracks/);
+    assert.match(p.out, /an untracked file is read too/);
+    assert.doesNotMatch(
+      p.out, /tracked source file\(s\) walked/,
+      'a filesystem walk must not be printed as a tracked one',
+    );
+    // And it really walked: the probe tree holds `src/thing.ts`, which is the
+    // file every citation above resolves against.
+    assert.match(p.out, /[1-9]\d* source file\(s\) walked/);
   });
 });

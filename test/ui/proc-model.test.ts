@@ -67,7 +67,7 @@ const codes = (d: Disclosure[]): string[] => d.map((x) => x.code);
  * raises `unable to open database file`, and `server.ts` turns that into a 500.
  *
  * That is not this module's behaviour and not this module's to fix: it is
- * `ui/read-model.ts` · `export function withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger | null) => T): T {` · ~229,
+ * `ui/read-model-base.ts` · `export function withStores<T>(ws: Workspace, fn: (store: Store, ledger: Ledger | null) => T): T {` · ~131,
  * inherited identically by `/api/items`, `/api/status` and every other read.
  * It is asserted HERE rather than only mentioned in a report, so that the day
  * somebody gives that path an empty state this test fails and says so.

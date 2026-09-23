@@ -145,11 +145,19 @@ test('publishing shows a diff and does nothing until it is confirmed', async ({ 
   const before = manifest();
   await expect(page.locator('#confirm-publish')).toBeVisible();
   expect(manifest(), 'looking at the publish screen changed the store').toBe(before);
+  // **DERIVED, never hardcoded.** The fixture copies the SHIPPED store
+  // (`entriesDir()`, this file's own header: "the real thing with a fixture's
+  // worth of additions on top"), so its version is the product's real publish
+  // history and moves every time that history does — reading it off `before`
+  // is what keeps this assertion honest instead of pinning a number that goes
+  // stale on the next unrelated publish.
+  const beforeVersion = (JSON.parse(before) as { store: { version: number } }).store.version;
 
   await page.locator('#f-note').fill('the browser probe');
   await page.locator('#confirm-publish').click();
 
-  await expect(page.locator('#notice')).toContainText('published store version 1');
+  await expect(page.locator('#notice'))
+    .toContainText(`published store version ${beforeVersion + 1}`);
   await expect(page.locator('#no-changes')).toBeVisible();
   expect(JSON.parse(manifest()).store.changelog[0].note).toBe('the browser probe');
 });

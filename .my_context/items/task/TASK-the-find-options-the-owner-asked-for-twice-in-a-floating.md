@@ -103,3 +103,7 @@ anything is read, as its own answer on the wire (`refused`, not `error`, not an 
      paragraph he can overrule.
   4. The panel frame is `src/ui/public/lib/panel.js` and report §3 says exactly what the second
      and third callers supply. Navigation and copy are two items, not two builds.
+
+## Request
+
+ok now navigating over the search works correct including the scroll, 1 - measure and tell me what about searching everything, 2 - i asked you to look at notepad++ search because they have a search dialog with various options that i wanted you to implement in a similar way, there are many options there including lower case, upper case, whole word, regex and much more, thats why i have asked you to search the internet for the best open source implemented search including the ui component but you ignored and brought the first simple implementation you found, 3 - after everithing will work i mean the search - smart search, i want you to get the best ui ux tools you have and refactor completely the conversations screen with all it's controls, currentlly it looks like a mess very unorderd and very dificault to work with it so we need professional consult and implementation of the screen (the viewer is under this section), it is very load with very long text staetments in a small font that is actually unreadable. Say your opinion and then recommend and ask me how to proceed

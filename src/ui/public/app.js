@@ -640,14 +640,99 @@ const SESS_NOT_PROJECTED_KEY = 'sess.notProjected';
  */
 function noteCodeSkew(answer) {
   if (answer === null || typeof answer !== 'object') return;
+  // **THE THIRD STATE, AND IT IS NEITHER OF THE TWO ABOVE**
+  // (`TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`).
+  //
+  // `staleCode` became `boolean | null` on 2026-09-23: `null` is a server that
+  // could not walk its own sources at all, so it has no boot stamp and can
+  // never answer the question either way. Before that it answered `false` —
+  // the measured good state — and the two lines below then CLEARED a banner on
+  // the strength of a walk that never happened.
+  //
+  // `codeUnmeasured` carries which directory and which error. It is kept and
+  // drawn rather than merely not-cleared, because a fact that arrives on the
+  // wire every sixty seconds and is rendered nowhere is the same silence one
+  // layer up (`INV-nothing-is-dropped-silently`).
+  if (answer.staleCode === null && answer.codeUnmeasured !== undefined) {
+    codeUnmeasuredAnswer = answer.codeUnmeasured;
+    fillCodeState();
+    return;
+  }
   if (answer.staleCode === true) {
     if (!codeSkewSeen) { codeSkewSeen = true; showLiveState(); }
     showCodeSkew();
     return;
   }
+  // `=== false` and never a falsy test — see above. `null` must not reach here
+  // and `undefined` (the twenty other routes) must not either.
   if (answer.staleCode === false) {
     if (codeSkewSeen) { codeSkewSeen = false; showLiveState(); }
+    if (codeUnmeasuredAnswer !== null) { codeUnmeasuredAnswer = null; fillCodeState(); }
   }
+}
+
+/**
+ * The server's own reason, remembered — the shape `corpusDriftAnswer` below
+ * established, and for its argument: `stream()`'s catch stops the heartbeat, so
+ * a notice that fetched its own answer would be asking down the channel that is
+ * down.
+ *
+ * `null` is both "nothing has answered yet" and "the last answer was measured".
+ * Neither draws anything, which is the existing ruling for a code state that is
+ * ordinary: `showLiveState` draws no chip for a feed that is running, and a
+ * server that CAN see its own files has the banner for the one state that needs
+ * saying. What had no rendering at all was the state where the question cannot
+ * be asked.
+ */
+let codeUnmeasuredAnswer = null;
+
+/**
+ * Draw the unmeasured-code chip, as the `chip unmeas` the strip already has.
+ *
+ * Deliberately the same visual vocabulary `fillCorpusDrift` uses for `drifted:
+ * null` — the glyph, the class and the "not known rather than no" reading are
+ * one convention in this strip, and a second one invented here would be a
+ * reader having to learn that two ◌ chips mean different kinds of absence.
+ *
+ * The reason rides in the TITLE rather than in the chip's text: the strip is
+ * one line of chips with `min-inline-size: 88px` and an ellipsis, and a path
+ * plus an errno does not fit in it. The chip says the state; the title says
+ * which directory and which error, which is what a reader acts on.
+ */
+function fillCodeState() {
+  const host = document.getElementById('codestate');
+  if (host === null) return;
+  if (codeUnmeasuredAnswer === null || typeof codeUnmeasuredAnswer !== 'object') {
+    host.replaceChildren();
+    // **AND IT COSTS THE BAR NOTHING WHILE IT SAYS NOTHING.** `.sgrp` is
+    // `display:flex; gap:var(--sp-2)`, and a flex item with no content still
+    // takes a gap on each side — so an empty host that renders zero pixels of
+    // ink spends 8px of the densest row this shell has. `e2e/strip.spec.ts`
+    // measured exactly that on 2026-09-23: at 2273px, the width the owner
+    // reads the bar at and the width that spec calls "room for every field at
+    // full length", `strip.corpusInStep`, `strip.doc` and `strip.queue` each
+    // came up a handful of pixels short the moment this element joined the
+    // corpus group. The comment where it is created argues correctly that it
+    // must carry no `min-inline-size`; the gap is the half that was missed.
+    //
+    // `hidden` rather than a CSS rule, because there is no rule for this class
+    // to hang off — `.configerr` is the precedent and has none either — and
+    // because the element then leaves flex layout entirely rather than being
+    // sized to zero and still separated from its neighbours.
+    host.hidden = true;
+    return;
+  }
+  host.hidden = false;
+  const chip = document.createElement('span');
+  chip.className = 'chip unmeas';
+  chip.dataset.g = '◌';
+  chip.dataset.f = 'code-state';
+  chip.dataset.k = 'strip.codeUnmeasured';
+  chip.append(...translate(table.strings, 'strip.codeUnmeasured'));
+  chip.title = flat(table.strings, 'title.codeUnmeasured', {
+    reason: typeof codeUnmeasuredAnswer.reason === 'string' ? codeUnmeasuredAnswer.reason : '—',
+  });
+  host.replaceChildren(chip);
 }
 
 /* ══ THE CORPUS HAS MOVED AND THE LOG DID NOT SEE IT ══════════════════
@@ -2313,10 +2398,43 @@ function showExited() {
  */
 async function refusalDetail(response) {
   const raw = await response.text();
-  if (raw === '') return String(response.status);
+  if (raw === '') return statusOnly(response.status);
   let detail = '';
   try { detail = String(JSON.parse(raw).error ?? ''); } catch { detail = ''; }
-  return detail === '' ? String(response.status) : detail;
+  return detail === '' ? statusOnly(response.status) : detail;
+}
+
+/**
+ * **A response that told the reader nothing but its status — and a 500 is not
+ * a 403** (`swallow/11` m19, second clause: *"a 500 and a 403 reach the reader
+ * through the same `errorNote`"*).
+ *
+ * Both used to be `String(response.status)`, so both arrived at the page as a
+ * bare number in the same `.spill` frame. They are opposite facts with nothing
+ * in common to do about them. A 4xx is a running server saying no to THIS
+ * REQUEST: `request()` raises a banner for 401 and 403, clears the token and
+ * lets the very next call recover. A 5xx is the server failing while handling
+ * the request — nothing about the credential is wrong, no banner is raised,
+ * and a reader who reads the digits as a refusal goes and fetches a fresh
+ * nonce that cannot help. `errorNote`'s own rule is that *"an endpoint that
+ * refused and a corpus that is empty are two facts, and this project's own
+ * invariant is that the difference survives"*.
+ *
+ * **ONLY the 5xx class is narrowed, and the 4xx strings are byte-identical.**
+ * That is not timidity, it is a contract: `request()` throws `new Error('401')`
+ * for a request it never sends, deliberately spelled to match what a real
+ * token-missing response produces, and `e2e/ctx-post.spec.ts` matches that
+ * message against `/^(401|403)$/`. The class that gains a sentence is the one
+ * no caller reads and no spec pins.
+ *
+ * **The status stays IN the sentence.** It is the one thing that was measured,
+ * and a reader who cannot quote the number cannot look anything up.
+ */
+function statusOnly(status) {
+  if (status < 500) return String(status);
+  return `${status} — the server failed while handling this request and sent no reason. `
+    + 'This is not a refusal: the page\'s credential is not the problem and a new one will not '
+    + 'change it. The server\'s own console carries what went wrong.';
 }
 
 /**
@@ -4669,6 +4787,34 @@ function renderChrome() {
   const configErr = document.createElement('span');
   configErr.className = 'configerr';
   configErr.id = 'configerr';
+  // ── AND WHETHER THIS SERVER CAN SEE ITS OWN SOURCE AT ALL —
+  // `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`. A
+  // FOURTH fact, its own element for the reason the two above are: a different
+  // source (`staleCode: null` on the same two requests), a different refill
+  // trigger, and a refill of any of them must never blank the others.
+  //
+  // It is EMPTY in the ordinary case and that is not a silence: the two
+  // measured states already have their surfaces — the `ex.codeSkew` banner for
+  // a skew, and nothing at all for a current server, which is this page's
+  // standing ruling for its own ordinary state (see `showLiveState`, which
+  // draws no chip for a feed that is running). What had no rendering anywhere
+  // was the state where the question could not be asked.
+  //
+  // **Its class carries no CSS rule, and that is `#configerr`'s precedent
+  // rather than an omission.** `.corpusdrift` declares `min-inline-size: 88px`
+  // because that chip is ALWAYS drawn and must not jitter as its text changes.
+  // This one is empty on every healthy install, so the same rule would spend 88
+  // pixels of a one-line strip on a span that renders nothing — measured
+  // against `e2e/strip.spec.ts`, which asserts the strip's widths. `.configerr`
+  // is the existing host with exactly this shape and exactly no rule; the class
+  // is a handle for a test, not a box.
+  const codeState = document.createElement('span');
+  codeState.className = 'codestate';
+  codeState.id = 'codestate';
+  // Hidden from the first paint, and `fillCodeState` owns it from there: an
+  // empty flex item still takes a `gap` on each side, and this row is measured
+  // full at the width the owner reads it at. See `fillCodeState`.
+  codeState.hidden = true;
   // ── AND WHAT THE CORPUS IS WAITING ON — owner ruling 2026-08-31.
   //
   // Two counts and two doors: doctor findings at error or warning level, and
@@ -4697,7 +4843,7 @@ function renderChrome() {
   const notes = document.createElement('span');
   notes.className = 'sprop';
   notes.id = 'corpusnotes';
-  corpus.append(count, drift, configErr, notes);
+  corpus.append(count, drift, configErr, codeState, notes);
 
   // ── WHERE THIS SESSION IS, AND WHICH CORPUS IT GOT — owner request,
   // 2026-09-02, and the coordinator's ruling the same day that BOTH are drawn
@@ -5077,6 +5223,42 @@ const STRIP_MAX_ROWS = 4;
 function fitStrip() {
   const strip = document.getElementById('strip');
   if (strip === null || stripPlan === null) return;
+  /**
+   * **A BAR THAT IS NOT ON SCREEN CANNOT BE MEASURED, AND MEASURING IT ANYWAY
+   * THREW THE READER'S ROWS AWAY.**
+   *
+   * `stripDeficit` only counts a box that is `clientWidth > 0 && scrollWidth >
+   * clientWidth`, so against a `display:none` bar every box reports zero and
+   * the loop below concludes that nothing is cut — which is the ONE input that
+   * decides how many rows the bar gets. The answer is always the floor: two
+   * rows, whatever the reader was actually being shown.
+   *
+   * It is reached, and by a path a person takes. `styles.css:626` hides the
+   * strip outright in the expanded conversation viewer
+   * (`.app.doc-wide … .strip{display:none}`), and `watchStripFit`'s width
+   * observer fires on the way in with `contentRect.width` of 0 — a width that
+   * has genuinely moved — so a fit runs against the hidden bar and collapses
+   * it. **Measured 2026-09-23 on a quiet machine, `--workers=1`, chromium AND
+   * chrome, both deterministic**: `e2e/conversations-panels.spec.ts:444` (en)
+   * expands the viewer and comes back, and the well returns 25px TALLER than
+   * it left — exactly one `grid-auto-rows:25px` strip row
+   * (`styles.css:974`) — because the bar came back with two rows where it had
+   * three. That is a visible jump for the reader, not only a red assertion.
+   *
+   * So a hidden bar is left exactly as it was. Nothing is lost by waiting:
+   * the same width observer fires again when the strip is shown, with a real
+   * width, and that fit is the one with something to measure.
+   *
+   * **AND ONLY ONCE THERE IS SOMETHING TO PRESERVE.** `layoutStrip` below is
+   * the ONLY thing in this product that creates a `.striprow` at all, and it
+   * is only ever called from here — so a bail-out before it, on a first fit
+   * that happens to run while the bar has not been laid out yet, leaves the
+   * bar with no rows whatsoever. Measured: `e2e/strip-picker.spec.ts:281`
+   * timed out on `waiting for locator('#strip .striprow') to be visible`.
+   *
+   * So a hidden bar is never MEASURED, and an unbuilt bar is always BUILT.
+   */
+  if (strip.clientWidth === 0 && strip.querySelector('.striprow') !== null) return;
   // **THE CHOICE IS APPLIED BEFORE ANYTHING IS MEASURED** — `semantic/17`. A
   // hidden pill has no width, so every measurement below is of the bar the
   // reader asked for rather than of the bar as built; and a loud pill he
@@ -5236,7 +5418,21 @@ function watchStripFit(strip) {
     });
     sizer.observe(strip);
   }
-  if (typeof ResizeObserver === 'function') new ResizeObserver(queue).observe(strip);
+  // **AND THERE IS NO SECOND OBSERVER — removed 2026-09-23, B4 / `ui-gates/1`.**
+  //
+  // A bare `new ResizeObserver(queue).observe(strip)` sat on the next line from
+  // `d9397803` (2026-09-01) until today. `b4a6301f`, the same day, added the
+  // width-guarded block above and never removed the original — so the bar
+  // carried two observers, and the second one queued a fit on exactly the
+  // height changes the paragraph above refuses to queue on. The guard's own
+  // argument was defeated on the line after it was written.
+  //
+  // It survived because `fitStrip` is idempotent once the bar is settled, so
+  // the extra fit converges in a frame and shows nothing. That is a reason it
+  // was never SEEN, not a reason to keep it: `test/ui/strip-observer.test.ts`
+  // now reads this function's own source and holds "one ResizeObserver on the
+  // strip, width-guarded", in the idiom `test/ui/glyph-set.test.ts` uses for
+  // `screenHead`'s call sites.
 }
 
 /* ══ THE BAR'S CONTENT IS THE READER'S — `semantic/17` ═════════════════════
@@ -6116,6 +6312,13 @@ async function fillChrome() {
   // config governing it is the file on disk is not a page that measured a
   // working one — see `fillConfigError`.
   fillConfigError();
+  // And the third, whose empty is the ordinary case rather than a not-yet:
+  // `codeUnmeasuredAnswer` is `null` at boot and stays `null` for every server
+  // that CAN walk its own sources, so this draws nothing until one cannot. It
+  // is called here anyway so the element is owned by one function from the
+  // first paint — a host that is filled only from a network answer is a host
+  // nothing clears when the answer stops saying it.
+  fillCodeState();
   await Promise.all([fillGit(git), fillItems(count), fillProvenance()]);
 }
 
@@ -9138,7 +9341,7 @@ async function main() {
   // minute from here is the first one that could carry the session's size and
   // lane count. See `heartbeatPing` for why those two fields, alone on this
   // request, cannot wait for it.
-  // TEMPDISABLED void heartbeatPing();
+  void heartbeatPing();
 
   // **A nonce pasted into a LIVE page is redeemed, not routed.**
   //

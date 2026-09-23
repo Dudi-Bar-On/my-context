@@ -1,3 +1,14 @@
+# mycontext — roadmap to production grade — RETIRED 2026-09-22
+
+**This roadmap is retired.** `mycontext ready [--plan <p>] [--held]` computes what
+is dispatchable from the corpus' own `needs:` fields and cannot go stale, where a
+hand-kept roadmap can.
+
+Do not read the sections below as current — they are in git history (`git show
+5a4997b2:docs/ROADMAP.md` is the last live version).
+
+---
+
 # mycontext — roadmap to production grade
 
 **Updated:** 2026-08-16 · **Master:** `758ee03` · **Tag:** `v0.9.0` · **Tests:** 2251 (2250 pass, 1 POSIX-only skip)

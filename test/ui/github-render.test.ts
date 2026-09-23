@@ -19,10 +19,11 @@
  * ── THE FOUR THINGS THIS FILE HOLDS ───────────────────────────────────────
  *
  *   1. **The security properties, stated as tests rather than as comments.**
- *      This server sends no `Content-Security-Policy` — retired by owner
- *      decision on 2026-08-22, and `server-e2e.test.ts` asserts its ABSENCE —
- *      so `script-src 'self'` is not there to catch a mistake in the
- *      allow-list. Every guarantee is structural and every one is asserted
+ *      This server sends a `Content-Security-Policy` with `script-src 'self'`
+ *      since 2026-09-23 (owner ruling E; `server-e2e.test.ts` asserts the exact
+ *      value; it was absent between 2026-08-22 and then), but these tests do
+ *      not lean on it: a mistake in the allow-list must be caught HERE, with
+ *      the policy as the second net. Every guarantee is structural and every one is asserted
  *      below: no script element is ever built, no event-handler attribute is
  *      ever set, no `javascript:`/`data:`/`vbscript:` URL is ever set, and no
  *      `style`, `class` or `id` from a document ever reaches a node.

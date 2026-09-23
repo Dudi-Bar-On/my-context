@@ -25,7 +25,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 2b1df557b905686e
+checksum: 853ea2371833bed6
 plan: rulings
 seq: "82"
 state: todo
@@ -43,3 +43,7 @@ AND THE RULING CORRECTED TWO OF REPORT 6'S CLAIMS AS TOO STRONG, which is record
 - "The `session-start` door has never once delivered successfully" is wrong: the door has not failed -- THE EVENT HAS NOT HAPPENED in this workspace since before the code landed.
 
 Raised by report 6 (`reports/2026-09-13-store-cli-mcp-and-gates-reviewed.md`, S3a and S4).
+
+## Relations
+- supersedes [[TASK-58-of-its-rows-157-269-were-written-by-test-rules-lane-still]]
+- supersedes [[TASK-58-of-its-rows-157-269-were-written-by-test-rules-lane-still-2]]

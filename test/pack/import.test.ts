@@ -255,7 +255,7 @@ function options(
     // These tests build artefacts at absolute paths, so the source IS the
     // resolved origin here. They stay two fields because the CLI resolves what
     // a user typed, and only the resolved half is half of the import's key.
-    name: PACK_NAME, source, origin: source, now: FIXED_NOW, overwriteApproved: false, ...over,
+    name: PACK_NAME, source, origin: source, now: FIXED_NOW, overwriteApproved: false, keepsPartialWrites: true, ...over,
   };
 }
 

@@ -470,11 +470,15 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
 
   lesson: (cwd) => {
     plantUnrelatedCorruptItem(cwd);
-    return ['A lesson learned for the F2 registry guard'];
+    // `--summary-omitted` because a capture is now refused without a summary
+    // or this flag (`core/summary-gate.ts`, sixth authored surface). F2 is
+    // about an UNRELATED load error not turning a successful write into a
+    // failure, so the capture has to actually succeed.
+    return ['A lesson learned for the F2 registry guard', '--summary-omitted'];
   },
 
   'lesson-stage': (cwd) => {
-    const created = run(['lesson', 'A lesson worth staging for the F2 guard'], cwd);
+    const created = run(['lesson', 'A lesson worth staging for the F2 guard', '--summary-omitted'], cwd);
     const id = lessonId(created.out);
     writeFileSync(path.join(cwd, 'stage.json'), JSON.stringify([
       { title: 'A staged rule for the F2 guard', directive: 'do', body: 'b' },
@@ -484,7 +488,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   },
 
   'lesson-accept': (cwd) => {
-    const created = run(['lesson', 'A lesson worth accepting for the F2 guard'], cwd);
+    const created = run(['lesson', 'A lesson worth accepting for the F2 guard', '--summary-omitted'], cwd);
     const id = lessonId(created.out);
     writeFileSync(path.join(cwd, 'stage.json'), JSON.stringify([
       { title: 'A rule to accept for the F2 guard', directive: 'do', body: 'b' },
@@ -503,7 +507,7 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   },
 
   'lesson-discard': (cwd) => {
-    const created = run(['lesson', 'A lesson worth discarding for the F2 guard'], cwd);
+    const created = run(['lesson', 'A lesson worth discarding for the F2 guard', '--summary-omitted'], cwd);
     const id = lessonId(created.out);
     writeFileSync(path.join(cwd, 'stage.json'), JSON.stringify([
       { title: 'A rule to discard for the F2 guard', directive: 'do', body: 'b' },
@@ -651,7 +655,11 @@ const SETUPS: Record<string, (cwd: string) => string[]> = {
   'inbox-promote': (cwd) => {
     run(['add', '--summary-omitted', 'note', 'A jotted note for the F2 guard', '--yes'], cwd);
     plantUnrelatedCorruptItem(cwd);
-    return ['NOTE-a-jotted-note-for-the-f2-guard', '--to', 'decision', '--yes'];
+    // `--summary-omitted` because a promotion is now refused without a
+    // summary or this flag (`core/summary-gate.ts`, seventh authored
+    // surface). F2 is about an UNRELATED load error not turning a successful
+    // write into a failure, so the promotion has to actually succeed.
+    return ['NOTE-a-jotted-note-for-the-f2-guard', '--to', 'decision', '--summary-omitted', '--yes'];
   },
 
   // A focus already set, so the bare `focus` invocation takes its reporting

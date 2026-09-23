@@ -30,7 +30,9 @@
  * whose own fence would close its block, and says which fence to widen to.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -40,6 +42,18 @@ import { materializeDocFixture } from './doc-fixture.ts';
 import {
   collectExamples, splitCommand, splitPipeline, type Example,
 } from '../src/core/doc-examples.ts';
+// `test/helpers/` rather than `src/`, same as `removeTree` above: this
+// function's only reason to exist is to keep a spawned CLI child's PATH from
+// stating a fact about the machine that generated it, which is exactly this
+// module's own job for every other pinned env var below — there is no `src/`
+// module this belongs in instead, and `scripts/` already treats
+// `test/helpers/` as the shared home for cross-cutting utilities neither
+// production code nor one test file owns alone (`removeTree`, imported two
+// lines up, is the precedent). Importing it also runs its own module-level
+// scrub of THIS process's `process.env.PATH` — harmless here: this script
+// launches its own child only via `process.execPath` (never a bare `node` or
+// `mycontext` on PATH) and never shells out to `npm`/`npx` itself.
+import { scrubForeignMycontextShims } from '../test/helpers/hermetic-path.ts';
 
 /**
  * The parse half of this mechanism lives in `src/core/doc-examples.ts` and is
@@ -102,6 +116,17 @@ export const DOCUMENTS: { relative: string; locale?: 'he' }[] = [
 
 /** The token an absolute fixture path is replaced with. */
 const WORKSPACE = '<workspace>';
+
+/**
+ * The token this checkout's own root is replaced with — the same idea as
+ * `WORKSPACE`, one level up. A few commands print a path that is not the
+ * fixture but this repository itself (a resolved `mycontext` entry point, a
+ * hint that names where a file lives on disk), and that path is exactly as
+ * machine-specific as the fixture's: every checkout has this repository at a
+ * different absolute location, and a reader's own checkout is never the one
+ * baked into the committed example.
+ */
+const REPO_TOKEN = '<repo>';
 
 /**
  * The exact character length of every documented fixture's absolute path.
@@ -269,6 +294,14 @@ export function toDocumentMarkdown(output: string): string {
  *   wins), so a maintainer who exports `MYCONTEXT_ASCII=1` for their own
  *   terminal would otherwise regenerate every table in the ASCII fallback
  *   and the diff would look like a legitimate change.
+ * - `PATH` is REBUILT, not inherited — see `hermeticPath` below. `mycontext
+ *   doctor`'s `cli_on_path` check (`src/doctor/cli-on-path.ts`) answers a
+ *   question about the MACHINE, not the corpus: whether `mycontext` resolves
+ *   on PATH at all, and if so, to this checkout. Measured on the Ubuntu job
+ *   of CI run 35719545257 (release/15): a runner that never ran `npm link`
+ *   prints `cli_not_on_path [warn]`, while a maintainer's own linked machine
+ *   prints 0 findings — the documented `doctor` block was a fact about
+ *   whether the generating machine happened to have the package linked.
  */
 function childEnv(home: string, clock: string, locale?: 'he'): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
@@ -278,6 +311,7 @@ function childEnv(home: string, clock: string, locale?: 'he'): NodeJS.ProcessEnv
     USERPROFILE: home,
     TZ: 'UTC',
     MYCONTEXT_DOC_CLOCK: clock,
+    PATH: hermeticPath(),
   };
   delete env.MYCONTEXT_ASCII;
   delete env.MYCONTEXT_WIDTH;
@@ -287,6 +321,85 @@ function childEnv(home: string, clock: string, locale?: 'he'): NodeJS.ProcessEnv
   if (locale === undefined) delete env.MYCONTEXT_DOC_LOCALE;
   else env.MYCONTEXT_DOC_LOCALE = locale;
   return env;
+}
+
+/**
+ * A tiny temp directory whose `mycontext` (POSIX) and `mycontext.cmd`
+ * (Windows) resolve, read exactly the way `readShimTarget`
+ * (`src/doctor/cli-on-path.ts`) reads a real `npm link`-generated shim, to
+ * THIS checkout's own CLI entry — release/15's fix for the leak described
+ * above. Built once per process (`shimDir` below memoizes it) and left for
+ * the OS to reclaim, the same way every other `mkdtempSync` call in this file
+ * is; it is two small text files and one directory reparse point, so
+ * reusing it across every example this run generates costs nothing a fresh
+ * one per example wouldn't also cost, minus the repeated creation.
+ *
+ * **Why a directory junction/symlink rather than a shim that just claims a
+ * path.** `readShimTarget` does not trust whatever a shim's text asserts —
+ * it `realpath`s the `node_modules/<pkg>/<path>` segment it finds and reports
+ * whatever is ACTUALLY there, precisely so a shim cannot fake a target it
+ * does not have (the exact dishonesty `cli_path_mismatch` exists to catch in
+ * a real, broken link). So this does not fake a match: `<dir>/node_modules
+ * /mycontext` is a genuine directory reparse point (`symlinkSync(...,
+ * 'junction')`, which — unlike a Windows FILE symlink — needs no elevated
+ * privilege) pointing at `REPO_ROOT`, and `readShimTarget`'s own
+ * `realpathSync` walks straight through it to the same file
+ * `checkCliOnPath` resolves `OWN_CLI_ENTRY` to. Verified directly while
+ * building this fix: `readShimTarget` on both shim files below returns
+ * `realpathSync(OWN_CLI_ENTRY)`, byte for byte.
+ *
+ * Both files are shaped like npm's own generated shims but are never
+ * EXECUTED — `runOne` always invokes `node CLI ...` directly, never the bare
+ * `mycontext` word — so they exist purely to be FOUND by `where`/`which -a`
+ * and READ by `readShimTarget`. Forward slashes are used in both, including
+ * the `.cmd` (which `cmd.exe` accepts in a quoted argument exactly as it
+ * accepts a backslash), because `readShimTarget`'s marker regex
+ * (`node_modules[\\/]`) reads either, and it keeps one code path instead of
+ * a platform-specific escaping difference in what is otherwise identical
+ * text.
+ */
+let shimDir: string | null = null;
+function cliShimDir(): string {
+  if (shimDir !== null) return shimDir;
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-docex-shim-'));
+  const nodeModules = path.join(dir, 'node_modules');
+  mkdirSync(nodeModules);
+  symlinkSync(REPO_ROOT, path.join(nodeModules, 'mycontext'), 'junction');
+
+  const sh = path.join(dir, 'mycontext');
+  writeFileSync(sh,
+    '#!/bin/sh\nexec node "$(dirname "$0")/node_modules/mycontext/src/cli/index.ts" "$@"\n');
+  chmodSync(sh, 0o755); // POSIX `which` only lists executable files; a no-op attribute on Windows
+
+  writeFileSync(path.join(dir, 'mycontext.cmd'),
+    '@ECHO off\r\nnode "%~dp0node_modules/mycontext/src/cli/index.ts" %*\r\n');
+
+  // Reused for the rest of THIS process (the memo above), so cleanup is a
+  // process-exit concern rather than a per-example one — `removeTree` never
+  // throws (test/helpers/tmp.ts), so a failed removal is logged there, not a
+  // reason for this script to exit non-zero.
+  process.once('exit', () => removeTree(dir));
+
+  shimDir = dir;
+  return dir;
+}
+
+/**
+ * The child's PATH: `cliShimDir()` prepended to the host's own PATH with
+ * every FOREIGN `mycontext` shim already scrubbed out of it
+ * (`scrubForeignMycontextShims`, `test/helpers/hermetic-path.ts` — see the
+ * import above for why that file and not a `src/` module). Scrubbing the
+ * rest of the host PATH, not only prepending the shim directory, matters for
+ * the same reason `test/helpers/hermetic-path.ts`'s own docblock gives:
+ * `checkCliOnPath` inspects EVERY candidate `where`/`which -a` returns, not
+ * only the first, so a foreign shim further down a merely-prepended PATH
+ * would still trip `cli_path_mismatch` even with a healthy one shadowing it
+ * in front.
+ */
+function hermeticPath(): string {
+  const delimiter = process.platform === 'win32' ? ';' : ':';
+  const scrubbed = scrubForeignMycontextShims(process.env.PATH ?? '');
+  return [cliShimDir(), scrubbed].filter((segment) => segment !== '').join(delimiter);
 }
 
 /** The empty home directory `childEnv` points a generated command at. */
@@ -329,6 +442,14 @@ function escapeRegExp(s: string): string {
  * documentation — JSON that does not parse, in the one block whose whole
  * purpose is to be copied and answered.
  *
+ * This checkout's own root is scrubbed the same way, to `<repo>` rather than
+ * `<workspace>` — derived from `import.meta.dirname` here, never written as a
+ * literal, so the substitution is correct on whichever checkout runs it. The
+ * two tokens can both apply to the same output (a fixture nested under this
+ * repository is scrubbed to `<workspace>` first, longest match first, leaving
+ * only the repository's own root outside it as `<repo>`), and the tail
+ * normalization below runs after either.
+ *
  * What it cannot scrub, it refuses to emit: any remaining occurrence of the
  * repository root, the temp root, or a bare drive letter throws, because a
  * machine-specific path pasted into a documentation block is exactly the
@@ -347,28 +468,43 @@ function escapeRegExp(s: string): string {
  */
 export function scrubOutput(stdout: string, cwd: string, clock: string = DOC_CLOCK): string {
   const flags = process.platform === 'win32' ? 'gi' : 'g';
-  const roots = new Set<string>();
+  const roots = new Map<string, string>();
   for (const root of [cwd, canonicalizeNearestExisting(cwd)]) {
-    roots.add(root);
-    roots.add(root.replaceAll('\\', '/'));
+    roots.set(root, WORKSPACE);
+    roots.set(root.replaceAll('\\', '/'), WORKSPACE);
+  }
+  // This checkout's own root, derived from `import.meta.dirname` (see
+  // `REPO_ROOT` above) rather than written here as a literal — the same
+  // token for every checkout, never the path itself.
+  for (const root of [REPO_ROOT, canonicalizeNearestExisting(REPO_ROOT)]) {
+    if (!roots.has(root)) roots.set(root, REPO_TOKEN);
+    const forward = root.replaceAll('\\', '/');
+    if (!roots.has(forward)) roots.set(forward, REPO_TOKEN);
   }
 
   let out = stdout;
-  // Longest first: a shorter root that happens to prefix a longer one would
-  // otherwise leave the remainder of the longer path behind.
-  for (const root of [...roots].sort((a, b) => b.length - a.length)) {
-    out = out.replace(new RegExp(escapeRegExp(root), flags), WORKSPACE);
+  // Longest first: a shorter root that happens to prefix a longer one — the
+  // fixture nested under this repository, `<workspace>` under `<repo>` — would
+  // otherwise leave the remainder of the longer path behind, or replace it
+  // with the wrong token.
+  for (const [root, token] of [...roots].sort((a, b) => b[0].length - a[0].length)) {
+    out = out.replace(new RegExp(escapeRegExp(root), flags), token);
   }
   // Only the tail of a substituted root, delimited by whitespace or a quote —
   // see the note on JSON escapes above.
-  out = out.replace(new RegExp(`${WORKSPACE}[^\\s"'\`]*`, 'g'), (m) => m.replaceAll('\\', '/'));
+  out = out.replace(
+    new RegExp(`(?:${WORKSPACE}|${REPO_TOKEN})[^\\s"'\`]*`, 'g'),
+    (m) => m.replaceAll('\\', '/'),
+  );
   out = out.trimEnd();
   out = out.replaceAll(clockDay(clock), TODAY);
   out = out.replaceAll(yearOutDay(clock), A_YEAR_OUT);
 
   // Both spellings of each root, because `out` is no longer uniformly
   // POSIX: a leaked Windows path keeps its backslashes, and a needle
-  // normalized to `/` would no longer find it.
+  // normalized to `/` would no longer find it. The repository root is
+  // scrubbed above and should never reach here — this is the backstop for
+  // whatever that substitution missed, not the primary mechanism.
   const leaks = [...new Set(
     [REPO_ROOT, canonicalizeNearestExisting(REPO_ROOT), tmpdir()]
       .flatMap((p) => [p, p.replaceAll('\\', '/')]),

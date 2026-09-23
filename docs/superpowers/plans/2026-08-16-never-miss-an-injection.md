@@ -134,7 +134,7 @@ Expected: all clean — including `cd28989`'s pre-compact disclosure test and it
 
 ### Task 2: The per-session seen file — `src/core/seen-file.ts`
 
-The B enabler: session dedupe state moves to `state/<sanitized-key>.seen.jsonl`, one `{id, tier, at}` line per delivery, using the audit log's own append machinery (`appendJsonlLine`/`healTornTail` — `src/core/jsonl-log.ts` · `export function appendJsonlLine(` · ~192 and `src/core/jsonl-log.ts` · `export function healTornTail(file: string): void {` · ~157) — measured at 0.55 ms p95, flat from empty to 32 MiB (`src/core/audit-db.ts` · `//  1. **The hot path.** The PreToolUse hook writes a record on every tool call` · ~21, `test/perf/audit-latency.perf.ts`). Concurrent appends: 6,000/6,000 lines intact across 2 processes × 3,000 interleaved, and the heal-then-append race against a file that starts torn lost 0 records in 3,000 races [R2]; the analytical worst case is a lost seen-record → one re-injection, the accepted direction.
+The B enabler: session dedupe state moves to `state/<sanitized-key>.seen.jsonl`, one `{id, tier, at}` line per delivery, using the audit log's own append machinery (`appendJsonlLine`/`healTornTail` — `src/core/jsonl-log.ts` · `export function appendJsonlLine(` · ~192 and `src/core/jsonl-log.ts` · `export function healTornTail(file: string, seams: HealSeams = {}): TailHeal {` · ~334 — `seams` is an optional test-injection point added later; every production call omits it) — measured at 0.55 ms p95, flat from empty to 32 MiB (`src/core/audit-db.ts` · `//  1. **The hot path.** The PreToolUse hook writes a record on every tool call` · ~21, `test/perf/audit-latency.perf.ts`). Concurrent appends: 6,000/6,000 lines intact across 2 processes × 3,000 interleaved, and the heal-then-append race against a file that starts torn lost 0 records in 3,000 races [R2]; the analytical worst case is a lost seen-record → one re-injection, the accepted direction.
 
 **Files:**
 - Create: `src/core/seen-file.ts`
@@ -1564,7 +1564,7 @@ test('scanTranscriptIds with null knownIds returns every pattern match, deduped 
 
 - [ ] **Step 2: Run to verify failure** — `node --test test/hooks/pre-compact.test.ts test/core/ledger.test.ts`. Expected: FAIL — today `Store.open` under the held lock burns the patient profile toward the kill, `null` knownIds is a type error, and no skip-note exists.
 
-- [ ] **Step 3: Implement — `scanTranscriptIds` null-filter mode** (`ledger.ts` · `export function scanTranscriptIds(` · ~911):
+- [ ] **Step 3: Implement — `scanTranscriptIds` null-filter mode** (`ledger.ts` · `export function scanTranscriptIds(` · ~911): <!-- historical-citation: quotes ledger.ts as it stood in 2026-08; task 4.7 (9bf6ee76, 2026-09-23) renamed scanTranscriptIds to scanTranscript and gave it a state -->
 
 ```ts
 export function scanTranscriptIds(
@@ -1712,7 +1712,7 @@ The guarantee is conditional on corpus ≲ 10,000 items: the Markdown fallback m
 - Test: `test/doctor/corpus-size.test.ts`
 
 **Interfaces:**
-- Consumes: `Finding` (`checks.ts` · `export interface Finding {` · ~78); `Item[]` already flowing into `runChecks` via `opts.items`.
+- Consumes: `Finding` (`doctor/finding.ts` · `export interface Finding {` · ~67); `Item[]` already flowing into `runChecks` via `opts.items`.
 - Produces: `checkCorpusSize(items: Item[]): Finding[]`; `export const FALLBACK_CEILING_WARN_ITEMS = 5000`.
 
 - [ ] **Step 1: Write the failing test**

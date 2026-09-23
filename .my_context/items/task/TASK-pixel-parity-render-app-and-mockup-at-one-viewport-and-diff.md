@@ -2,11 +2,11 @@
 id: TASK-pixel-parity-render-app-and-mockup-at-one-viewport-and-diff
 type: task
 title: "PIXEL parity: render app and mockup at one viewport and diff them"
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Compare pictures of the real app against the design to catch spacing, colour and size differences that structural checks cannot see.
-summary_of: f0d47de7e846dcb8
+summary_of: 7f703da1935b18c3
 scope: []
 tags:
   - "plan:port"
@@ -19,8 +19,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
-valid_until: null
-checksum: 87e85e8a7cddd663
+valid_until: 2026-09-22
+checksum: 1e98362751d4bb74
 plan: port
 seq: "93"
 state: todo
@@ -119,3 +119,5 @@ damage -- the corpus and the repository files around it. It still wants his yes.
 
 THIS TASK IS NOT CLOSED BY THAT WORK. port/98 is the screen-by-screen review and the owner closes
 screen work: `RULE-1-1-with-the-mockup-and-the-owner-says-when-it-is-done`.
+
+Retired 2026-09-22 (release phase 2, owner ruling H, runbook §7.2): value differences against the mockup are ruled out by DEC-the-mockup-is-a-reference-to-initial-thoughts-and-only-a (test 3); the mockup is a reference, not a target.

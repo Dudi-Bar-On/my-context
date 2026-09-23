@@ -78,13 +78,14 @@
  */
 import { execFileSync } from 'node:child_process';
 import { test as base, expect, type Page } from '@playwright/test';
-import { cpSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { CORPUS } from './app.ts';
 import { throwawayHome } from './throwaway-home.ts';
 import { openApp } from './composer-run.ts';
 import { mintNonce, startUiChild, type UiHarness } from '../test/ui/helpers.ts';
+import { removeWithRetries } from './frozen-corpus.ts';
 import { worthCopying } from '../src/ui/execute-effect.ts';
 import { DIR_NAME } from '../src/core/workspace.ts';
 import type { Seed } from './seeds.ts';
@@ -134,46 +135,6 @@ export interface Scratch {
  * budget — arranges it through the real code and gets an index that knows about
  * it. A test that only needs somewhere safe to write passes nothing.
  */
-/**
- * **Delete a temporary tree, RETRYING, because one attempt loses to Windows.**
- *
- * The line this replaces tried once and swallowed the failure, on the
- * reasoning that "a scratch directory that outlives one run is litter in
- * `%TEMP%`, never a failure of the test that made it". The first half of that
- * is true and the second half made it invisible. **Measured 2026-09-11:
- * `%TEMP%` held 118 `myctx-e2e-` workspace roots against 13 `myctx-e2eh-`
- * home boxes** — so the home box, which no process ever opens, was being
- * removed nearly every time and the workspace, which a UI server had a SQLite
- * handle on, was surviving nine times in ten. Some of the survivors are full
- * 68 MB copies of this corpus.
- *
- * The cause is the handle rather than the code: `harness.stop()` resolves when
- * the child reports exit, and Windows releases a mandatory file lock a beat
- * later. So this waits for the beat. Twelve attempts a quarter-second apart is
- * three seconds of patience against a copy that cost twenty to make, and the
- * loop stops the moment the directory is gone.
- *
- * **`Atomics.wait` rather than a promise**, because `dispose` is synchronous
- * and is called from a `finally` that a failing test also takes: making it
- * async would mean a test that threw could return before the delete had run,
- * which is the leak this exists to close.
- *
- * Returns whether the tree is actually gone, so a caller can SAY so. A leak
- * nobody is told about is how 118 of them accumulated.
- */
-function removeWithRetries(dir: string): boolean {
-  for (let attempt = 0; attempt < 12; attempt += 1) {
-    try {
-      rmSync(dir, { recursive: true, force: true });
-      return true;
-    } catch {
-      if (!existsSync(dir)) return true;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
-    }
-  }
-  return !existsSync(dir);
-}
-
 export function scratchCorpus(seed: Seed = () => {}): Scratch {
   const root = mkdtempSync(path.join(tmpdir(), 'myctx-e2e-'));
   const homeBox = mkdtempSync(path.join(tmpdir(), 'myctx-e2eh-'));

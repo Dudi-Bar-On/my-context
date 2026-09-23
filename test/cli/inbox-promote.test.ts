@@ -78,7 +78,8 @@ test('a note promoted to a decision creates the decision and links back with der
   try {
     run(['add', '--summary-omitted', 'note', 'Maybe we should pin the pool size', '--yes'], cwd);
     const promoted = run(
-      ['inbox-promote', 'NOTE-maybe-we-should-pin-the-pool-size', '--to', 'decision', '--yes'],
+      ['inbox-promote', 'NOTE-maybe-we-should-pin-the-pool-size', '--to', 'decision',
+        '--summary-omitted', '--yes'],
       cwd,
     );
     assert.equal(promoted.code, 0, promoted.out);
@@ -105,7 +106,7 @@ test('the origin is deprecated, not deleted, and stays on disk and searchable', 
     run(['add', '--summary-omitted', 'note', 'Maybe we should pin the pool size', '--body', 'Twenty is a guess.',
       '--yes'], cwd);
     run(['inbox-promote', 'NOTE-maybe-we-should-pin-the-pool-size', '--to', 'decision',
-      '--yes'], cwd);
+      '--summary-omitted', '--yes'], cwd);
 
     const shown = run(['show', 'NOTE-maybe-we-should-pin-the-pool-size'], cwd);
     assert.equal(shown.code, 0,
@@ -131,7 +132,7 @@ test('an agent-authored note promoted into a normative category lands as a draft
   try {
     agentNote(cwd, 'The retry loop swallows 5xx');
     const promoted = run(['inbox-promote', 'NOTE-the-retry-loop-swallows-5xx',
-      '--to', 'known_issue', '--yes'], cwd);
+      '--to', 'known_issue', '--summary-omitted', '--yes'], cwd);
     assert.equal(promoted.code, 0, promoted.out);
 
     const shown = run(['show', 'KNOWN-the-retry-loop-swallows-5xx'], cwd);
@@ -155,7 +156,7 @@ test('a human-authored note promoted into the same normative category lands acti
     // would pass the draft assertion and be wrong about every human capture.
     run(['add', '--summary-omitted', 'note', 'The retry loop swallows 5xx', '--yes'], cwd);
     const promoted = run(['inbox-promote', 'NOTE-the-retry-loop-swallows-5xx',
-      '--to', 'known_issue', '--yes'], cwd);
+      '--to', 'known_issue', '--summary-omitted', '--yes'], cwd);
     assert.equal(promoted.code, 0, promoted.out);
 
     const shown = run(['show', 'KNOWN-the-retry-loop-swallows-5xx'], cwd);
@@ -173,7 +174,7 @@ test('the title, body and tags travel, and --title replaces the title alone', ()
     run(['add', '--summary-omitted', 'todo', 'Pin the pool', '--body', 'It flaps under load.',
       '--tags', 'db,perf', '--yes'], cwd);
     const promoted = run(['inbox-promote', 'TODO-pin-the-pool', '--to', 'decision',
-      '--title', 'The Postgres pool is capped at twenty', '--yes'], cwd);
+      '--title', 'The Postgres pool is capped at twenty', '--summary-omitted', '--yes'], cwd);
     assert.equal(promoted.code, 0, promoted.out);
 
     const shown = run(['show', 'DEC-the-postgres-pool-is-capped-at-twenty'], cwd);
@@ -266,7 +267,7 @@ test('without --yes it previews, refuses, and writes nothing', () => {
   try {
     run(['add', '--summary-omitted', 'note', 'Something', '--yes'], cwd);
     const before = corpus(cwd);
-    const declined = run(['inbox-promote', 'NOTE-something', '--to', 'decision'], cwd);
+    const declined = run(['inbox-promote', 'NOTE-something', '--to', 'decision', '--summary-omitted'], cwd);
     assert.equal(declined.code, 1, declined.out);
     assert.match(declined.out, /about to promote out of the inbox:/);
     assert.match(declined.out, /refusing without confirmation/);
@@ -303,7 +304,9 @@ test('a retirement that fails leaves the target named, and the finishing command
   try {
     run(['add', '--summary-omitted', 'note', 'Something', '--yes'], cwd);
     chmodSync(file, 0o444);
-    const halfway = run(['inbox-promote', 'NOTE-something', '--to', 'decision', '--yes'], cwd);
+    const halfway = run(
+      ['inbox-promote', 'NOTE-something', '--to', 'decision', '--summary-omitted', '--yes'], cwd,
+    );
     assert.equal(halfway.code, 1, halfway.out);
     assert.match(prose(halfway.out), /DEC-something exists and is not affected by that/);
     assert.match(prose(halfway.out), /the promotion is half done/);
@@ -328,7 +331,9 @@ test('what stays behind is named rather than dropped', () => {
   try {
     run(['add', '--summary-omitted', 'note', 'Something', '--note', 'It came up in review.',
       '--scope', 'src/db/**', '--yes'], cwd);
-    const promoted = run(['inbox-promote', 'NOTE-something', '--to', 'decision', '--yes'], cwd);
+    const promoted = run(
+      ['inbox-promote', 'NOTE-something', '--to', 'decision', '--summary-omitted', '--yes'], cwd,
+    );
     assert.equal(promoted.code, 0, promoted.out);
     assert.match(prose(promoted.out), /NOTE-something keeps its scope, its 1 observation\(s\)/);
     // And the claim is true: the new item really does not carry them.
@@ -387,7 +392,7 @@ test('a promoted todo is still counted by `mycontext todo --all`', () => {
   const cwd = project();
   try {
     run(['add', '--summary-omitted', 'todo', 'Pin the pool', '--yes'], cwd);
-    run(['inbox-promote', 'TODO-pin-the-pool', '--to', 'decision', '--yes'], cwd);
+    run(['inbox-promote', 'TODO-pin-the-pool', '--to', 'decision', '--summary-omitted', '--yes'], cwd);
 
     const listed = run(['todo'], cwd);
     assert.match(prose(listed.out), /1 retired \(superseded\/deprecated\/validated\) and not shown/,

@@ -22,9 +22,9 @@ tags:
   - "state:done"
   - v2
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/clearbody.md"
+source_file: null
 source_anchor: null
-source_checksum: 19e7c01ac446f986
+source_checksum: null
 valid_from: 2026-09-12
 valid_until: null
 checksum: b83ef797d428c70d

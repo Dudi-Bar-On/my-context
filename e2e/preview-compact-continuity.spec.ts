@@ -150,6 +150,23 @@ async function previewing(page: Page, body: (fixture: Fixture) => Promise<void>)
       '--summary', 'A rule that is loaded at the start of every session, which is what makes the session appear in the running record of work.',
       '--yes'], workspace);
     cli(['pin', PINNED_ITEM, '--yes'], workspace);
+    // **SHRUNK, so the pinned tier's SPARE BAND cannot reach `CONTINUITY_ITEM`
+    // first.** Since `OPENQ-does-the-pinned-tier-spend-its-spare-room-on-
+    // governing-items` (ruled 2026-09-07), `select()`'s pinned tier offers its
+    // LEFTOVER room, after `always` items are placed, to any OTHER governing
+    // item that fits (`core/select.ts`, the `spare` band ~1636) — and
+    // `CONTINUITY_ITEM` is a `rule`, a governing category, so at the default
+    // 6,000-token pinned budget it was admitted THERE, through the spare band,
+    // before the continuity tier's own pass ever ran (`alreadyChosen` then
+    // excludes it). Its seen line recorded `tier: "pinned"`, never
+    // `"continuity"`, which is why the preview read it as already delivered
+    // via the wrong tier and the flip this test exists to measure never
+    // happened. Measured directly against this exact fixture: 80 tokens is
+    // enough for `PINNED_ITEM` alone and not enough to also spare room for
+    // `CONTINUITY_ITEM` — below it neither item is pinned, above roughly 85
+    // both are, so this is the narrow band that puts each item through the
+    // tier this test is actually about.
+    cli(['config', 'budgets.pinned', '--set', '80', '--yes'], workspace);
 
     // The session start this preview is ABOUT: it delivers the continuity
     // item and writes the seen line marked with the session-wide window, so

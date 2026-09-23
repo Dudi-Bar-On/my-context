@@ -77,6 +77,13 @@ export const EDIT_FLAGS: FlagSpec = {
     // capture door. It takes a value and the empty value REMOVES the request,
     // so it is in both lists.
     'request',
+    // A SWITCH, `summary-unchanged`'s shape exactly: no text, and a builder
+    // that composed `--detach-source "<something>"` would be offering to
+    // repoint a source this flag exists only to CLEAR — see
+    // `UpdateInput.detachSource` (mutate.ts). Added 2026-09-22 with the
+    // outside-repository guard (`escapesRoot`, paths.ts), the repair for the
+    // corpus it made possible to detect.
+    'detach-source',
     'extra', 'unlink', 'yes',
   ],
   values: [
@@ -195,6 +202,14 @@ const BUILT_IN_DECLARATIONS: FlagDeclarations = {
   extra: {
     format: 'key=value, one key per flag', example: 'directive=do',
     note: 'One category-specific field. It MERGES: a key you do not name keeps its value.',
+  },
+  'detach-source': {
+    note: 'Clear the item\'s source_file and source_checksum, both, through the ordinary edit '
+      + 'write path — the checksum is recomputed and the write is audited like any other. For '
+      + 'an item whose source no longer exists, or whose source_file was recorded outside the '
+      + 'repository and can never be checked for drift by `mycontext doctor`. Refused on an '
+      + 'item with no source_file, and refused alongside `--body` or `--unlink` in the same '
+      + 'call — see cmdEdit for why.',
   },
   unlink: {
     format: 'two operands, a relation and a target id, in that order',

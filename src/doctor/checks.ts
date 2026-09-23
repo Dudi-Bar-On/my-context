@@ -344,16 +344,34 @@ function deletingTheGlob(config: Config, type: string): string {
       '`query_items({path})` and `mycontext query` return for a path, which is what makes ' +
       're-scoping worth doing here.';
   }
-  switch (scopePolicyFor(config, type)) {
+  // **Every member named, and no `default`** —
+  // `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan`. This
+  // read `default:` and returned the WIDEST sentence — "unrestricted, and
+  // injects on every file" — for anything that was not `required` or `inert`.
+  // That is right for `global` and wrong for a fourth `ScopePolicy`, which
+  // would have taken the permissive branch with nothing said. Spelled as an
+  // exhaustive switch closed by `never`, it is a COMPILE error instead, which
+  // is the shape `GOVERNING_STATUS` (trust.ts) already uses on `Status` and
+  // for the same stated reason.
+  const policy = scopePolicyFor(config, type);
+  switch (policy) {
     case 'required':
       return ' Deleting it is not an option here: categories.' + type +
         '.scopePolicy is "required", so an item must keep at least one glob.';
     case 'inert':
       return ' Deleting it would not widen the item: categories.' + type +
         '.scopePolicy is "inert", so an item with no globs is injected on no file at all.';
-    default:
+    case 'global':
       return ' Deleting the glob is only right if the item should apply everywhere: scope ' +
         'restricts, so an item left with no globs at all is unrestricted and injects on every file.';
+    default: {
+      const unhandled: never = policy;
+      throw new Error(
+        `my_context: scopePolicy "${String(unhandled)}" has no sentence in doctor's dead-scope `
+        + 'remedy. A new policy must say what deleting a glob does under it, rather than '
+        + 'inheriting the widest answer by default.',
+      );
+    }
   }
 }
 
@@ -426,6 +444,39 @@ export function checkDeadScopes(repoRoot: string, items: Item[], config: Config)
       });
     }
   }
+
+  // **The bound, disclosed — and this check reaches it soonest of the three.**
+  // `checkWatchedDocsServable` below has carried `watched_doc_coverage` since
+  // it shipped; this consumer of the same bounded walk did not, which is site
+  // M8 of `TASK-nine-sites-report-a-measured-zero-for-something-they-could`.
+  // The sentence above is a confident *"matches no file in the repository"*
+  // over a walk that may have read part of one, and a reader or an agent who
+  // acts on it re-scopes a GOVERNING constraint to a wrong path. `warn`, so the
+  // exit code says nothing either way.
+  //
+  // It is worse here than at the other two sites for a measurable reason:
+  // `listFilesForScopeCheck` walks with `SCOPE_SKIP_DIRS` — `.git` and
+  // `node_modules`, and nothing else — because a scope glob may legitimately
+  // name anything, so `dist/`, `build/`, `coverage/` and `.next/` all count
+  // against the same 20,000 that `SKIP_DIRS` keeps out of the other two walks.
+  //
+  // `about: 'dead_scope'` makes it a DISCLOSURE rather than a finding
+  // (`Finding.about`, and `isDoctorDisclosure` in `src/mcp/tools.ts`): it is a
+  // note the check makes about itself, it must not move a health count, and
+  // every surface that partitions on `about` already prints it.
+  if (files.length >= FILE_LIMIT) {
+    findings.push({
+      level: 'info', code: 'dead_scope_coverage', about: 'dead_scope',
+      remedy: NOTHING,
+      message:
+        `the repository walk stopped at its ${FILE_LIMIT}-file bound, so this check compared the ` +
+        `globs above against only part of the tree. Every "matches no file" line above is ` +
+        `therefore a statement about the part that fit — a glob reported dead here may match a ` +
+        `file the walk never reached, so verify the path before re-scoping anything on it. ` +
+        `Globs that DID match are unaffected.`,
+    });
+  }
+
   return findings;
 }
 

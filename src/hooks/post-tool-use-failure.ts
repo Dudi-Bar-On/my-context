@@ -2,7 +2,8 @@ import { recordAudit, type AuditWriteResult } from '../core/audit.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
 import {
-  hookParseErrorLine, parseHookInput, payloadOf, readStdin, type HookPayload,
+  hookParseErrorLine, parseHookInput, payloadOf, readStdin, unrecordedHookLine,
+  type HookPayload,
 } from './io.ts';
 
 /**
@@ -166,13 +167,20 @@ export function recordToolFailure(
     // only channel left, and it is the same one `pre-compact.ts` uses for the
     // same class of loss. Exit stays 0 either way; the tool call already
     // failed and a hook must not add to that.
+    //
+    // **This site was one of the two that already read the answer, and it is
+    // the one the shared line was drawn from.** It is spelled through
+    // `unrecordedHookLine` rather than in its own words so that the sixteen
+    // call sites `TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-
+    // sixteen` counts speak with ONE voice — the defect this project keeps
+    // measuring is two spellings of one sentence, and a hand-rolled copy here
+    // would be the first of them.
     if (!result.written) {
-      process.stderr.write(
-        `my_context: the PostToolUseFailure audit record could not be written ` +
-        `(${result.error}); this failed tool call is missing from ` +
-        `\`mycontext audit --op post-tool-use-failure\`, so the degradation count is low by ` +
-        `at least one. Nothing was blocked.\n`,
-      );
+      process.stderr.write(unrecordedHookLine(
+        'PostToolUseFailure', 'post-tool-use-failure', result.error ?? 'unknown',
+        'this failed tool call was not recorded, so the degradation count is low by at ' +
+        'least one',
+      ));
     }
     return result;
   } catch {

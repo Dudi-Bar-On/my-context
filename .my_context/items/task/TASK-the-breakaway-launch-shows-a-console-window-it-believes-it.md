@@ -16,9 +16,9 @@ tags:
   - "seq:27"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/win.md"
+source_file: null
 source_anchor: null
-source_checksum: 98bb5c2a908322b3
+source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
 checksum: d8a3616cf4de3677
@@ -51,3 +51,7 @@ priority: "1"
 > 4. AND THE OWNER'S FALLBACK IS EXPLICIT: if no variant is invisible, MINIMISED AND NOT ON TOP is acceptable. Do not spend a lane chasing perfection past his stated bar.
 >
 > THE POSIX BRANCH IS NOT IN SCOPE. It has no window and its own known hole is recorded on `live/25`.
+
+## Request
+
+when you execute the server under a new process it opens a kind of cmd window, make sure it is minimized and not on top of my windows

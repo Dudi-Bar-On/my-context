@@ -55,7 +55,13 @@ import { corpusRootLine, nestedCorpusNote, resolveCorpus } from '../core/corpus-
 
 /**
  * The one sentence a reader of a suspicious answer needs, and `''` when this
- * process is current.
+ * process is MEASURED current — which is not the same as saying nothing, and
+ * since 2026-09-23 is no longer the same code path.
+ *
+ * Two sentences, not one: the disk HAS moved (stale), or whether it moved is
+ * unanswerable because this server could not walk its own sources at all
+ * (unmeasured). Both end in the same remedy and neither is written in the
+ * register of damage.
  *
  * `null` is "this server never stamped an identity" — the registry built by a
  * test, or by any caller that is not the long-lived stdio process. Silence is
@@ -63,7 +69,34 @@ import { corpusRootLine, nestedCorpusNote, resolveCorpus } from '../core/corpus-
  * freshness from something that measured nothing is worse than no claim.
  */
 export function staleCodeNote(code: CodeIdentity | null): string {
-  if (code === null || !code.isStale()) return '';
+  if (code === null) return '';
+  // **THE SECOND REASON FOR SILENCE, WHICH WAS NOT SILENCE'S TO HAVE** —
+  // `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`.
+  //
+  // `!code.isStale()` used to cover both "I looked and nothing moved" and "I
+  // never managed to look", because an identity with no boot stamp answers
+  // `false`. Only the first is a measurement a reader may rely on. The second
+  // is this module's own 2026-08-27 outage with the warning removed: a server
+  // holding drifted `content-hash.ts` reported 719 of 736 items as damaged,
+  // and a migration was planned against that reading before anyone thought to
+  // distrust the process that produced it.
+  //
+  // **Not folded into the stale sentence**, which says the disk HAS moved.
+  // Nothing here knows that. This one says the question is open and why, and it
+  // keeps the flat register the paragraph above argues for: an unanswerable
+  // question is not damage either.
+  if (code.freshness() === 'unmeasured') {
+    const why = code.unmeasured;
+    return (
+      `my_context: this MCP server could not examine its own source files `
+      + `(${why?.code ?? 'unknown'} at ${why?.at ?? code.scope.entry}), so whether it is `
+      + `running the code on disk is UNMEASURED — it loaded that code at ${code.startedAt} and `
+      + `has had no way to compare since. Its answers may be from source that has moved, and `
+      + `nothing here can tell you either way. Nothing is broken and nothing was blocked; `
+      + `restarting the MCP server from a readable install makes the question answerable again.`
+    );
+  }
+  if (!code.isStale()) return '';
   return (
     `my_context: this MCP server is running code it loaded at ${code.startedAt}, and at least ` +
     `one of the ${code.files} source files it loaded has changed on disk since. Its answers ` +
@@ -97,7 +130,7 @@ export function toolResultProvenance(cwd: string, code: CodeIdentity | null): st
 }
 
 /**
- * The three sentences a provenance footer can open with. Written once, here,
+ * The four sentences a provenance footer can open with. Written once, here,
  * beside the functions that produce them — a second list spelled in a reader is
  * how the appender and the splitter come to disagree about where the answer
  * ends.
@@ -105,6 +138,12 @@ export function toolResultProvenance(cwd: string, code: CodeIdentity | null): st
 const PROVENANCE_OPENERS = [
   'my_context: WRONG CORPUS?',
   'my_context: this MCP server is running code it loaded at ',
+  // The stale line's sibling, and it had to be added HERE rather than anywhere
+  // else for exactly the reason this list exists: `staleCodeNote` can now open
+  // a footer with a sentence the splitter did not know, and a footer the
+  // splitter cannot find is one that gets returned to a caller as part of the
+  // answer. See that function for why this is not the stale sentence reworded.
+  'my_context: this MCP server could not examine its own source files ',
   'my_context corpus: ',
 ];
 

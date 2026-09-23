@@ -129,7 +129,11 @@ once per transaction appears a million times per month.
 **מכניקת הייבוא, מ-<span dir="ltr">`src/cli/commands/pack.ts`</span> ומ-
 <span dir="ltr">`src/pack/`</span>.** הערת התיעוד של קובץ הפקודה עצמו (מצוטטת, לא מנוסחת מחדש —
 היא קובעת את הסדר במדויק) פורשת שישה צעדים: פענוח תת-הפקודה והדגלים לפני שהקורפוס נפתח; קריאה
-ואימות של הממצא והרצת <span dir="ltr">`planImport`</span> — שהוא טהור, ולכן "כל מה שהוא דוחה
+ואימות של הממצא; סירובו על הסף אם הוא ייצוא מלא — פסיקה C (2026-09-21, B10): ייצוא הוא ארכיון
+להעתיק בחזרה, לא משהו שהפקודה הזאת מייבאת, ו-<span dir="ltr">`mycontext export --as-pack`</span>
+הוא מה שיוצר חבילה שניתן לייבא — נבדק על הממצא עצמו, כדי ש-<span dir="ltr">`config.json`</span>
+הלא-מוקרן של ייצוא אמיתי לעולם לא ייחשב אשם בסירוב שבאמת נוגע לסוגו — ואחרת הרצת
+<span dir="ltr">`planImport`</span> — שהוא טהור, ולכן "כל מה שהוא דוחה
 נדחה בלי ששום דבר נכתב"; פענוח <span dir="ltr">`--name`</span> דרך שני הסירובים של
 <span dir="ltr">`refusePackName`</span>; **תמיד** הדפסת דוח ההתנגשויות — שממיין את הפריטים
 המגיעים לדליי <span dir="ltr">`new`</span> / <span dir="ltr">`changed`</span> /

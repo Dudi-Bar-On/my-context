@@ -97,7 +97,7 @@
  * routed by a different rule from the writer would be the second answer this
  * module has spent its whole header refusing.
  */
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -214,8 +214,89 @@ export function deliveredFile(root: string): string {
 function ensureDir(root: string): string {
   const dir = path.join(root, DELIVERED_DIR);
   mkdirSync(dir, { recursive: true });
-  try { writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8'); } catch { /* best effort */ }
+  markPrivate(dir);
   return dir;
+}
+
+/**
+ * **THE 2026-09-23 INCIDENT, ASKED HERE INSTEAD OF IMPORTED.**
+ *
+ * A repository's own root `.gitignore` — 73 lines, tracked — was found
+ * truncated to the two bytes `*` and a newline, which is what this product
+ * writes into the private directories it creates. `core/private-gitignore.ts`
+ * is the authority on that line and it carries four refusals: a relative
+ * target (it resolves against a working directory nobody chose), a directory
+ * that is not one of this product's own, a directory holding a `.git` (never
+ * private state, and the one that catches a private NAME that is a link onto
+ * a repository), and a `.gitignore` that already carries rules (somebody's
+ * file). It discloses every refusal on stderr rather than returning quietly,
+ * because `INV-nothing-is-dropped-silently` applies to a marker as much as to
+ * a record.
+ *
+ * **THE STORE MAY NOT IMPORT IT, AND THIS IS THE DUPLICATION THAT BUYS.**
+ * D41 spec §7 gives `src/rules/` exactly one edge into `src/core/` — the
+ * frontmatter parser — and `test/rules/isolation.test.ts` fails the moment
+ * that widens; weakening that assertion to save nineteen lines would trade a
+ * governed architectural boundary for a copy this file can keep honest. So
+ * all four questions are asked here, in the authority's own order and in its
+ * own sentence shape, and `test/core/private-gitignore.test.ts`'s
+ * *"a rule store directory is guarded too"* drives them rather than taking
+ * this comment on trust.
+ *
+ * The one narrowing: refusal 2 asks for `DELIVERED_DIR` by name rather than
+ * generalising about which directory names are private, because this site
+ * builds its own path out of that constant three lines above.
+ *
+ * Never throws — a marker this could not write must never cost a caller the
+ * delivery row it was appending.
+ */
+function markPrivate(dir: string): void {
+  const refuse = (sentence: string): void => {
+    try {
+      process.stderr.write(
+        `my_context: refused to write a \`*\` .gitignore into ${dir} — ${sentence}\n`,
+      );
+    } catch { /* a lost line is not a lost record */ }
+  };
+  try {
+    if (dir === '' || !path.isAbsolute(dir)) {
+      refuse('a relative target resolves against the working directory rather than a corpus, '
+        + 'which on 2026-09-23 was a repository root.');
+      return;
+    }
+    if (path.basename(dir) !== DELIVERED_DIR) {
+      refuse(`its name is not \`${DELIVERED_DIR}\`, so it is not the directory this log `
+        + 'creates for itself.');
+      return;
+    }
+    if (existsSync(path.join(dir, '.git'))) {
+      refuse('it holds a `.git`, so it is the root of somebody\'s repository and never this '
+        + 'product\'s private state.');
+      return;
+    }
+    const marker = path.join(dir, '.gitignore');
+    let existing = '';
+    try {
+      existing = readFileSync(marker, 'utf8');
+    } catch (err) {
+      // ENOENT is the ordinary first write. Anything else is a file that IS
+      // there and was not read, and overwriting what cannot be read is the
+      // exact act these refusals exist to prevent.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        refuse(`its .gitignore exists and could not be read (${
+          err instanceof Error ? err.message : String(err)}), so nothing was overwritten.`);
+        return;
+      }
+    }
+    if (existing.trim() !== '' && existing.trim() !== '*') {
+      refuse('its .gitignore already carries rules, so it is somebody\'s file and not the '
+        + 'one-line marker this product writes.');
+      return;
+    }
+    writeFileSync(marker, '*\n', 'utf8');
+  } catch (err) {
+    refuse(`the write failed (${err instanceof Error ? err.message : String(err)}).`);
+  }
 }
 
 /**
@@ -313,15 +394,62 @@ export function wasDelivered(root: string, key: string): boolean {
  * after the disclosure and before the row would leave a person told and a log
  * that disagrees with them.
  */
+/**
+ * **What the applicable-count callback hands back, and why it is not a bare
+ * number any more** — `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`.
+ *
+ * It was `() => number`, and `assertDoor`'s implementation of it answered `0`
+ * for a store it could not read at all — so the `missed` row below recorded
+ * *"0 constant(s) would have applied"*: a measurement nobody took, written
+ * into the log spec §8.2 counts, in the one shape that reads as an assurance.
+ * `STD-a-measured-zero-is-drawn-and-named` is explicit that a measured zero
+ * and an unmeasured one are different facts, and this is the write path
+ * version of it.
+ *
+ * `unreadable` carries the reason instead. It changes NOTHING about what the
+ * assertion does — the row is still written, the sentence is still withheld
+ * (see the argument below), the hook still cannot fail on a store fault — and
+ * only what the row SAYS.
+ */
+export interface ApplicableCount {
+  /**
+   * Constants that would have applied. **Not a measurement when `unreadable`
+   * is set** — the caller could not count, and `0` there means uncounted.
+   */
+  count: number;
+  /** Why the store could not be counted at all, or `''` when it was read. */
+  unreadable: string;
+}
+
+/**
+ * **What an assertion answers, and why it is two fields rather than a
+ * sentence** — `TASK-d70-closed-all-five-instances-and-never-built-the-gate-the`.
+ *
+ * `assertDelivered` returned only `text`, under a docblock on `recordDelivery`
+ * that says in as many words *"the caller discloses, this module does not"* —
+ * while this module dropped the one thing there was to disclose. `recorded`
+ * is that half, travelling to the caller the docblock names.
+ *
+ * **`recorded` is `true` whenever no row was owed.** Both latches above return
+ * before any write, so nothing was lost and nothing is claimed: `false` means
+ * a `missed` row was attempted and refused, and nothing weaker.
+ */
+export interface DoorAssertion {
+  /** The sentence to disclose, or `''` — `assertDelivered`'s old return value. */
+  text: string;
+  /** `false` only when the `missed` row this call tried to write was refused. */
+  recorded: boolean;
+}
+
 export function assertDelivered(
-  root: string, key: string, applicable: () => number, at?: string,
-): string {
+  root: string, key: string, applicable: () => ApplicableCount, at?: string,
+): DoorAssertion {
   const rows = deliveries(root, key);
-  if (rows.some((row) => row.kind === 'delivered')) return '';
+  if (rows.some((row) => row.kind === 'delivered')) return { text: '', recorded: true };
   // Already reported for this key: the latch. Not a second sentence, and not
   // a second row — a `missed` count that grew per tool call would measure
   // tool calls rather than doors.
-  if (rows.some((row) => row.kind === 'missed')) return '';
+  if (rows.some((row) => row.kind === 'missed')) return { text: '', recorded: true };
 
   /**
    * **The count is taken LAST, and lazily, and both halves matter.**
@@ -332,15 +460,36 @@ export function assertDelivered(
    * pays for it at all: past the latch, the store is read at most once per
    * key, ever.
    */
-  const count = applicable();
-  recordDelivery(root, {
+  const { count, unreadable } = applicable();
+  // **`recordDelivery`'s answer is READ, and this module's own docblock is the
+  // reason it now has to be.** That function says *"the caller discloses, this
+  // module does not, because only the caller knows which channel a person is
+  // watching"* — and for as long as this line was a bare statement, this
+  // module WAS the caller and disclosed nothing, so the sentence was a
+  // promise made on somebody else's behalf.
+  //
+  // What a refused write costs is specific and is not the delivered row's
+  // cost: the latch eleven lines above IS this row, so an assertion that
+  // could not write it re-asserts on the next tool call for the rest of the
+  // session, and spec §8.2's count — `missed` rows over `delivered` rows, the
+  // number that turns *"the store is always present"* into a measurement — is
+  // a floor rather than a figure. `unrecordedMissLine` says exactly that, and
+  // deliberately not `unrecordedDeliveryLine`, which asserts a delivery that
+  // did not happen here.
+  const recorded = recordDelivery(root, {
     ...(at === undefined ? {} : { at }),
     kind: 'missed',
     key,
     door: key.includes('::') ? 'subagent-start' : 'session-start',
     entries: 0,
+    // **"I counted none" and "I could not count" are two sentences here, and
+    // they used to be one.** See `ApplicableCount`: a store that could not be
+    // read answered `0`, and this row then asserted a zero nobody measured.
     note: `no delivery row for this key at the moment the assertion ran; ` +
-      `${count} constant(s) would have applied`,
+      (unreadable === ''
+        ? `${count} constant(s) would have applied`
+        : `the product rule store could not be read, so how many constant(s) would have ` +
+          `applied is UNMEASURED rather than zero — ${unreadable}`),
   });
   /**
    * **A miss with nothing to miss is RECORDED and not REPORTED, and this is a
@@ -361,7 +510,7 @@ export function assertDelivered(
    * state, and so is every stranger's install until the store carries its
    * first `product` entry.
    */
-  return count === 0 ? '' : missedDoorLine(key);
+  return { text: count === 0 ? '' : missedDoorLine(key), recorded };
 }
 
 /**
@@ -396,6 +545,45 @@ export function unrecordedDeliveryLine(door: Door, key: string | null): string {
     'the evidence. A later hook may report that this session has no record of the store being ' +
     'delivered to it; that report will be about this failed write, not about a door that did ' +
     `not run. Check that \`${DELIVERED_DIR}/\` is writable. Nothing was blocked.\n`;
+}
+
+/**
+ * **The ASSERTION's row did not land**, which is the other half of the same
+ * write failure and is not the same sentence.
+ *
+ * `unrecordedDeliveryLine` above opens *"the product rule store WAS delivered
+ * at this door"*. At this site nothing of the kind is known — the assertion
+ * fires precisely because no `delivered` row exists for the key — so reusing
+ * that wording would tell a reader their session holds constants nobody can
+ * show it was given. One fault, two facts, and the project's rule about a
+ * second copy applies to sentences as much as to rules: the wording is spelled
+ * once, here, rather than softened out of the neighbouring one.
+ *
+ * **What is actually lost is the LATCH and the COUNT.** `assertDelivered`
+ * latches on the `missed` row it writes, so an assertion that could not write
+ * one has no memory: it re-asserts at the next tool call, and the next, for
+ * the rest of the session. And spec §8.2 counts those rows — *"what is
+ * verifiable is that we injected at every door and none was missed"* — so a
+ * refused write leaves that count a floor, in the direction that flatters.
+ *
+ * **It repeats, and that is the disclosure being honest about itself.** Every
+ * other line in this area speaks once because a row latches it; the row is
+ * what failed here, so there is nothing to latch on, and a line that fell
+ * silent after the first firing would be claiming a durability it has not
+ * got. The repetition stops when the directory takes a write.
+ *
+ * **stderr, and the person.** `unrecordedDeliveryLine`'s channel argument
+ * holds unchanged: the model can do nothing about a directory that will not
+ * take a write, and `hooks/pre-compact.ts` — which rules out stderr for its
+ * own event — carries this in the audit row it was already writing instead.
+ */
+export function unrecordedMissLine(key: string): string {
+  return 'my_context: the row recording that NO door delivered the product rule store to this ' +
+    `session (key \`${key}\`) could NOT be written to \`${DELIVERED_DIR}/\`. Two consequences: ` +
+    'this check latches on that row, so with none written it will say this again on every tool ' +
+    'call until the directory is writable; and the count of missed doors against delivered ' +
+    'ones — the measurement behind "the store is always present" — is a floor rather than a ' +
+    'figure. Nothing was blocked and nothing else changed.\n';
 }
 
 /**

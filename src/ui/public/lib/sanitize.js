@@ -18,10 +18,11 @@
  * and the ruling says so in its own words.
  *
  * **The allow-list is what makes "match GitHub" survivable.** This server
- * sends no `Content-Security-Policy` (`security.ts` retired it on 2026-08-22
- * and `server-e2e.test.ts` asserts its ABSENCE), so `script-src 'self'` is not
- * there to catch a mistake made here. Every guarantee is therefore structural
- * and lives in this file:
+ * sends a `Content-Security-Policy` with `script-src 'self'` since 2026-09-23
+ * (`security.ts`, owner ruling E; `server-e2e.test.ts` asserts the exact
+ * value — it was absent between 2026-08-22 and then), and that policy would
+ * catch a script this file let through. It is the second net, not the first:
+ * every guarantee is still structural and lives in this file:
  *
  *   1. **No `innerHTML`, ever, and no `DOMParser`.** Raw markup is scanned by
  *      `htmlTokens` below and turned into `createElement` / `createTextNode`

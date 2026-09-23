@@ -1,4 +1,7 @@
-// @basis TASK-a-counter-that-can-no-longer-be-written-reads-as-not-enough, TASK-four-failure-states-are-modelled-in-the-type-and-read-by, INV-nothing-is-dropped-silently, INV-hooks-fail-open
+// @basis TASK-a-counter-that-can-no-longer-be-written-reads-as-not-enough,
+// TASK-four-failure-states-are-modelled-in-the-type-and-read-by,
+// TASK-d70-closed-all-five-instances-and-never-built-the-gate-the,
+// INV-nothing-is-dropped-silently, INV-hooks-fail-open
 /**
  * **A count that is FROZEN is not a count that is low, and a trigger that
  * threw is not a trigger that is switched off.**
@@ -37,6 +40,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
+import { reviewCount } from '../../src/hooks/post-tool-use.ts';
 import { reviewNote, reviewTrigger } from '../../src/review/trigger.ts';
 import { bumpCounter, readCounter, reviewCounterPath } from '../../src/core/review-counter.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -230,4 +234,83 @@ test('a workspace the trigger cannot even locate is silent on both channels', ()
     assert.equal(decision, null);
     assert.equal(reviewNote(decision), '');
   } finally { removeTree(bare); }
+});
+
+/* ---------------------------------------------------------------------------
+ * THE SITE THAT PRODUCES THE FLAG, AND WHY IT IS THE QUIET ONE.
+ *
+ * `TASK-d70-closed-all-five-instances-and-never-built-the-gate-the` found
+ * `bumpCounter`'s `written` dropped at `hooks/post-tool-use.ts` — called as a
+ * bare statement, so the answer went nowhere. It is bound there now, and
+ * deliberately not printed, on `core/review-counter.ts`'s own standing ruling:
+ * *"there is nowhere on the `PostToolUse` path to say it — so `hooks/stop.ts`
+ * puts its own verdict in the audit row it was already writing, which is the
+ * one durable sink that is not the casualty."*
+ *
+ * **This test is what makes that a route rather than an excuse.** It drives
+ * the producing site and the disclosing site over ONE frozen counter and holds
+ * both halves at once: the hook that fires 85 times a turn stays silent, and
+ * the hook that fires once says FROZEN. A future change that quiets the second
+ * turns "disclosed elsewhere" into "not disclosed", and this goes red.
+ *
+ * It does not, and cannot, go red on the binding itself — binding a value
+ * changes no behaviour. `scripts/check-swallows.ts` is what fails on a
+ * producer called as a statement, and it is red before that line and green
+ * after; this test is the other half of the pair.
+ * ------------------------------------------------------------------------- */
+
+/** Captures stderr for one synchronous call and always restores it. */
+function saidOnStderr(fn: () => void): string {
+  const original = process.stderr.write.bind(process.stderr);
+  let captured = '';
+  (process.stderr as unknown as { write: unknown }).write = ((chunk: unknown): boolean => {
+    captured += String(chunk);
+    return true;
+  });
+  try { fn(); } finally {
+    (process.stderr as unknown as { write: unknown }).write = original;
+  }
+  return captured;
+}
+
+test('PostToolUse binds the lost write and stays silent; the turn that ends says FROZEN', () => {
+  const { cwd, root, transcript } = project({ enabled: true, everyNToolCalls: 25 });
+  try {
+    freezeCounter(root);
+    // The producing site, driven as the hook drives it — twice, because the
+    // argument for its silence is the repetition: this hook fired 85 times in
+    // one measured turn and a line per firing would bury the turn's one
+    // accurate account of the fault under eighty-five copies.
+    const said = saidOnStderr(() => {
+      reviewCount({ cwd, session_id: 's-1' }, cwd);
+      reviewCount({ cwd, session_id: 's-1' }, cwd);
+    });
+    assert.equal(said, '', 'the per-tool-call hook must not be the one that speaks');
+
+    // And the reader is NOT in the dark, which is the whole of the claim.
+    const { calls, fn } = recordingSpawn();
+    const decision = reviewTrigger(
+      { cwd, session_id: 's-1', transcript_path: transcript }, 'Stop', fn,
+    );
+    assert.equal(calls.length, 0);
+    assert.match(decision?.because ?? '', /FROZEN/);
+    assert.ok((decision?.because ?? '').includes(reviewCounterPath(root)));
+  } finally { removeTree(cwd); }
+});
+
+test('a writable counter leaves both hooks quiet about writes', () => {
+  // Anti-vacuity for the assertion above: the silence being measured has to be
+  // the silence of a hook that has nothing to say, not of one that never runs.
+  const { cwd, root, transcript } = project({ enabled: true, everyNToolCalls: 25 });
+  try {
+    const before = readCounter(root).calls;
+    const said = saidOnStderr(() => { reviewCount({ cwd, session_id: 's-1' }, cwd); });
+    assert.equal(said, '');
+    assert.equal(readCounter(root).calls, before + 1, 'the site must actually have counted');
+    const { fn } = recordingSpawn();
+    const decision = reviewTrigger(
+      { cwd, session_id: 's-1', transcript_path: transcript }, 'Stop', fn,
+    );
+    assert.doesNotMatch(decision?.because ?? '', /FROZEN/);
+  } finally { removeTree(cwd); }
 });

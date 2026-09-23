@@ -26,9 +26,9 @@ tags:
   - "seq:6"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/item-body.md"
+source_file: null
 source_anchor: null
-source_checksum: 4c8c4def1164644c
+source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
 checksum: 712fe51610c7ea7b

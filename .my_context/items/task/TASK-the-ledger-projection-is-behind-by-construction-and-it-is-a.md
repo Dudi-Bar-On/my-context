@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: A second set of derived records is never updated as work happens, so it stays out of date until somebody runs one of three commands.
-summary_of: cc3de9947af8968e
+summary_of: 45855ab91eeb10be
 scope: []
 tags:
   - v2
@@ -14,17 +14,17 @@ tags:
   - audit
   - "plan:walk"
   - "seq:66"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-28
 valid_until: null
-checksum: 331e70e1781322c1
+checksum: ceb0c8ccdb2f9b84
 plan: walk
 seq: "66"
-state: todo
+state: done
 priority: "2"
 source: "found by plan:walk seq:28, 2026-08-28"
 ---
@@ -58,3 +58,5 @@ source: "found by plan:walk seq:28, 2026-08-28"
 > **Done when**
 >
 > The question above is answered and recorded; if the answer is "current", the cost of updating `.index.db` on the append path is measured before any code is written, and the interaction with `.index.db`'s delete-and-self-heal recovery is settled; if the answer is "batch", the screens that read it say how fresh it is.
+
+Closed 2026-09-22 by owner ruling G: batch; the screen half continues as TASK-the-decay-and-ledger-screens-say-when-the-ledger-projection (walk/170); see DEC-the-ledger-projection-is-rebuilt-in-batch-and-the-two.

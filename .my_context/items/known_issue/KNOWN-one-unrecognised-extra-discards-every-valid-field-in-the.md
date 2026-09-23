@@ -71,3 +71,7 @@ goes red against the build as it stands today, which is what makes it worth writ
 AND CHECK `needs` WHILE YOU ARE THERE: it is a real frontmatter field that `ready` computes from,
 and there appears to be no supported way to edit it at all. If that is deliberate, say so in the
 refusal; if it is an omission, it is the reason this was met.
+
+## Request
+
+file and dispatch whatever you can also fix the "The board is stale (/99, /102, /103, /104, /105, /107 all shipped today but still read todo because nobody advanced them). Here's the true state:" update from todo to done not only these but everything else that is not updated, we are running after our tail all the time - stop it. also "The capability repair introduced 15 new false" then you told me it was error and there is not 15 so decide which and in general work sequentially until you close all the documentation actions except the hebrew then it will be the last and final - i do not want to continue mess with this so do a deterministic mechanism to close them on by on and report me when it's done

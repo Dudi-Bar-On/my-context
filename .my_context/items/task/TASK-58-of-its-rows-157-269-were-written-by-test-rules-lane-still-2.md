@@ -2,7 +2,7 @@
 id: TASK-58-of-its-rows-157-269-were-written-by-test-rules-lane-still-2
 type: task
 title: 58% of its rows (157/269) were written by test/rules/lane-still-gets-the-no-git-rule.test.ts into…
-status: active
+status: superseded
 severity: soft
 always: false
 summary: 58% of its rows (157/269) were written by test/rules/lane-still-gets-the-no-git-rule.test.ts into the owner's live workspace, corrupting the one count spec §8.2 defines; and the session-start door has never once delivered successfully — zero rows…
@@ -19,8 +19,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
-valid_until: null
-checksum: 9035e47c8bb63676
+valid_until: 2026-09-22
+checksum: b30d43a824d68b7e
 ---
 
 # 58% of its rows (157/269) were written by test/rules/lane-still-gets-the-no-git-rule.test.ts into…
@@ -37,3 +37,6 @@ Evidence: agent-a9848c15a82169403.jsonl record 297.
 
 What was observed, quoted as evidence rather than as the content of this proposal:
 ""Delivery leaves no audit trace" — half true. There is a record (269 rows in .mycontext/.rules/delivered.jsonl); the audit log knows nothing about it, and both halves of that isolation argument hold. The real defect is that nothing reads the file — no CLI, MCP, doctor or UI. Two things it says that nobody has seen: 58% of its rows (157/269) were written by…"
+
+## Relations
+- superseded_by [[TASK-the-delivery-log-has-no-reporting-surface-so-a-count-instead]]

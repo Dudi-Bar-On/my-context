@@ -1,3 +1,135 @@
+## ⏭ 2026-09-23 — RELEASE 2.0.0, PHASE 3 COMPLETE; PHASE 4 WAITS ON THE OWNER'S GO
+
+1. **CHECKPOINT 3 IS IN `reports/2026-09-22-release-checkpoints.md`** (newest first) and is the current
+   state; the block below this one is the phase-3-in-flight handover and is history. The board is
+   `mycontext ready --json` — read `.open` (137), not `.ready.length` (capped at 50). The SDD ledger
+   `.superpowers/sdd/2026-09-22-v2-0-release/progress.md` (gitignored) holds every ruling.
+
+2. **NEXT: phase 4** (`TASK-release-phase-4-silent-failures-and-disclosures`, `state: todo`) starts on the
+   owner's next message after the checkpoint-3 report — that message IS the go; do not ask again.
+   Phase 4 carries release/16, /19, /22, /23, /24 (`TASK-sweep-every-timestamp-comparison-for-the-millisecond-tie`,
+   `TASK-the-audit-log-still-records-two-session-ids-that-never`, `TASK-promoterevision-reuses-the-summary-unchanged-switch-and`,
+   `TASK-mycontext-ready-counts-a-review-draft-as-open-work-so-the`, `TASK-a-locked-projection-file-makes-discard-fail-silently-so-a`).
+
+3. **RULES LEARNED THIS PHASE, ALL IN THE LEDGER:** stage from the lane's REPORTED file list; scripts never
+   push, the controller pushes only when no needed CI run is in flight; run `verify:citations` before any
+   push that changes a cited line; after `mycontext supersede <plan/seq>` re-point every D-map row that
+   names it (check:board gates it); an `edit` with only `--extra` takes no `--summary-unchanged`; Opus
+   lanes are rate-limited (weekly, resets 13:00Z 2026-09-23) — reviewers ran on sonnet.
+
+4. **OPEN FOR THE OWNER (not blocking):** three ideas in checkpoint 3; the doctor-hygiene lane (phase 8);
+   the session picker (name store, list breadth, Conversations not subscribed); the fixture session id
+   `lane-still-gets-the-no-git-rule` writing into the real ledger — file once the writing lane is named.
+
+---
+
+## ⏭ 2026-09-23 — RELEASE 2.0.0, PHASE 3 IN FLIGHT (dispatching session, compaction handover)
+
+1. **THE RELEASE RUNS FROM `docs/superpowers/plans/2026-09-22-v2-0-release.md`.** The durable log is
+   `reports/2026-09-22-release-checkpoints.md` (checkpoints 0, 1, 2 logged). The SDD ledger with every
+   ruling is `.superpowers/sdd/2026-09-22-v2-0-release/progress.md` (gitignored) — read it first. Board:
+   `mycontext ready --json --plan release`; `TASK-release-phase-3-the-defects` is `doing`; phases 1 and 2 are done.
+
+2. **PHASE 3 STATE.** Tasks 3.1–3.7, 3.10, 3.11 and release/20 are complete and reviewed. 3.9
+   (`TASK-two-browser-gates-are-red-before-any-lane-touches-them-and`,
+   `TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the`) is code-complete in commits
+   0e074059, 1ce89237, 3b8efec2 with reviews clean; both items stay `doing` until `npm run test:e2e`
+   exits 0 here and on Ubuntu. 3.8 (CSP, ruling E) has NOT started and runs ALONE after the gate is
+   green; then `TASK-no-content-security-policy-header-and-no-meta-on-a-local` (rulings/84) is superseded by the decision-E item.
+
+3. **IN FLIGHT AT COMPACTION:** the controller's own full gate (`npm run test:e2e`, log in the session
+   scratchpad `e2e-gate-controller.log`) and CI run on commit 31b8e5bd — **do not push until that run
+   completes; a push cancels it.** If the gate is green: append the baseline from the 3.9 report's
+   "Fix round 2" section (Playwright 1.62.1, Chromium 151.0.7922.34, Chrome 153.0.8010.36, 98 spec
+   files, 1406 tests, 0 red, 2026-09-23) to rulings/114's body with
+   `mycontext edit <id> --body "<old body + record>" --summary-unchanged --yes`, close ui-gates/1 and
+   rulings/114 (`--extra state=done`), commit, then dispatch 3.8.
+
+4. **THEN THE PHASE-3 EXIT:** `npm test` on the head (last: 9029 tests, 0 fail), both CI jobs green
+   through `npm test` (cut an attempt after the evidence steps if the Ubuntu browser suite drags, as
+   phase 1 did), close `TASK-release-phase-3-the-defects`, prepend checkpoint 3 to the log and report
+   it. The owner's next message after a checkpoint is the go for the next phase.
+
+5. **CHECKPOINT 3 MUST NAME:** two lane breaches (1.1 ran `git checkout --`; 3.10 ran `git stash`/`pop`;
+   both self-reported, nothing lost); the review pass created ten drafts from the dispatcher's own
+   prompts (discarded via `review discard --yes`; release/23 =
+   `TASK-mycontext-ready-counts-a-review-draft-as-open-work-so-the` filed); ideas awaiting the owner:
+   `review.enabled` during a release, no static check for `commands/lesson.md`'s flags, no mutual
+   exclusion in the review trigger path. Board: 137 open.
+
+6. **FILED THIS PHASE FOR LATER PHASES:** release/16 `TASK-sweep-every-timestamp-comparison-for-the-millisecond-tie` (4),
+   release/19 `TASK-the-audit-log-still-records-two-session-ids-that-never` (4), release/21
+   `TASK-thirteen-test-files-name-a-retired-item-as-what-they-rest-on` (8), release/22
+   `TASK-promoterevision-reuses-the-summary-unchanged-switch-and` (4), release/23 (4). Decisions filed:
+   `DEC-a-full-export-is-an-archive-to-copy-back-never-an-artefact`, `DEC-the-dispatch-gate-reads-an-item-id-as-a-known-prefix`,
+   `DEC-the-browser-suite-runs-headless-by-default-a-person-who`, `DEC-the-three-mockup-parity-browser-specs-are-retired-screen`,
+   `DEC-a-turn-that-is-both-a-table-and-a-lane-report-carries-both`.
+
+7. **STANDING RULINGS TO KEEP:** stage every commit from the lane's REPORTED file list, never "dirty
+   minus exclusions" (that swept another lane's file once); run every corpus write with stderr visible
+   and answer the contradiction gate with `--distinct <id>` (ten silent refusals once left "see ." in
+   four items); `mycontext edit` has no `--note` — append via `--body … --summary-unchanged`; one
+   Playwright lane at a time; run `npm test` on the head before the push that ends a wave.
+
+8. **FIRST THING NEXT SESSION:** read the ledger; `mycontext ready --json --plan release`; reset any
+   `doing` task whose lane is not alive back to `todo` — except ui-gates/1 and rulings/114, which wait
+   on the gate; read the gate log and `gh run list --branch release/2.0.0 --limit 1`; continue from item 3.
+
+
+**Addendum, 2026-09-23 ~04:00Z (after the block above):**
+
+9. **THE CONTROLLER'S OWN GATE ON 3b8efec2 CAME BACK RED** — phase 1: 1325 passed / 73 failed / 16 files at
+   4 workers; the serial pass cleared 13 files; still red: `e2e/app-layout.spec.ts:343` and every
+   `e2e/chip-hue-authority.spec.ts` test, all with `preview never settled (25 samples, 484 elements, 0
+   reads in flight)` from `e2e/settle.ts` (the preview DOM keeps mutating with nothing in flight; green in
+   round 2's gate hours earlier), and `e2e/print-product.spec.ts:141` (the forced-open coverage box lays
+   out empty). Log: session scratchpad `e2e-gate-controller.log`.
+
+10. **ROUND 3 OF 5 IS LIVE** (a fresh implementer; find it with ListAgents): measure the mutation with a
+    MutationObserver, fix the cause (product / snapshot leak / settle heuristic), single-spec ×2, ONE full
+    gate, `npm test` once; it appends "Fix round 3" to the 3.9 report. When it returns: commit from its
+    REPORTED file list, scoped re-review, then item 3 of the block above (baseline into rulings/114,
+    close ui-gates/1 + rulings/114, dispatch 3.8).
+
+11. **CI ON 31b8e5bd:** Windows fully green; Ubuntu green through `npm test` and `test:perf`, browser suite
+    running — its verdict on the same three files is the fresh-runner evidence; a watch is pending. The
+    handover commit 8c658cdf is unpushed on purpose until that run completes (a push cancels it); push it
+    with the next commit. `DEC-the-three-mockup-parity-browser-specs-are-retired-screen` (ruling B) is
+    filed and pushed (31b8e5bd).
+
+
+**Addendum 2, 2026-09-23 ~09:40Z (supersedes items 9–11 above):**
+
+12. **3.9 ROUND 3 GAVE THE FIRST GREEN GATE** on this machine (commit 5664e55c: `npm run test:e2e` exit 0,
+    51m25s; phase 1 1394 passed / 4 failed / 8 skipped, serial pass cleared all four as contention). The
+    cause of "preview never settled" was a product perf bug — `GET /api/injection-history` 5.1 s on this
+    corpus's 254,466 audit rows — now 148 ms with two indexes and RED-first tests. The round's scoped
+    re-review was dispatched and had NOT returned at compaction (find it with ListAgents; if it is gone,
+    dispatch a fresh re-review of `.superpowers/sdd/2026-09-22-v2-0-release/review-eebe4e29..5664e55c.diff`).
+
+13. **STILL OPEN FOR 3.9:** the Ubuntu job's browser suite on the current head (a run on fc4817b2 is watched;
+    the earlier run on 5664e55c was cancelled by a controller push — rule: scripts never push, the controller
+    pushes only when no needed run is in flight). rulings/114's body already carries this machine's baseline;
+    when Ubuntu is green, append its counts, then close ui-gates/1 and rulings/114 (`--extra state=done`).
+
+14. **LIVE AT COMPACTION (ListAgents):** 3.8 (CSP, ruling E; opus; the only Playwright lane; when it returns:
+    commit from its reported list, review, file DEC-E, `mycontext supersede
+    TASK-no-content-security-policy-header-and-no-meta-on-a-local --by <DEC-E> --yes`), and release/25
+    (`TASK-the-product-overwrote-the-repository-s-root-gitignore-with-a`, opus: the product wrote a lone `*`
+    into the ROOT `.gitignore` — fixed before phase 3 closes). If either lane is gone, re-dispatch from
+    `task-3.8-brief.md` / the item body with the same instructions (no git, one Playwright lane).
+
+15. **FILED FROM ROUND 3:** release/24 `TASK-a-locked-projection-file-makes-discard-fail-silently-so-a` (4),
+    release/25 (3, live), release/26 `TASK-the-browser-gate-reports-green-while-eight-tests-are-skipped` (6).
+    `harness/evidence/` was rewritten by some lane's run and restored from HEAD; if it is dirty again, find
+    who writes it before restoring.
+
+16. **THEN THE PHASE-3 EXIT (unchanged from item 4):** `npm test` on the head (last 9031 / 0 fail), both CI
+    jobs green through npm test AND the Ubuntu browser suite green, close `TASK-release-phase-3-the-defects`,
+    prepend checkpoint 3 to `reports/2026-09-22-release-checkpoints.md` (contents per item 5 plus: the first
+    green gate and its cause, release/24–26, the .gitignore incident, three controller push errors), report,
+    and wait for the owner's next message as the go for phase 4. Board: 140 open (137 + release/24–26).
+
 ## ⏭ 2026-09-17 (fourth) — THE DIAGRAMS WERE WRONG 28 TIMES AND README IS THE SOURCE. THREE DOC ITEMS HELD.
 
 1. **THE DIAGRAM VERIFICATION FOUND 28 FALSE CLAIMS IN 171, AND ONE DIAGRAM THAT DOES NOT PARSE.**

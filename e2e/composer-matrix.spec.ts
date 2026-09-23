@@ -247,7 +247,13 @@ test('every entry draws every field it declares, as the control the catalogue na
     // The re-measured surface, asserted rather than described, so this file
     // fails the day the catalogue moves under it.
     expect(DEFS.length, 'catalogue entries').toBe(30);
-    expect(fields, 'fields, args and flags').toBe(89);
+    // 89 → 91: `lesson-accept` gained a `summary` field 2026-09-22
+    // (`lib/palette-defs.js`, closing the gap `e2e/composer-write-
+    // execute.spec.ts`'s "the six writes" case measures) — this assertion is
+    // deliberately a literal count, not a derived one, exactly so a catalogue
+    // change is felt here and re-counted by hand rather than silently re-
+    // absorbed.
+    expect(fields, 'fields, args and flags').toBe(91);
     expect(pickers, '<select> pickers').toBe(20);
     expect(placeholders, 'fields showing their format as a placeholder').toBe(8);
     // Recorded rather than asserted to a number: which sources are empty is a
@@ -558,7 +564,10 @@ test('the seven values that have bitten this product survive being pasted into a
       + `${wrong.length} did not:\n    ${wrong.join('\n    ')}`,
     ).toEqual([]);
     expect(cases, 'free-text field × value cases').toBeGreaterThanOrEqual(200);
-    expect(refusals, 'every free-text field refuses a shell-active value').toBe(42);
+    // 42 → 43, for the same reason as `fields` above: `lesson-accept`'s new
+    // `summary` free-text field adds one more shell-active-value refusal case
+    // to the swept total.
+    expect(refusals, 'every free-text field refuses a shell-active value').toBe(43);
   });
 
 /* ══ 6 — THE REFUSALS ═════════════════════════════════════════════════════ */

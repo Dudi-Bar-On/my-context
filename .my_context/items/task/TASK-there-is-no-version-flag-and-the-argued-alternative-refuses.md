@@ -16,17 +16,17 @@ tags:
   - first-second
   - "plan:hooks"
   - "seq:35"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 0f1f9a1693624541
+checksum: d8e62e57fc7058e4
 plan: hooks
 seq: "35"
-state: todo
+state: done
 priority: "3"
 ---
 

@@ -955,20 +955,73 @@ function commandRow(ctx, repair) {
   return block;
 }
 
+/**
+ * **THE RENDER GENERATION, for the same race `screens/preview.js` named and
+ * fixed on 2026-08-29 — see its own header for the full argument.**
+ *
+ * `app.js`'s `routeGeneration` stops two RENDER-generation.` from
+ * overlapping, but `noteExecuteSettled`'s live-refresh path calls
+ * `mod.render(section, ctx)` DIRECTLY, "never `route()`" (`app.js`, the
+ * live-invalidation subscription's own comment) — precisely so a redraw
+ * after an Execute does not close the pane `route()` would close. That call
+ * is OUTSIDE `routeGeneration`'s reach, and an Execute on this screen fires
+ * both the immediate post-run refresh AND the stream's own debounced one for
+ * the SAME audit records, so two `render()` calls for this section can be in
+ * flight together. `root.replaceChildren()` used to run at the TOP of this
+ * function, before its one `await` — Rule 2 of `preview.js`'s fix explains
+ * why that is exactly backwards: "clearing first is what made a slow render
+ * a blank screen and a fast one a double." Measured here the same way:
+ * `e2e/doctor-outcome.spec.ts`'s real-`ack` test found the acknowledged
+ * row's own command box drawn twice after one run settled.
+ *
+ * So the clear moves to where the ANSWER arrives, and a call whose token has
+ * gone stale by then abandons its render instead of appending to a section
+ * a newer call already owns.
+ */
+let renderGeneration = 0;
+
 export async function render(root, ctx) {
-  root.replaceChildren();
-  screenHead(ctx, root, 'doc.h', 'doc.v', 'doc.sub');
+  const mine = ++renderGeneration;
+
+  /**
+   * **ONE `screenHead` CALL SITE, and the count is the reason it is shared.**
+   *
+   * Both paths below — the refusal and the answer — clear the section and draw
+   * the SAME heading, because a heading that differed between them would be a
+   * second answer to "which screen am I on". Written twice, it also made this
+   * screen look like two screens to the one gate that counts them:
+   * `test/ui/glyph-set.test.ts` reads every `screenHead(…)` CALL SITE off the
+   * shipped screens and pins the total, and CI run 35784645557 failed on both
+   * platforms with *"the screen count moved — 17 screens call screenHead: 18
+   * !== 17"* the moment the generation guard above gave this render a second
+   * one. No new screen exists, so the number is right and the duplication was
+   * not.
+   *
+   * It stays INSIDE `render`, after the generation check at each call, rather
+   * than being hoisted: clearing is the thing the guard protects, and a helper
+   * that cleared on its own would be the "clear first" the docblock above
+   * exists to refuse.
+   */
+  const drawHead = () => {
+    root.replaceChildren();
+    screenHead(ctx, root, 'doc.h', 'doc.v', 'doc.sub');
+  };
 
   let data;
   try {
     data = await ctx.api('/api/doctor');
   } catch (error) {
+    if (mine !== renderGeneration) return;
+    drawHead();
     // Drawn INSTEAD of the three cards, never beside them: a doctor that could
     // not run and a corpus with no findings are opposite facts, and three
     // empty cards would report the good one.
     root.append(errorNote(error.message));
     return;
   }
+  if (mine !== renderGeneration) return;
+
+  drawHead();
 
   // **THE TALLY, and it is drawn at every count including zero.**
   //

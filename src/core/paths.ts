@@ -18,6 +18,18 @@ export function relPosix(root: string, target: string): string {
   return normalizePosix(toPosix(path.relative(root, target)));
 }
 
+/**
+ * True when a root-relative path (already POSIX-normalised by `relPosix`)
+ * names something outside the root. `path.relative` across two Windows
+ * drives returns the TARGET, absolute — `C:/x/y.md` — which is none of the
+ * three classic escapes, so both flavours' `isAbsolute` are asked, on every
+ * host, so the answer is the same on the Ubuntu job as on the owner's machine.
+ */
+export function escapesRoot(rel: string): boolean {
+  return rel === '' || rel === '..' || rel.startsWith('../')
+    || path.win32.isAbsolute(rel) || path.posix.isAbsolute(rel);
+}
+
 const RE_SPECIAL = /[.+^${}()|[\]\\]/g;
 
 /**

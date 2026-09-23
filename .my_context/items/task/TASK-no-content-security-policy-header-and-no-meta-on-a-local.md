@@ -2,7 +2,7 @@
 id: TASK-no-content-security-policy-header-and-no-meta-on-a-local
 type: task
 title: no Content-Security-Policy header and no meta, on a local server that composes and executes shell commands
-status: active
+status: superseded
 severity: soft
 always: false
 summary: The local web page declares no restriction on what it is allowed to load, which is cheap insurance for a tool that can run commands.
@@ -23,8 +23,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
-valid_until: null
-checksum: 0f0614edc80d3708
+valid_until: 2026-09-23
+checksum: 7d1935f071ab0619
 plan: rulings
 seq: "84"
 state: todo
@@ -40,3 +40,6 @@ WHAT WAS MEASURED. There is no `Content-Security-Policy` header and no CSP `<met
 AND THE HONEST FRAMING, WHICH THE REPORT INSISTS ON. This is NOT a live vulnerability: nothing on the page loads cross-origin, and report 3 verified binding by binding that the serving path holds its no-writes guarantee. It is cheap insurance for a local server that composes and executes shell commands.
 
 THE SUBJECT. D58 is the UI being present and changing nothing. A CSP is the declaration of that property in a form a browser enforces rather than a property the code happens to have.
+
+## Relations
+- superseded_by [[DEC-the-ui-sends-a-content-security-policy-with-script-src-self]]

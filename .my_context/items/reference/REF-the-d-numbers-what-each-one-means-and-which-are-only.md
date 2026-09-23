@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a version a program can read was added on 2026-09-16 so no progress report has to guess at the words.
-summary_of: 38d0daf1e27a4e21
+summary_of: 3673e02bab14fc76
 summary_was:
   - 2026-09-16 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; eleven more were added on 2026-09-13 from the consolidated review findings.
   - 2026-09-13 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D52 widened on 2026-09-13 to the log that records what was delivered.
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 3ecd2bd714608a4c
+checksum: 7e43f1ec2b997752
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -390,7 +390,7 @@ D42    | open          | recall/*
 D43    | not-filed     | -
 D44    | open          | port/93, port/98, walk/4, walk/15, walk/55, ui-gates/1, ui2/5r, walk/152, walk/153, walk/154, walk/155, walk/156, walk/157, walk/158, walk/159, walk/160
 D45    | open          | walk/11, walk/12, walk/32, walk/33, ui2/10p, walk/161, walk/162
-D46    | open          | screens/24, walk/57, walk/89, walk/139, walk/145, walk/146, walk/147, walk/148, walk/149, walk/150, walk/151
+D46    | open          | screens/24, walk/57, walk/89, walk/139, walk/145, walk/146, walk/147, walk/148, walk/149, walk/151
 D47    | open          | walk/43, walk/102, walk/105, walk/163, walk/164
 D48    | open          | budget/6, ui2/13, walk/14, walk/18, walk/106, walk/165
 D49    | open          | walk/8, walk/59, ui1/17b
@@ -402,13 +402,13 @@ D54    | open          | review/3, review/4
 D55    | open          | hooks/22, hooks/35
 D56    | open          | live/25, live/26, live/28
 D57    | closed        | REQ-every-anchor-capability-is-reachable-from-the-screen-and-a
-D58    | open          | rulings/21, rulings/83, rulings/84
+D58    | open          | rulings/21, rulings/83, DEC-the-ui-sends-a-content-security-policy-with-script-src-self
 D59    | open          | walk/82
 D60    | open          | walk/142
 D61    | open          | walk/2
 D62    | open          | walk/134
 D63    | open          | screens/26, screens/27
-D64    | open          | rulings/69, rulings/85, rulings/86, rulings/87, rulings/88, rulings/89
+D64    | open          | rulings/69, rulings/85, rulings/86, rulings/87, rulings/88, DEC-the-in-sync-verdict-draws-no-chip-report-3-does-not-overturn
 D65    | open          | rulings/70
 D66    | open          | swallow/*
 D67    | held-by-owner | wcag/*

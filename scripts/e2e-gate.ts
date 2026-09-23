@@ -34,8 +34,9 @@
  *     gate green. Anything still failing makes the gate RED — see below.
  *
  * Both phases run with `--reporter=list,json`: `list` is what a person
- * watches (this suite is headed by owner ruling — `playwright.config.ts` —
- * and CI still gets the same reporter), `json` is written to a scratch file
+ * watches whether the run is headless (the default since owner ruling
+ * 2026-09-22, `playwright.config.ts`) or headed via `MYCONTEXT_E2E_HEADED` —
+ * CI always gets the same reporter either way — `json` is written to a scratch file
  * this script reads to name specs by FILE rather than by trusting an exit
  * code alone. `PLAYWRIGHT_JSON_OUTPUT_FILE` redirects it there instead of
  * stdout, so the two reporters do not interleave.
@@ -177,7 +178,9 @@ export function stopAfterPhaseOne(
   return null;
 }
 
-function runPhase(label: string, extraArgs: string[], jsonPath: string): number {
+export type RunPhase = (label: string, extraArgs: string[], jsonPath: string) => number;
+
+const runPhase: RunPhase = (label, extraArgs, jsonPath) => {
   console.log(`\nmy_context e2e gate: ${label}\n`);
   const result = spawnSync(process.execPath, [
     PLAYWRIGHT_CLI, 'test', '--config', CONFIG, '--reporter=list,json', ...extraArgs,
@@ -191,15 +194,27 @@ function runPhase(label: string, extraArgs: string[], jsonPath: string): number 
   // rather than coerced to 0, which `?? 1` would get wrong the other way if
   // `status` were legitimately falsy-but-defined (it never is: 0 is success).
   return result.status === null ? 1 : result.status;
-}
+};
 
-function main(): void {
-  // Passed through to BOTH phases, unchanged — the same narrowing
-  // `playwright test <args>` always accepted (a file filter, a `-g` title
-  // pattern), so `npm run test:e2e -- app-layout.spec.ts` keeps working
-  // exactly as it did before this script existed. `--last-failed` in phase 2
-  // narrows the SAME way a second filter would: to the intersection.
-  const passthrough = process.argv.slice(2);
+/**
+ * The gate's orchestration, with `runPhase` taken as an argument rather than
+ * called directly — the same shape `core/needs.ts` uses for its input, and
+ * for the same reason: a function that reads its dependency from a parameter
+ * can be driven by `test/scripts/e2e-gate.test.ts` with a stub that never
+ * spawns Playwright, where `main()` itself (a real `spawnSync`) cannot be.
+ *
+ * **Every verdict here used to end in `process.exit()`, called from inside
+ * the `try` — TASK-release-phase-1-the-repository-tells-the-truth.** `finally`
+ * never runs once `process.exit()` has already torn the process down, so
+ * `rmSync(scratch, ...)` below was dead code on every one of the four exit
+ * paths: the gate leaked its `mkdtempSync` scratch directory on every single
+ * run, green or red. The fix is the one `finally` always needed: this
+ * function RETURNS the exit code instead of calling `process.exit()` itself,
+ * so `finally` runs on every path, and only `main()` — after `runGate` has
+ * already returned, which means after cleanup has already happened — calls
+ * `process.exit(code)`.
+ */
+export function runGate(passthrough: string[], runPhase: RunPhase): number {
   const scratch = mkdtempSync(path.join(tmpdir(), 'mycontext-e2e-gate-'));
   try {
     const phase1Json = path.join(scratch, 'phase1.json');
@@ -207,7 +222,7 @@ function main(): void {
 
     if (phase1Code === 0) {
       console.log('\nmy_context e2e gate: GREEN — phase 1 (default workers) passed outright.\n');
-      process.exit(0);
+      return 0;
     }
 
     const report1 = readReport(phase1Json);
@@ -223,7 +238,7 @@ function main(): void {
         `\nmy_context e2e gate: RED. Phase 1 exited ${phase1Code} and ${stop}. ` +
         `See the output above for what phase 1 actually reported.\n`,
       );
-      process.exit(phase1Code);
+      return phase1Code;
     }
     console.log(
       `\nmy_context e2e gate: phase 1 (default workers) failed (exit ${phase1Code}), ` +
@@ -258,7 +273,7 @@ function main(): void {
 
     if (phase2Code === 0 && stillFailing.length === 0) {
       console.log(`my_context e2e gate: GREEN on phase 2. Every retried spec passed serially.\n`);
-      process.exit(0);
+      return 0;
     }
 
     console.log(
@@ -272,17 +287,28 @@ function main(): void {
       `(RULE-do-not-accept-a-test-that-passes-in-isolation-and-fails) is exactly why that is a ` +
       `real defect and not contention, so it is not retried again:\n${listBlock(stillFailing)}\n`,
     );
-    process.exit(phase2Code === 0 ? 1 : phase2Code);
+    return phase2Code === 0 ? 1 : phase2Code;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
 }
 
-// Guarded so `test/e2e/e2e-gate.test.ts` can import the pure parsing
-// functions above (`allSpecFiles`, `failingSpecFiles`, `readReport`) without
-// this module spawning a real Playwright run as a side effect of import —
-// the same reason `core/needs.ts` and `core/progress.ts` stay pure and take
-// their input as an argument rather than reading it themselves.
+function main(): void {
+  // Passed through to BOTH phases, unchanged — the same narrowing
+  // `playwright test <args>` always accepted (a file filter, a `-g` title
+  // pattern), so `npm run test:e2e -- app-layout.spec.ts` keeps working
+  // exactly as it did before this script existed. `--last-failed` in phase 2
+  // narrows the SAME way a second filter would: to the intersection.
+  const passthrough = process.argv.slice(2);
+  process.exit(runGate(passthrough, runPhase));
+}
+
+// Guarded so `test/scripts/e2e-gate.test.ts` can import the pure parsing
+// functions above (`allSpecFiles`, `failingSpecFiles`, `readReport`) and the
+// injectable `runGate` without this module spawning a real Playwright run as
+// a side effect of import — the same reason `core/needs.ts` and
+// `core/progress.ts` stay pure and take their input as an argument rather
+// than reading it themselves.
 const isMain = (): boolean => {
   const invoked = process.argv[1];
   return typeof invoked === 'string' && fileURLToPath(import.meta.url) === path.resolve(invoked);

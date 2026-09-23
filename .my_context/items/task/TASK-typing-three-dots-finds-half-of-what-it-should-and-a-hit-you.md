@@ -92,3 +92,7 @@ WHAT REMAINS, and it is the owner's to schedule rather than this lane's to take:
     English, 95.2 px in Hebrew, against 60.8 px idle). Named in the report for his eye.
   — machinery is still unsearchable on this surface. It now SAYS so on every count line, which is a
     disclosure and not a fix; the fix is lane AI's finding 1 and is a different build.
+
+## Request
+
+1 table & report - if required make them 2 different anchor types with 2 distinguished marks, 2 yes, 3 write 40 lines of code - just verify it works the same as the original code intended and every found search result in my viewer should be highlited, 4 clear them

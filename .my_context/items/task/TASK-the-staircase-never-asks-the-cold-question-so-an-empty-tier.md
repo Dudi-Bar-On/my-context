@@ -17,9 +17,9 @@ tags:
   - "seq:86"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/stair.md"
+source_file: null
 source_anchor: null
-source_checksum: ac38d738eb0ecac1
+source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
 checksum: 666bd304ff82ed68

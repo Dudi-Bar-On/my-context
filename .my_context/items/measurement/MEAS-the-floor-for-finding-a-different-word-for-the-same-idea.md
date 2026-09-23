@@ -17,9 +17,9 @@ tags:
   - measurement
   - d77
 origin: human
-source_file: .scratch/meas-body.md
+source_file: null
 source_anchor: null
-source_checksum: 91d4db799c5a86f3
+source_checksum: null
 valid_from: 2026-09-15
 valid_until: 2026-09-15
 checksum: 6b0b74f75a61de32

@@ -478,7 +478,19 @@ const AUDITED_FIELDS = [
   // one; the log is the only record there is. Values are never stored (this
   // log keeps no copy of item content), so the row says that a request moved
   // and never what it says.
+  // `sourceFile`/`sourceChecksum` are here for `request`'s sharpest reason
+  // twice over: `--detach-source` (`UpdateInput.detachSource`) writes null
+  // into two real, on-disk fields, and unlike every other audited field a
+  // reader cannot recover WHAT moved by reading the item afterwards — a
+  // detached item and one that never had a source look identical on disk.
+  // "who cleared this item's source, and when" has no trace anywhere else,
+  // because clearing both is deliberately the same terminal state either way
+  // reaches. Two entries, not one, because a write can in principle move only
+  // one of the pair (nothing in `updateItem` currently does, but the audit
+  // log's own rule — record what MOVED — does not get to assume that from
+  // outside `mutate.ts`).
   'title', 'body', 'summary', 'request', 'scope', 'tags', 'severity', 'always', 'status', 'extra',
+  'sourceFile', 'sourceChecksum',
 ] as const;
 
 type AuditedSnapshot = Record<(typeof AUDITED_FIELDS)[number], unknown>;
@@ -488,6 +500,7 @@ export function snapshotFields(item: Item): AuditedSnapshot {
     title: item.title, body: item.body, summary: item.summary, request: item.request,
     scope: [...item.scope], tags: [...item.tags],
     severity: item.severity, always: item.always, status: item.status, extra: { ...item.extra },
+    sourceFile: item.sourceFile, sourceChecksum: item.sourceChecksum,
   };
 }
 

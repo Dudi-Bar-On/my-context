@@ -1,3 +1,4 @@
+// @basis TASK-get-api-tutorials-reads-the-manifest-and-adds-a-hebrew, TASK-nine-sites-report-a-measured-zero-for-something-they-could
 /**
  * `GET /api/tutorials` (`read-model.ts`'s `apiTutorials`) — widened from six
  * hard-coded rows to one row per `docs/tutorials/manifest.json` entry, plus
@@ -111,6 +112,7 @@ test('apiTutorials: heRollup.done counts only rows whose he is done', () => {
     writeTutorial(root, 'docs/tutorials/three.md', REQUIRED);
     writeTutorial(root, 'docs/tutorials/three.he.md', REQUIRED.slice(0, 2)); // missing headings — todo.
     const body = apiTutorials(ws, url()).body as TutorialsBody;
+    assert.ok(body.heRollup !== null, 'a manifest that parsed must yield a measured rollup');
     assert.equal(body.heRollup.done, 1);
   } finally { done(); }
 });
@@ -125,6 +127,7 @@ test('apiTutorials: heRollup.total counts every row whose en is not unmeasured',
     // missing.md deliberately absent.
     const body = apiTutorials(ws, url()).body as TutorialsBody;
     // written -> done, partial -> todo: both count. missing -> unmeasured: does not.
+    assert.ok(body.heRollup !== null, 'a manifest that parsed must yield a measured rollup');
     assert.equal(body.heRollup.total, 2);
   } finally { done(); }
 });
@@ -141,11 +144,15 @@ test('apiTutorials: he is unmeasured (never a guessed todo) when en itself does 
   } finally { done(); }
 });
 
-test('apiTutorials: the response shape is { tutorials, heRollup }', () => {
+test('apiTutorials: the response shape is { tutorials, heRollup, unmeasured }', () => {
   const { ws, done } = fixture([entry('x')]);
   try {
     const body = apiTutorials(ws, url()).body as Record<string, unknown>;
-    assert.deepEqual(Object.keys(body).sort(), ['heRollup', 'tutorials']);
+    // `unmeasured` joined the shape with
+    // `TASK-nine-sites-report-a-measured-zero-for-something-they-could` (M7):
+    // `heRollup` may now be `null`, and a `null` with no reason beside it
+    // would be the same drop wearing a different value.
+    assert.deepEqual(Object.keys(body).sort(), ['heRollup', 'tutorials', 'unmeasured']);
   } finally { done(); }
 });
 
@@ -161,7 +168,14 @@ test('apiTutorials: a workspace with no project root answers an empty list, neve
   const result = apiTutorials(ws, url());
   assert.equal(result.status, 200);
   const body = result.body as TutorialsBody;
-  assert.deepEqual(body, { tutorials: [], heRollup: { done: 0, total: 0 } });
+  assert.deepEqual(body.tutorials, []);
+  // The rollup used to read `{ done: 0, total: 0 }` here, over a manifest that
+  // was never looked for —
+  // `TASK-nine-sites-report-a-measured-zero-for-something-they-could`, M7. The
+  // unmeasured case is pinned in full in
+  // `test/ui/tutorials-unmeasured-manifest.test.ts`.
+  assert.equal(body.heRollup, null);
+  assert.equal(typeof body.unmeasured, 'string');
 });
 
 test('apiTutorials: a workspace whose manifest cannot be parsed answers an empty list, not a 500', () => {
@@ -173,7 +187,12 @@ test('apiTutorials: a workspace whose manifest cannot be parsed answers an empty
     const ws = resolveWorkspace(dir);
     const result = apiTutorials(ws, url());
     assert.equal(result.status, 200);
-    assert.deepEqual(result.body, { tutorials: [], heRollup: { done: 0, total: 0 } });
+    // Empty ROSTER, unmeasured ROLLUP: the 200 and the empty list were always
+    // right, the zeroed rollup never was. See
+    // `test/ui/tutorials-unmeasured-manifest.test.ts`.
+    assert.deepEqual((result.body as TutorialsBody).tutorials, []);
+    assert.equal((result.body as TutorialsBody).heRollup, null);
+    assert.match((result.body as TutorialsBody).unmeasured ?? '', /manifest\.json/);
   } finally { removeTree(dir); }
 });
 
@@ -233,6 +252,8 @@ test('apiTutorials over this repository: the Hebrew rollup is measured from the 
     if (he === 'done') expectedDone += 1;
   }
 
+  assert.ok(body.heRollup !== null,
+    'this repository has a manifest that parses, so the rollup is measured, never null');
   assert.deepEqual(body.heRollup, { done: expectedDone, total: expectedTotal });
   assert.ok(body.heRollup.done <= body.heRollup.total,
     'a rollup that claims more Hebrew tutorials than measured rows is arithmetic, not measurement');

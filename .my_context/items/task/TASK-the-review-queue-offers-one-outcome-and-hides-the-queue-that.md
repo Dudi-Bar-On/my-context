@@ -17,9 +17,9 @@ tags:
   - "seq:81"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/rq.md"
+source_file: null
 source_anchor: null
-source_checksum: d34c764dcb2a63c2
+source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
 checksum: 0e84cefe03c1a99e

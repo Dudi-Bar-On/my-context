@@ -20,17 +20,17 @@ tags:
   - type-design
   - "plan:rulings"
   - "seq:85"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 5c241a052c80aaf7
+checksum: 27a414dc9b23cb78
 plan: rulings
 seq: "85"
-state: todo
+state: done
 priority: "1"
 ---
 

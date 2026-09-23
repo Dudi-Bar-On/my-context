@@ -310,7 +310,7 @@ go stale. `npm run verify:citations` resolves every fragment here.
 | `Store.openReadOnly(dbPath)` — and see §2: `readOnly: true` does **not** stop `VACUUM INTO` | `core/store.ts` · `static openReadOnly(dbPath: string): Store {` · ~382 |
 | `assertSelectOnly(sql)` — the barrier the connection does not provide | `cli/commands/query.ts` · `export function assertSelectOnly(sql: string): void {` · ~266 |
 | `updated_at` is INDEX WRITE TIME, not a Markdown timestamp | `cli/commands/query.ts` · `updated_at is INDEX WRITE TIME, not a Markdown timestamp: every query rebuilds the` · ~52 |
-| `readStdin()` — synchronous `readFileSync(0)`, `''` when no stdin | `hooks/io.ts` · `export function readStdin(): string {` · ~220 |
+| `readStdin()` — synchronous `readFileSync(0)`, `''` when no stdin | `hooks/io.ts` · `export function readStdin(): StdinRead {` · ~448 |
 | `registerCommand(def)` | `cli/commands/registry.ts` · `export function registerCommand(def: CommandDef): void {` · ~46 |
 | `CommandFn = (ws, args, out, cwd) => number` — synchronous | `cli/commands/registry.ts` · `export type CommandFn = (ws: Workspace, args: string[], out: Emit, cwd: string) => number;` · ~6 |
 | `Workspace { projectRoot; globalRoot; dbPath; config }` | `core/workspace.ts` · `export interface Workspace {` · ~9 |

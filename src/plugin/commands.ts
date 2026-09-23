@@ -801,8 +801,15 @@ What the user typed: $ARGUMENTS
    one. Add \`--title "<better wording>"\` when the capture's own wording would make a poor
    item title; everything else — the body, the tags and who authored the capture — travels
    unchanged.
+
+   The promotion also needs \`--summary "<one plain sentence>"\` (Task 3.11): what the
+   item IS and why it matters, for a reader who does not know this codebase — not how it
+   was found, and not a restatement of the capture's own title. It is required because an
+   item created with no summary can never afterwards be asked for one. If the capture
+   genuinely has nothing to say beyond its own title, use \`--summary-omitted\` in its
+   place and say in your report that you did.
 ${previewThenHandBack(
-  `${CLI} inbox-promote <id> --to <category>`,
+  `${CLI} inbox-promote <id> --to <category> --summary "<one plain sentence>"`,
   `
    **This is not \`/mycontext:promote\`.** That one is \`mycontext review promote\`: it moves
    a **draft** — already the category it will govern as — into governing. This one moves a
@@ -1018,24 +1025,30 @@ What the user typed: $ARGUMENTS
    happened and what it cost — not a maxim.
 2. If the USER learned it, print this command for the user to run, filled in, and stop:
 
-   \`${CLI} lesson "<the lesson in one sentence>"\`
+   \`${CLI} lesson "<the lesson in one sentence>" --summary "<one plain sentence>"\`
 
    Do not run that one yourself. With no flag it claims \`origin: "human"\`, which is the
-   one claim you cannot make.
+   one claim you cannot make. \`--summary\` is required (Task 3.11): an item created with
+   no summary can never afterwards be asked for one, so fill it with what the lesson IS
+   and why it matters, for a reader who does not know this codebase — not how it was
+   found. \`--summary-omitted\` is theirs to use instead if it genuinely has nothing to
+   say beyond its own sentence.
 3. If YOU learned it, record it yourself. There are two honest routes, and this file used
    to say there were none:
 
    - **Preferred: the \`create_item\` tool** on the \`mycontext\` MCP server, with
      \`type: "lesson"\`. The handler stamps \`origin: "agent"\` itself and refuses to take an
      origin from the tool call at all, so the claim is not yours to make, to mistype or to
-     forget.
+     forget. \`summary\` is required there too, on the same terms as every other capture.
    - If the MCP server is not available, the same claim from a shell:
 
-     \`${CLI} lesson --agent "<the lesson in one sentence>"\`
+     \`${CLI} lesson --agent "<the lesson in one sentence>" --summary "<one plain sentence>"\`
 
      \`--agent\` records \`origin: "agent"\`. This route is **weaker** than the tool: the flag
      is self-declared, so an agent that omits it is back to claiming human and nothing can
-     tell. Weaker is not dishonest — it is the only shell spelling that is not.
+     tell. Weaker is not dishonest — it is the only shell spelling that is not. \`--summary\`
+     is required here too; \`--summary-omitted\` stands in when there is nothing beyond the
+     lesson's own sentence.
 
    Either way the lesson lands **active** rather than as a draft, and that crosses no
    boundary: a lesson is **rationale** tier, and rationale is never injected into a

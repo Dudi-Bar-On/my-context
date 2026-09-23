@@ -10,7 +10,7 @@ import { deliverAtDoor } from '../rules/deliver.ts';
 import { unrecordedDeliveryLine } from '../rules/delivered.ts';
 import {
   configUnreadableLine, hookParseErrorLine, noWorkspaceLine, parseHookInput, pinnedSpillLine,
-  readStdin,
+  readStdin, unrecordedHookLine,
 } from './io.ts';
 
 export interface SessionStartOptions {
@@ -439,6 +439,28 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
         injection.failure,
         'this session starts with NO project knowledge: no rules or other items, no product ' +
         'rule store, and no handover from the previous session',
+      ));
+    }
+    // **The injection's OWN audit record, when it could not be written** —
+    // `Injection.unrecorded`, the seventeenth site of
+    // `TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen`'s
+    // class and the one on the core path the other sixteen call.
+    //
+    // **Written HERE and not in `core/inject.ts`**, exactly as `pinnedSpill`
+    // one line above and for the identical reason given on
+    // `buildSessionStartResult`: the builder is shared with SubagentStart and
+    // the `load_context` MCP tool, and only the hooks have a stderr a person
+    // reads.
+    //
+    // `unrecordedHookLine` and not a wording of this hook's own — sixteen
+    // doors already say this sentence, and a seventeenth spelling of it is
+    // exactly what that function exists to prevent.
+    if (injection.unrecorded !== null) {
+      process.stderr.write(unrecordedHookLine(
+        'SessionStart', injection.unrecorded.op, injection.unrecorded.error,
+        `${injection.deliveredIds.length} item(s) were delivered into this session and nothing ` +
+        'recorded the delivery — the seen file holding them is dedupe state, not evidence, and ' +
+        'nothing reads it to answer what this session was given',
       ));
     }
     if (injection.pinnedSpill !== null) {

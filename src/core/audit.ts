@@ -783,6 +783,26 @@ export interface InjectedRef {
 /** One item the budget excluded, and why — `select`'s own `Spill`, flattened. */
 export interface SpilledRef extends InjectedRef {
   reason: string;
+  /**
+   * **This id was never offered to a budget at all** — `select`'s own
+   * `Spill.neverOffered`, carried through rather than re-derived, and the one
+   * field on this record that changes what a COUNTER may do with the row.
+   *
+   * The restore tier discloses every snapshot id it could not bring back
+   * (`TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where`): a
+   * superseded item, one on a disabled or rationale category, one hidden by
+   * the active focus, one already delivered, or one the corpus no longer has.
+   * None of them lost to a number, and none would come back if a number
+   * changed — so `contributions`, `payloadTrend` and the projection's
+   * `role = 'spilled'` rows must not count them as budget losses.
+   *
+   * **Optional, and absent rather than `false`, which is what keeps this an
+   * ADDITIVE change to a durable on-disk contract.** Every line written before
+   * this field existed reads exactly as it always did — `neverOffered`
+   * undefined is an ordinary budget spill — and no reader has to know when the
+   * field arrived. That is the same rule `at` above follows.
+   */
+  neverOffered?: true;
 }
 
 /**
@@ -1320,8 +1340,69 @@ export type ReadSurface = 'cli' | 'mcp';
 /** What a caller supplies; `protocol` and `at` are stamped here. */
 export type AuditInput = Omit<AuditRecord, 'protocol' | 'at'> & { at?: string };
 
+/**
+ * **Where a process was TOLD to keep its records instead of the workspace's
+ * own `.audit/` — never guessed.**
+ *
+ * `TASK-the-audit-log-still-records-two-session-ids-that-never`, measured
+ * 2026-09-13 and again 2026-09-23. `.my_context/.audit/` here holds 422
+ * `subagent-start` records under the session id `lane-still-gets-the-no-git-
+ * rule` and two under `eyeball`. No session ever had either id. They are the
+ * rows of `test/rules/lane-still-gets-the-no-git-rule.test.ts`, which runs the
+ * real subagent door against THIS repository because `rules/deliver.ts` ·
+ * `workspaceIsMyContext` puts the developer tier in force in exactly one
+ * directory on the machine, so a throwaway workspace cannot stand in for it.
+ * `mycontext audit` and the UI's watch screen read this stream, so those ids
+ * are shown to a person as lanes that ran here.
+ *
+ * **The redirect is the caller's statement, not this module's inference.**
+ * `rules/delivered.ts` forks its own record on `NODE_TEST_CONTEXT`, and the
+ * owner's ruling is that the audit writer must NOT copy that here: product
+ * code that detects it is under test and behaves differently is a second,
+ * hidden mode nobody declared, and the next test that forgets the convention
+ * writes the owner's log again with the product's blessing. An environment
+ * variable is the opposite shape — a caller says out loud where its records
+ * go, the value is visible in the process it was set on, and a caller that
+ * says nothing gets the workspace's own directory exactly as before.
+ *
+ * Named and read like its siblings — `MYCONTEXT_UI_SESSIONS_DIR`
+ * (`core/ui-sessions.ts`, pinned by `test/helpers/pin-sessions-dir.ts`),
+ * `MYCONTEXT_MIRROR_DIR` (`core/conversation-mirror.ts`) and
+ * `MYCONTEXT_RULES_DIR` — and inherited by every child a caller spawns, so a
+ * hook binary started under it keeps its records in the same box.
+ *
+ * **Read on every call rather than captured at module load**, so a caller can
+ * set it for one test and restore it afterwards and both halves are honoured.
+ * **`path.resolve`d, which DEVIATES from the three siblings** — `sessionsDir`,
+ * `mirrorRoot` and the rules-directory override all return the raw string —
+ * and the deviation is deliberate rather than an oversight. Those three are
+ * read once and joined onto; this one is read on every append, from hook
+ * binaries and spawned children that do not share a working directory. A
+ * relative value would follow whatever `cwd` each of them happened to be in,
+ * and one run's records landing in two directories is worse than either
+ * directory. An absolute value is unaffected by the call, so the deviation
+ * costs a caller nothing and only ever removes an ambiguity.
+ *
+ * **Point it at a path ending in `.audit`.** `ensureLogDir` writes the `*`
+ * .gitignore through `core/private-gitignore.ts`, which refuses a path holding
+ * no directory this product creates and discloses the refusal on stderr. The
+ * records are still written either way — the refusal is about the .gitignore,
+ * not the log — but a box named like what it stands in for is silent and is
+ * shaped the same.
+ *
+ * **It overrides for every `root` in the process, deliberately.** Keying it by
+ * workspace would make it a mapping a caller has to get right twice, and the
+ * one thing it is for — a process that must not touch the workspace it is
+ * pointed at — is a statement about the PROCESS. The cost is stated: while it
+ * is set, `readAudit`, `auditSegments`, `auditSize` and the `audit.db`
+ * projection all read the box and not the workspace, which is why a caller
+ * sets it around the work that writes and puts it back.
+ */
+export const AUDIT_DIR_ENV = 'MYCONTEXT_AUDIT_DIR';
+
 export function auditDir(root: string): string {
-  return path.join(root, '.audit');
+  const told = process.env[AUDIT_DIR_ENV] ?? '';
+  return told === '' ? path.join(root, '.audit') : path.resolve(told);
 }
 
 export function auditLogPath(root: string): string {
@@ -1361,19 +1442,89 @@ export const AUDIT_REPORT_BYTES = 32 * 1024 * 1024;
 const SEGMENT_PATTERN = /^audit\.[0-9TZ]+-\d+\.jsonl$/;
 
 /**
+ * The audit log directory exists and would not list.
+ *
+ * It carries its own class for the reason `ProjectionAbsentError` and
+ * `LedgerUninitializedError` carry theirs: so a caller tells "there is no log
+ * here" from "there is a log here and this process cannot see it" by CLASS and
+ * never by matching a message. The two are opposite facts about a user's audit
+ * trail, and every caller of `auditSegments` that collapses them is a surface
+ * that reports an intact 45,440-record history as empty.
+ */
+export class AuditLogUnreadableError extends Error {
+  /** The directory that refused. */
+  readonly dir: string;
+  /** The `errno` code `readdirSync` answered — `EACCES`, `ENOTDIR`, `EPERM`, … but never `ENOENT`. */
+  readonly code: string;
+
+  constructor(message: string, dir: string, code: string, cause: unknown) {
+    super(message, { cause });
+    this.dir = dir;
+    this.code = code;
+  }
+}
+
+/**
  * Every segment of the log, oldest first, with the live `audit.jsonl` last.
  *
  * Rotated segments are named from a UTC timestamp with the punctuation
  * stripped, so a lexicographic sort of the names is a chronological sort of
  * the records — no file has to be opened to put the segments in order.
+ *
+ * **`ENOENT` is the only absence; every other refusal THROWS**
+ * (`TASK-one-unreadable-directory-makes-the-audit-projection-look`). This
+ * function used to answer `[]` to any `readdir` failure at all, and that one
+ * `catch` was the whole of the following chain, reproduced on a throwaway
+ * workspace of 500 records on 2026-09-23 before this was changed:
+ *
+ *   `auditSegments` → `[]` → `projectionState` sees every segment it knows
+ *   about as VANISHED and answers `diverged` → `syncProjection` acts on
+ *   divergence by `DELETE`ing the whole projection and re-projecting from the
+ *   empty list → `mycontext audit` reports 0 records for a workspace holding
+ *   500 (45,440 on the owner's), with nothing said anywhere.
+ *
+ * Nothing on disk was ever damaged in that run. The log was intact the whole
+ * time; only the listing was refused. That is exactly the shape
+ * `INV-nothing-is-dropped-silently` forbids — an unreadable input turned into
+ * a guessed value, and the guess ("there are no records") then acted on
+ * destructively.
+ *
+ * **An absent `.audit` stays an empty history**, and must: a workspace whose
+ * owner has never triggered a hook has no log directory, and `readAudit`,
+ * `auditSize` and `doctor` all answer "nothing recorded yet" from it. That is
+ * a true statement about a real, empty history. `ENOTDIR` is deliberately NOT
+ * absence, for the reason `readTranscriptDir` (`core/conversation-index.ts`)
+ * gives about the same decision: a path that is a file where a directory
+ * belongs is not an empty archive, it is a path that is wrong, and a reader
+ * told "no records" about it goes looking for the wrong thing.
+ *
+ * **Throwing is safe on the write path.** `recordAudit` reaches this only
+ * through `keepProjectionCurrent`, whose documented contract is that it never
+ * throws: a throw there returns `{ outcome: 'failed', error }`, which
+ * `recordAudit` already carries back to its caller as a projection failure. An
+ * append is never lost because the projection could not be brought up to date.
  */
 export function auditSegments(root: string): string[] {
   const dir = auditDir(root);
   let names: string[];
   try {
     names = readdirSync(dir);
-  } catch {
-    return [];
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code ?? 'unknown';
+    if (code === 'ENOENT') return [];
+    throw new AuditLogUnreadableError(
+      `my_context: the audit log directory ${dir} exists but could not be listed ` +
+      `(${code}: ${err instanceof Error ? err.message : String(err)}). No audit record has ` +
+      `been lost — the log files are still on disk, unread and unchanged — but this process ` +
+      `cannot see them, so nothing here can tell you how many records there are or what is in ` +
+      `them. Every answer derived from the log is refused rather than reported as empty, and ` +
+      `the query index at ${path.join(dir, 'audit.db')} is left exactly as it stands. Make that ` +
+      `directory readable again (check its permissions, and check that it is a directory and ` +
+      `not a file) and run the command again.`,
+      dir,
+      code,
+      err,
+    );
   }
   const rotated = names.filter((n) => SEGMENT_PATTERN.test(n)).sort();
   const out = rotated.map((n) => path.join(dir, n));
@@ -1613,6 +1764,42 @@ export function auditFailureNote(result: AuditWriteResult): string {
 }
 
 /**
+ * The sentence a REPORT appends when it could not read the audit log, and its
+ * counts are therefore a floor rather than a measurement.
+ *
+ * `auditFailureNote` is the same idea pointed at the write path — spelled once
+ * so no surface invents a softer wording for it — and this is the read half,
+ * for the surfaces that aggregate the log rather than append to it
+ * (`mycontext status` and `mycontext decay` both top the ledger up from it
+ * before counting). Two callers, one wording: a report that phrased this for
+ * itself is how two commands end up disagreeing about what an unreadable log
+ * means, and this whole item exists because the condition was previously
+ * phrased nowhere at all.
+ *
+ * **The reason is carried VERBATIM, never re-worded.** For the condition this
+ * was built for, `err` is an `AuditLogUnreadableError` whose message is
+ * already the complete, actionable sentence — the one
+ * `TASK-one-unreadable-directory-makes-the-audit-projection-look` asked for,
+ * and the same one the UI's `fault` event carries. Appending it rather than
+ * summarising it is what keeps all three surfaces saying one thing.
+ *
+ * **It is not narrowed to that class.** Any reason the top-up failed leaves
+ * the counts exactly as short, and a report that disclosed one cause while
+ * swallowing the others would be this same defect with a smaller mouth.
+ *
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`: what the
+ * numbers below it are is the point of the sentence, not the stack trace.
+ */
+export function auditReadFailureNote(err: unknown): string {
+  return (
+    `NOTE: the audit log could not be read, so the usage ledger was NOT brought up to date ` +
+    `and every count below that derives from it is a FLOOR — as low as it can be, with no way ` +
+    `from here to say how much is missing. Nothing was deleted and nothing was written. ` +
+    `${err instanceof Error ? err.message : String(err)}`
+  );
+}
+
+/**
  * Appends one record. Never throws.
  *
  * **Not throwing is not the same as failing silently, and the difference is
@@ -1626,12 +1813,32 @@ export function auditFailureNote(result: AuditWriteResult): string {
  *  - Mutations (`persist` in mutate.ts, the settlements in revision.ts) put
  *    `auditFailureNote` into the message the human or agent reads, so a
  *    mutation missing from the log says so at the moment it happens.
- *  - Hooks discard it, because there is no one to tell — a hook's stdout is
- *    the model's context, and a warning about log I/O does not belong there.
- *    `doctor`'s `audit_log_size` check reads the same directory, so a log that
- *    has stopped being writable is still discoverable; what is NOT recoverable
- *    is the specific hook record that was lost. That is the disclosed cost of
- *    failing open, stated here and in both READMEs rather than papered over.
+ *  - Hooks say it on STDERR, in `hooks/io.ts`'s `unrecordedHookLine`, naming
+ *    which event's record was lost and what it costs a later count. This
+ *    paragraph used to say the opposite — that hooks dropped the result on the
+ *    ground that nobody was listening, and that the record lost with it was
+ *    the disclosed cost of failing open. `TASK-recordaudit-reports-whether-it-
+ *    wrote-and-fourteen-of-sixteen` measured what that sentence was paying
+ *    for: FOURTEEN OF SIXTEEN hook call sites discarding the answer, three of
+ *    them load-bearing in writing — the JIT injection record a seen-file
+ *    append rests its best-effort posture on, `recordDeny`, and
+ *    `subagent-start`'s `delivery=attempted` row. There IS someone to tell,
+ *    and it is not the model: a hook's STDOUT is the model's context, where a
+ *    warning about log I/O does not belong, while its STDERR is surfaced to
+ *    the person who can act. `INV-hooks-fail-open` is untouched — every one of
+ *    those hooks still exits 0.
+ *  - The WEB UI's two writes — the refusal record and the nonce mint — say it
+ *    on `onSessionStoreIssue`, the line `mycontext ui` prints for the person
+ *    running it. Same shared wording, a different stream, and deliberately not
+ *    the HTTP response: owner ruling A4 gives a refusal a status line and
+ *    nothing else, and the refused party is the one reader with no business
+ *    learning that this machine's audit directory stopped accepting writes.
+ *
+ * So there is no silent caller left, and `doctor`'s `audit_log_size` check —
+ * which reads the same directory — is now the SECOND way this is found rather
+ * than the only one. What is still not recoverable is the specific record that
+ * was lost; that remains the cost of failing open, and it is now stated at the
+ * moment it is paid instead of only in both READMEs.
  */
 export function recordAudit(root: string, input: AuditInput): AuditWriteResult {
   let rotatedTo: string | null = null;
@@ -1770,6 +1977,22 @@ export interface AuditFilter {
   since?: string;
   /** Exclusive upper bound, ISO-8601. */
   until?: string;
+  /**
+   * Exclusive lower bound on the projection's own `seq` — DB-PROJECTION ONLY
+   * (`filterSelect`/`queryProjection`, `core/audit-db.ts`), and `undefined`
+   * on every other filter, including `filterAudit`'s raw-JSONL path, which
+   * has no `seq` column to bound on.
+   *
+   * Exists beside `since` rather than replacing it: `since` compares `at`, a
+   * millisecond-resolution clock reading, and a caller that fired several
+   * `recordAudit`s in one synchronous burst can tie it — `seq` is this
+   * table's `INTEGER PRIMARY KEY`, unique and insertion-ordered by
+   * construction, so a caller that has one (`contextEpochStart`,
+   * `core/context-share.ts`) can bound on the fact SQLite itself guarantees
+   * instead of the one the wall clock does not. See that module's doc
+   * comment for the measurement (CI run 35715432299) a tied `at` produced.
+   */
+  sinceSeq?: number;
   itemId?: string;
   sessionId?: string;
   kind?: AuditKind;

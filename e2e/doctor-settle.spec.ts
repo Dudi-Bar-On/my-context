@@ -304,7 +304,12 @@ test('a settlement covers only what a ruling can settle, and the row keeps its o
   // their own per-row control.
   await expect(page.locator(`${screen} tbody tr`)).toHaveCount(findings.length);
   await expect(page.locator(`${screen} td div.cmd`)).toHaveCount(4);
-  await expect(page.locator(`${screen} span.chip.index`),
+  // **SCOPED TO `tbody`** — `${screen} .phd .verdict` draws its own unrelated
+  // `span.chip.index` for the pane's subtitle (`screenHead()`,
+  // `src/ui/public/screens/parts.js`), so counting the whole section conflates
+  // it with the row-level acknowledged mark this assertion is about — see the
+  // identical fix and its full argument in `e2e/doctor-outcome.spec.ts`.
+  await expect(page.locator(`${screen} tbody span.chip.index`),
     'the acknowledged row must still say it was ruled on').toHaveCount(1);
 
   // The tally is untouched by this feature: rows-drawing-a-chip + repairs +

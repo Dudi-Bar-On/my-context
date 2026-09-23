@@ -17,9 +17,9 @@ tags:
   - "seq:116"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/t3.md"
+source_file: null
 source_anchor: null
-source_checksum: bee0dd0e9d7337b1
+source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
 checksum: a22cd2e8f4ba6c41

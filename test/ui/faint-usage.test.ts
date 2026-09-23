@@ -1,3 +1,4 @@
+// @basis TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
 /**
  * **The gate for `--faint`, and the proof that the gate can still fail.**
  *
@@ -34,9 +35,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BOLD_WEIGHT, LARGE_BOLD_PX, LARGE_TEXT_PX, NO_DOCUMENT_SIZE, REPLACEMENT, SCANNED_FILES, TOKEN,
+  BOLD_WEIGHT, LARGE_BOLD_PX, LARGE_TEXT_PX, NOT_A_STYLESHEET, NO_DOCUMENT_SIZE, REPLACEMENT,
+  SKIP_REASON_VENDOR, SKIPPED_TREES, TOKEN, TOKEN_BLOCK_FILE,
   analyse, buildCascade, customProperties, describe as describeUse, isLargeText, parseStylesheet,
-  readSources,
+  readSources, scannedFiles, summariseScan,
 } from '../../scripts/check-faint-usage.ts';
 import type { Report, Use } from '../../scripts/check-faint-usage.ts';
 
@@ -75,7 +77,7 @@ test('a size the model cannot resolve is a failure, never a pass', () => {
 
 test('the scanned files were actually parsed — the control on every check above', () => {
   const sources = readSources();
-  assert.ok(sources.length > 0, `none of ${SCANNED_FILES.join(', ')} could be read`);
+  assert.ok(sources.length > 0, 'no scanned stylesheet could be read');
 
   const report = analyse(sources);
   assert.ok(
@@ -85,12 +87,12 @@ test('the scanned files were actually parsed — the control on every check abov
     + 'scan that finds no rules reports no offenders',
   );
   assert.ok(
-    report.declaredAs.some((d) => d.file === SCANNED_FILES[0]),
-    `${TOKEN} was not found in the token block of ${SCANNED_FILES[0]}. Either it was renamed — in `
+    report.declaredAs.some((d) => d.file === TOKEN_BLOCK_FILE),
+    `${TOKEN} was not found in the token block of ${TOKEN_BLOCK_FILE}. Either it was renamed — in `
     + 'which case this checker now polices a name nothing uses — or the block was not parsed',
   );
 
-  const mockup = sources.find((s) => s.file === SCANNED_FILES[0])!;
+  const mockup = sources.find((s) => s.file === TOKEN_BLOCK_FILE)!;
   const rules = parseStylesheet(mockup);
   const cascade = buildCascade(rules, customProperties(rules), mockup.file, []);
   assert.notEqual(
@@ -98,6 +100,54 @@ test('the scanned files were actually parsed — the control on every check abov
     'the document size fell back to the initial 16px, which means the rule that sets the base size '
     + 'was not found. Every inherited size in the report would then be wrong',
   );
+});
+
+/**
+ * **The scan is the tree, not three paths** —
+ * `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan`. Before
+ * this, `SCANNED_FILES` named `docs/design/web-ui-mockup.html`,
+ * `src/ui/public/index.html` and `src/ui/public/styles.css`, and everything
+ * else that can apply an ink token — every other shipped screen, every other
+ * page — was answered "no problem" by a checker that had never looked at it.
+ * Measured at the time: `src/ui/public/screens/watch.js` uses `--faint` and was
+ * outside the gate.
+ */
+test('every shipped stylesheet is scanned, and every skip carries its reason', () => {
+  const { scanned, skipped } = scannedFiles();
+  const set = new Set(scanned);
+
+  assert.ok(set.has(TOKEN_BLOCK_FILE), 'the token block must stay inside the scan');
+  assert.ok(set.has('src/ui/public/index.html'));
+  assert.ok(set.has('src/ui/public/styles.css'));
+  assert.ok(
+    scanned.some((f) => f.startsWith('src/ui/public/screens/')),
+    'no shipped screen is scanned — this is the blind spot the item named',
+  );
+  assert.ok(scanned.length > 20, `only ${scanned.length} file(s) scanned`);
+
+  // Every skip carries a reason, and it is one of the three DECLARED reasons —
+  // never an unexplained absence. `NOT_A_STYLESHEET` is the largest group
+  // because the population is now the whole tracked tree; the point is that it
+  // is counted and printed rather than silently outside a list of three paths.
+  const declaredReasons = new Set<string>([
+    NOT_A_STYLESHEET, SKIP_REASON_VENDOR, ...SKIPPED_TREES.map((t) => t.why),
+  ]);
+  for (const s of skipped) {
+    assert.ok(declaredReasons.has(s.why), `${s.file} was skipped by a rule nobody declared`);
+  }
+  assert.ok(
+    skipped.some((s) => s.why === SKIP_REASON_VENDOR),
+    'the vendored stylesheets are skipped and the reason must be exercised',
+  );
+  assert.ok(
+    skipped.some((s) => SKIPPED_TREES.some((t) => s.file.startsWith(t.prefix))),
+    'the history tree is skipped and the reason must be exercised',
+  );
+
+  // A measured zero is drawn and named: the summary is true either way.
+  const line = summariseScan(scanned, skipped);
+  assert.match(line, /scanned/);
+  assert.match(line, /skipped/);
 });
 
 test('body-sized prose in --faint is caught', () => {

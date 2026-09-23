@@ -66,6 +66,13 @@ import { fileURLToPath } from 'node:url';
 import { removeTree } from '../helpers/tmp.ts';
 
 const SCRIPT = fileURLToPath(new URL('../../scripts/verify-citations.ts', import.meta.url));
+/**
+ * The second file the script is made of. Its source tier stopped listing
+ * roots and started walking the tracked tree
+ * (`TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan`), so a
+ * probe that copies the script carries this too.
+ */
+const WALK_MODULE = fileURLToPath(new URL('../../scripts/tracked-walk.ts', import.meta.url));
 
 /**
  * The cited file, and the whole of the anchor argument in five lines.
@@ -111,6 +118,7 @@ function probe(files: Record<string, string>, args: string[] = []): Probe {
   mkdirSync(path.join(root, 'src'), { recursive: true });
   mkdirSync(path.join(root, 'docs', 'superpowers', 'plans'), { recursive: true });
   copyFileSync(SCRIPT, path.join(root, 'scripts', 'verify-citations.ts'));
+  copyFileSync(WALK_MODULE, path.join(root, 'scripts', 'tracked-walk.ts'));
   // `DOC_FILES` names the two front-door documents BY NAME and refuses to run
   // without them, so every throwaway tree has to carry them.
   writeFileSync(path.join(root, 'README.md'), '', 'utf8');

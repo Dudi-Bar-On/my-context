@@ -11,7 +11,7 @@ scope: []
 tags:
   - "plan:rulings"
   - "seq:47"
-  - "state:todo"
+  - "state:done"
   - v2
 origin: human
 source_file: null
@@ -19,10 +19,10 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-08-23
 valid_until: null
-checksum: b7fa8c18e91a79b5
+checksum: 25d7c16544703281
 plan: rulings
 seq: "47"
-state: todo
+state: done
 ---
 
 # the citation form has no answer for .html, and six source citations are stale

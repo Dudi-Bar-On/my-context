@@ -40,7 +40,6 @@ e2e/capture-execute.spec.ts
 e2e/chart-css-authority.spec.ts
 e2e/chart-scale.spec.ts
 e2e/chart-type-size.spec.ts
-e2e/chip-hue-authority.spec.ts
 e2e/cli-help.spec.ts
 e2e/composer-staging.spec.ts
 e2e/composer-suggest.spec.ts
@@ -60,7 +59,6 @@ e2e/focus-tags.spec.ts
 e2e/injected-empty.spec.ts
 e2e/injected-real-spills.spec.ts
 e2e/injection-preview.spec.ts
-e2e/item-pane.spec.ts
 e2e/keyboard.spec.ts
 e2e/language.spec.ts
 e2e/live-stream.spec.ts
@@ -72,13 +70,9 @@ e2e/preview-overlap.spec.ts
 e2e/preview-retime.spec.ts
 e2e/preview-spilled.spec.ts
 e2e/primitives.spec.ts
-e2e/print-product.spec.ts
 e2e/print.spec.ts
 e2e/ratio-legibility.spec.ts
 e2e/refusal-stale.spec.ts
-e2e/route-race.spec.ts
-e2e/runs.spec.ts
-e2e/screen-parity.spec.ts
 e2e/served-shape.spec.ts
 e2e/session-picker.spec.ts
 e2e/simulate-question.spec.ts
@@ -87,7 +81,6 @@ e2e/states.spec.ts
 e2e/strip-fields.spec.ts
 e2e/strip-live-refresh.spec.ts
 e2e/strip.spec.ts
-e2e/tree-parity.spec.ts
 e2e/wa-tree.spec.ts
 e2e/watch-feed.spec.ts
 test/cli/ack-all.test.ts
@@ -170,7 +163,6 @@ test/core/audit-execution.test.ts
 test/core/audit-new-ops.test.ts
 test/core/audit-projection-current.test.ts
 test/core/audit-projection-readonly.test.ts
-test/core/audit-projection.test.ts
 test/core/audit-registered-hooks.test.ts
 test/core/audit-surfaces-derive.test.ts
 test/core/audit-tail.test.ts
@@ -233,7 +225,6 @@ test/core/real-home-guard-escape.test.ts
 test/core/real-home-guard.test.ts
 test/core/rebuild.test.ts
 test/core/reference.test.ts
-test/core/relation-inverses.test.ts
 test/core/render.test.ts
 test/core/revision-concurrency.test.ts
 test/core/revision-diff.test.ts
@@ -255,7 +246,6 @@ test/core/select-spill-band.test.ts
 test/core/session-names.test.ts
 test/core/slug.test.ts
 test/core/snapshot-provenance.test.ts
-test/core/snapshot.test.ts
 test/core/statusline-tee.test.ts
 test/core/steps-injection.test.ts
 test/core/steps.test.ts
@@ -278,7 +268,6 @@ test/docs/capabilities.test.ts
 test/docs/categories.test.ts
 test/docs/compaction-claim.test.ts
 test/docs/counts.test.ts
-test/docs/examples.test.ts
 test/docs/fixture.test.ts
 test/docs/injection.test.ts
 test/docs/inventory.test.ts
@@ -292,7 +281,6 @@ test/doctor/checks.test.ts
 test/doctor/citation-form.test.ts
 test/doctor/cli-on-path.test.ts
 test/doctor/corpus-size.test.ts
-test/doctor/governing-spill-pressure.test.ts
 test/doctor/state-unaudited.test.ts
 test/doctor/task-needs.test.ts
 test/doctor/three-unread-fields.test.ts
@@ -327,9 +315,7 @@ test/hooks/post-compact-handover.test.ts
 test/hooks/post-compact.test.ts
 test/hooks/post-tool-use-failure.test.ts
 test/hooks/post-tool-use.test.ts
-test/hooks/pre-compact-occupancy.test.ts
 test/hooks/pre-compact.test.ts
-test/hooks/pre-tool-use-agent-gate.test.ts
 test/hooks/pre-tool-use-deny.test.ts
 test/hooks/pre-tool-use-jit.test.ts
 test/hooks/self-register.test.ts
@@ -388,7 +374,6 @@ test/plugin/write-commands.test.ts
 test/release.test.ts
 test/scripts/citations-in-source.test.ts
 test/scripts/dependency-budget.test.ts
-test/scripts/e2e-gate.test.ts
 test/scripts/mutate.test.ts
 test/scripts/vendor-gate.test.ts
 test/scripts/verify-citations.test.ts
@@ -401,7 +386,6 @@ test/ui/capture-model.test.ts
 test/ui/capture-screen.test.ts
 test/ui/cli-help-reader.test.ts
 test/ui/cli-help.test.ts
-test/ui/code-skew.test.ts
 test/ui/command-actions.test.ts
 test/ui/command-check.test.ts
 test/ui/config-error-strip.test.ts
@@ -422,7 +406,6 @@ test/ui/execute-catalogue.test.ts
 test/ui/execute-effect.test.ts
 test/ui/execute-nonce.test.ts
 test/ui/execute-route.test.ts
-test/ui/faint-usage.test.ts
 test/ui/fonts.test.ts
 test/ui/git-info.test.ts
 test/ui/github-render.test.ts
@@ -441,7 +424,6 @@ test/ui/open.test.ts
 test/ui/packs-model.test.ts
 test/ui/packs-screen.test.ts
 test/ui/palette-lib.test.ts
-test/ui/palette-screen.test.ts
 test/ui/pane-float.test.ts
 test/ui/pane-resize.test.ts
 test/ui/pane-route.test.ts
@@ -450,7 +432,6 @@ test/ui/plan2-e2e.test.ts
 test/ui/plate-usage.test.ts
 test/ui/port-model.test.ts
 test/ui/port-screen.test.ts
-test/ui/preview-seen-history.test.ts
 test/ui/primitives.test.ts
 test/ui/proc-model.test.ts
 test/ui/proc-screen.test.ts
@@ -459,20 +440,16 @@ test/ui/read-model-flags.test.ts
 test/ui/read-model-work-search.test.ts
 test/ui/read-model-work.test.ts
 test/ui/screen-literals.test.ts
-test/ui/security.test.ts
-test/ui/server-e2e.test.ts
 test/ui/server-record.test.ts
 test/ui/server.test.ts
 test/ui/session-continuity.test.ts
 test/ui/simulate-screen.test.ts
-test/ui/staging-endpoint.test.ts
 test/ui/static.test.ts
 test/ui/status-screen.test.ts
 test/ui/strings-parity.test.ts
 test/ui/strip-parity.test.ts
 test/ui/styles-parity.test.ts
 test/ui/tutorial-doc.test.ts
-test/ui/tutorials-endpoint.test.ts
 test/ui/unsafe-ports.test.ts
 test/ui/viewmodel.test.ts
 test/ui/watch-e2e.test.ts
