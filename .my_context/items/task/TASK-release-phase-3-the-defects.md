@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:3"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 2f2faebb6a953124
+checksum: 608b4d786e0336fe
 plan: release
 seq: "3"
-state: doing
+state: done
 ---
 
 # release phase 3 — the defects

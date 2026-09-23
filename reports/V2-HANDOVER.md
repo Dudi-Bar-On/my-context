@@ -1,3 +1,28 @@
+## ⏭ 2026-09-23 — RELEASE 2.0.0, PHASE 3 COMPLETE; PHASE 4 WAITS ON THE OWNER'S GO
+
+1. **CHECKPOINT 3 IS IN `reports/2026-09-22-release-checkpoints.md`** (newest first) and is the current
+   state; the block below this one is the phase-3-in-flight handover and is history. The board is
+   `mycontext ready --json` — read `.open` (137), not `.ready.length` (capped at 50). The SDD ledger
+   `.superpowers/sdd/2026-09-22-v2-0-release/progress.md` (gitignored) holds every ruling.
+
+2. **NEXT: phase 4** (`TASK-release-phase-4-silent-failures-and-disclosures`, `state: todo`) starts on the
+   owner's next message after the checkpoint-3 report — that message IS the go; do not ask again.
+   Phase 4 carries release/16, /19, /22, /23, /24 (`TASK-sweep-every-timestamp-comparison-for-the-millisecond-tie`,
+   `TASK-the-audit-log-still-records-two-session-ids-that-never`, `TASK-promoterevision-reuses-the-summary-unchanged-switch-and`,
+   `TASK-mycontext-ready-counts-a-review-draft-as-open-work-so-the`, `TASK-a-locked-projection-file-makes-discard-fail-silently-so-a`).
+
+3. **RULES LEARNED THIS PHASE, ALL IN THE LEDGER:** stage from the lane's REPORTED file list; scripts never
+   push, the controller pushes only when no needed CI run is in flight; run `verify:citations` before any
+   push that changes a cited line; after `mycontext supersede <plan/seq>` re-point every D-map row that
+   names it (check:board gates it); an `edit` with only `--extra` takes no `--summary-unchanged`; Opus
+   lanes are rate-limited (weekly, resets 13:00Z 2026-09-23) — reviewers ran on sonnet.
+
+4. **OPEN FOR THE OWNER (not blocking):** three ideas in checkpoint 3; the doctor-hygiene lane (phase 8);
+   the session picker (name store, list breadth, Conversations not subscribed); the fixture session id
+   `lane-still-gets-the-no-git-rule` writing into the real ledger — file once the writing lane is named.
+
+---
+
 ## ⏭ 2026-09-23 — RELEASE 2.0.0, PHASE 3 IN FLIGHT (dispatching session, compaction handover)
 
 1. **THE RELEASE RUNS FROM `docs/superpowers/plans/2026-09-22-v2-0-release.md`.** The durable log is
