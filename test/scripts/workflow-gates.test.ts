@@ -108,8 +108,12 @@ test('the reader finds the steps release.yml already had', () => {
  * act that goes with it.
  */
 test('the reader matches step lines ONLY — not the comments that name the same scripts', () => {
-  assert.equal(CI_STEPS.length, 15, `ci.yml step scripts: ${CI_STEPS.join(', ')}`);
-  assert.equal(RELEASE_STEPS.length, 14, `release.yml step scripts: ${RELEASE_STEPS.join(', ')}`);
+  // 15 → 16 and 14 → 15 on 2026-09-23: `check:swallows` joined both workflows
+  // with task 4.12. Moving these two numbers is the deliberate act this test's
+  // docblock asks for, and it is the reason a step cannot be added to one
+  // workflow and forgotten in the other.
+  assert.equal(CI_STEPS.length, 16, `ci.yml step scripts: ${CI_STEPS.join(', ')}`);
+  assert.equal(RELEASE_STEPS.length, 15, `release.yml step scripts: ${RELEASE_STEPS.join(', ')}`);
 });
 
 test('a comment naming a script is not read as a step', () => {

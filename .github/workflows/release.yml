@@ -84,6 +84,28 @@ jobs:
       # genuinely gates, so this is not the never-red step that keeps
       # `check:cited-items` out of both workflows.
       - run: npm run check:board
+      # A failure this codebase catches and then says NOTHING about, and a write
+      # result a producer returns and the call site drops. Report 3 proposed
+      # this gate twice — once for its pattern P1 and once for P2 — the
+      # consolidation carried every INSTANCE forward and the gate nowhere, and
+      # both proposals came back a month later as
+      # `TASK-the-gate-for-the-swallow-class-was-proposed-twice-and-built` and
+      # `TASK-d70-closed-all-five-instances-and-never-built-the-gate-the`. Their
+      # shared argument is why this is a workflow step and not a review: when
+      # the last instance closes the subject READS FINISHED, and the
+      # whole-codebase review that made the class findable will not run again.
+      #
+      # It gates what this package SHIPS, read at run time from
+      # `package.json:files`, and it detects SILENCE rather than `catch` — 195
+      # catch blocks in this tree carry a written argument and not one of them
+      # trips it. `test/scripts/swallow-gate.test.ts` plants every class it
+      # claims to detect and asserts the exit code and the printed line.
+      #
+      # Here as well as in `ci.yml` for the superset reason the paragraph above
+      # `check:vendor` gives: a tag must verify at least what the commit it is
+      # cut from verified, and a swallow is exactly the defect that ships
+      # silently if a tagged build is the one run that does not look for it.
+      - run: npm run check:swallows
       - run: npm run typecheck
       - run: npm test
       # Moved back BELOW `npm test`, matching `ci.yml`'s reordering and its
