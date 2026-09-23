@@ -63,8 +63,10 @@ import { RETRIEVAL_DIR } from '../core/retrieval/mission.ts';
 import { missionText, type MaterialPointer, type MissionRequest, type RetrievalMode }
   from '../core/retrieval/mission.ts';
 import { queryFromPassage } from '../core/retrieval/from-selection.ts';
-import { ConversationIndex, iterateTranscript, type AnchorRow }
-  from '../core/conversation-index.ts';
+import {
+  ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
+  iterateTranscript, type AnchorRow,
+} from '../core/conversation-index.ts';
 import { searchArchive } from '../core/conversation-search.ts';
 import { removeNoise, type NoiseReport } from '../core/retrieval/noise.ts';
 import {
@@ -744,7 +746,9 @@ interface ComposedMaterial {
  *
  * **It is a READ.** `openReadOnlyChecked` cannot build the index it reads, so
  * an archive nobody has scanned yields no points and SAYS so through an empty
- * table rather than being quietly filled in.
+ * table rather than being quietly filled in. An archive that cannot be READ is
+ * a different fact and leaves by a different route — see the `catch` around
+ * that open.
  */
 function composeMaterial(
   ws: Workspace,
@@ -767,10 +771,32 @@ function composeMaterial(
   let index: ConversationIndex;
   try {
     index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
-  } catch {
-    // An archive nobody has scanned. The mission then carries no points, which
-    // is honest: there is nothing to open.
-    return empty;
+  } catch (err) {
+    // **THE TWO EMPTY STATES ONLY, AND EVERY FAULT IS RETHROWN** —
+    // `TASK-a-corrupt-or-locked-archive-index-makes-every-retrieval`. The
+    // narrowing is the sibling route's, one file over (`read-model-
+    // conversations.ts`, `apiConversationSearch`), and it is the same door
+    // being read the same way rather than a second policy about it.
+    //
+    // An archive nobody has scanned, and an index an older build wrote, are
+    // empty: neither is damage, neither is this surface's to repair — creating
+    // a table is a write — and the mission then carries no points, which is
+    // honest, because there is nothing to open.
+    //
+    // A file that is not a database, and a database this process cannot read
+    // right now, are NOT that. What this `catch` returned for them was a brief
+    // stating that the conversation record bears nothing on the subject, which
+    // is A CLAIM ABOUT THE ARCHIVE rather than a report about the read: the
+    // reader who believes it stops looking, and no sentence anywhere said the
+    // index was never opened. `INV-nothing-is-dropped-silently` and
+    // `STD-a-measured-zero-is-drawn-and-named` both land on that zero — it was
+    // never measured — so the fault leaves here carrying the door's own
+    // sentence, which already names the file and says what is wrong with it.
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      return empty;
+    }
+    throw err;
   }
 
   try {
