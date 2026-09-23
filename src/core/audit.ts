@@ -1373,9 +1373,15 @@ export type AuditInput = Omit<AuditRecord, 'protocol' | 'at'> & { at?: string };
  *
  * **Read on every call rather than captured at module load**, so a caller can
  * set it for one test and restore it afterwards and both halves are honoured.
- * **`path.resolve`d**, because a relative value would follow whatever `cwd`
- * the process happened to be in when a record was written, and records of one
- * run landing in two directories is worse than either directory.
+ * **`path.resolve`d, which DEVIATES from the three siblings** — `sessionsDir`,
+ * `mirrorRoot` and the rules-directory override all return the raw string —
+ * and the deviation is deliberate rather than an oversight. Those three are
+ * read once and joined onto; this one is read on every append, from hook
+ * binaries and spawned children that do not share a working directory. A
+ * relative value would follow whatever `cwd` each of them happened to be in,
+ * and one run's records landing in two directories is worse than either
+ * directory. An absolute value is unaffected by the call, so the deviation
+ * costs a caller nothing and only ever removes an ambiguity.
  *
  * **Point it at a path ending in `.audit`.** `ensureLogDir` writes the `*`
  * .gitignore through `core/private-gitignore.ts`, which refuses a path holding

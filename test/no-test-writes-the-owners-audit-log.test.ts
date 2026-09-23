@@ -55,6 +55,39 @@ import { removeTree } from './helpers/tmp.ts';
  * product entry point that records an audit row against whatever workspace it
  * is pointed at — and everything else here is a measurement.
  *
+ * ── WHAT THE SCAN CAN AND CANNOT SEE, SAID PLAINLY ─────────────────────────
+ *
+ * `STD-a-measured-zero-is-drawn-and-named`, applied to a guard: the next
+ * spelling should be a KNOWN gap, not a silent one.
+ *
+ * **It sees** a call to `buildSubagentStartOutput(` in a file that also (a)
+ * spells `path.resolve|join(import.meta.dirname, '..', '..')`, (b) spells
+ * `new URL('..' | '../..', import.meta.url)`, or (c) mentions `packageRoot` or
+ * `repositoryRoot` anywhere — imported, called, or re-exported by a helper —
+ * and never mentions `AUDIT_DIR_ENV`. Comments are blanked first, so a file
+ * cannot self-report from its own prose.
+ *
+ * **It does NOT see**, and these are the gaps rather than a claim of
+ * completeness:
+ *
+ *  - A root assembled some other way — `process.cwd()` in a run started from
+ *    the repository, an absolute path in a fixture, `git rev-parse`, a `..`
+ *    walk spelled with different arguments.
+ *  - Another product entry point that records an audit row against a root it
+ *    derives itself. `buildSubagentStartOutput` is the only one in this tree
+ *    today; `recordAudit` is deliberately NOT scanned, because dozens of tests
+ *    call it correctly against a workspace they made themselves.
+ *  - A child process. The scan reads source, so a test that spawns a hook
+ *    binary with this repository as its `cwd` passes it.
+ *  - Naming `AUDIT_DIR_ENV` and then not setting it, or setting it after the
+ *    call. The scan asks that the file DECIDED, not that it decided correctly.
+ *
+ * **Which is why the runtime measurement is the first test and not the
+ * second.** It reads the owner's actual segments and needs to know nothing
+ * about how a path was spelled. The scan is the cheap net that names an
+ * offender by file instead of by symptom; the measurement is the one that
+ * cannot be fooled by a spelling nobody has thought of yet.
+ *
  * ── WHY THE OFFENDING FILE IS NOT RUN AS A CHILD ───────────────────────────
  *
  * That was the first shape and it is a trap, measured here on 2026-09-23:
@@ -69,7 +102,7 @@ import { removeTree } from './helpers/tmp.ts';
  * other. The door is therefore run in process, and what covers the file is the
  * scan.
  *
- * ── THE THREE TESTS, AND WHY NONE IS REDUNDANT ─────────────────────────────
+ * ── THE FOUR TESTS, AND WHY NONE IS REDUNDANT ──────────────────────────────
  *
  *  1. The door run in process with the redirect, asserting BOTH that the
  *     owner's segments did not grow AND that the two rows are in the box.
@@ -78,9 +111,13 @@ import { removeTree } from './helpers/tmp.ts';
  *     forbids — routed and silenced are different outcomes.
  *  2. The scan, so the next file to call that door is caught here rather than
  *     in the owner's log a month later.
- *  3. A workspace with NO override still gets its rows. Without it, a "fix"
- *     that switched the audit log off inside test processes would pass 1 and 2
- *     and blind every other test in this suite.
+ *  3. The planted controls, both directions: every spelling the scan claims to
+ *     see must be caught, every legitimate shape must not be, and the one
+ *     documented gap is asserted AS a gap so the header above cannot quietly
+ *     stop being true.
+ *  4. A workspace with NO override still gets its rows. Without it, a "fix"
+ *     that switched the audit log off inside test processes would pass 1–3 and
+ *     blind every other test in this suite.
  */
 
 /** The repository itself — this file sits directly under `test/`. */
@@ -206,16 +243,39 @@ function blankComments(source: string): string {
 }
 
 /**
+ * The product functions that answer "the repository itself" without any path
+ * arithmetic at the call site.
+ *
+ * `packageRoot()` (`src/rules/store.ts:51`) is the one `workspaceIsMyContext`
+ * turns on, and `repositoryRoot(cwd)` (`src/core/workspace.ts:122`) is the one
+ * that bounds a path the user typed. A test that reaches this repository
+ * through either — or through a helper that wraps either, which is why the
+ * scan matches the NAME wherever it appears rather than only a call — is doing
+ * the same thing as the literal spellings below, and the door does not care
+ * which way the string was built.
+ */
+const ROOT_HELPERS = ['packageRoot', 'repositoryRoot'];
+
+/**
  * Does `source` build a path to the repository ITSELF?
  *
- * Two spellings, which is every one this tree uses — and both are the path
- * EXPRESSION, never the `'../../src/…'` of an import specifier: six other test
- * files call the door legitimately against a workspace they made in `tmpdir()`,
- * and a pattern that matched their import lines would name all six.
+ * **Two literal spellings and two helper names**, and both literal forms are
+ * the path EXPRESSION, never the `'../../src/…'` of an import specifier: six
+ * other test files call the door legitimately against a workspace they made in
+ * `tmpdir()`, and a pattern that matched their import lines would name all six.
+ *
+ * The helpers are matched as bare identifiers, so an `import { packageRoot }`
+ * counts as well as a call. That is deliberately the wider net: a wrapper in
+ * `test/helpers/` would be invisible to a call-shape match, and the cost of a
+ * false positive is one line naming `AUDIT_DIR_ENV` in a file that did not
+ * strictly need it — against a false negative, which is rows in the owner's
+ * log. No test file in the tree mentions either name today except this one and
+ * the file it guards, both of which name the variable.
  */
 export function resolvesRepositoryRoot(source: string): boolean {
   return /path\.(resolve|join)\(\s*import\.meta\.dirname\s*,\s*'\.\.'\s*,\s*'\.\.'\s*\)/.test(source)
-    || /new URL\(\s*'\.\.(\/\.\.)?'\s*,\s*import\.meta\.url\s*\)/.test(source);
+    || /new URL\(\s*'\.\.(\/\.\.)?'\s*,\s*import\.meta\.url\s*\)/.test(source)
+    || ROOT_HELPERS.some((name) => new RegExp(`\\b${name}\\b`).test(source));
 }
 
 /**
@@ -287,6 +347,32 @@ test('the scanner finds a PLANTED offender and does not name what is legitimate'
   );
   assert.equal(
     offends(URL_LINE + CALL), true, 'the other spelling of the same path must be seen too',
+  );
+
+  // The INDIRECT spellings, one control each. A test does not have to do path
+  // arithmetic to reach this repository — two product functions hand it over —
+  // and before this round the scan saw neither, so a file using one slipped
+  // past while reading exactly like the one that wrote 422 rows.
+  assert.equal(
+    offends("import { packageRoot } from '../src/rules/store.ts';\n"
+      + 'const REPO = packageRoot();\n' + CALL),
+    true,
+    'a test reaching this repository through `packageRoot()` — the function '
+    + '`workspaceIsMyContext` itself turns on — must be caught',
+  );
+  assert.equal(
+    offends("import { repositoryRoot } from '../src/core/workspace.ts';\n"
+      + 'const REPO = repositoryRoot(process.cwd());\n' + CALL),
+    true,
+    'and through `repositoryRoot(cwd)`',
+  );
+  assert.equal(
+    offends("import { repoRoot } from './helpers/where.ts';\n"
+      + 'const REPO = repoRoot();\n' + CALL),
+    false,
+    'a helper that wraps one of them under a NAME THIS SCAN DOES NOT KNOW is a gap, and it is '
+    + 'named as one in this file\'s header rather than papered over — the runtime measurement is '
+    + 'what catches it',
   );
   assert.equal(
     offends(REPO_LINE + 'process.env[AUDIT_DIR_ENV] = box;\n' + CALL), false,
