@@ -360,13 +360,25 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
      *
      * Unnarrowed by `--plan` and stated as such: a draft carries no plan until
      * a person promotes it, which is the act this line points at.
+     *
+     * **And SCOPED to the work categories, in words** (fix round 1,
+     * 2026-09-23). `readyReport` walks `workItems` only, so this counts draft
+     * TASKS; `mycontext review list` — the command this sentence sends the
+     * reader to — lists every project-layer draft of every type. Scoping the
+     * sentence rather than widening the count, because every other number on
+     * this page is about open work and a draft `rule` is not a population this
+     * report has any other line for; saying so is what keeps the count and the
+     * command from quietly disagreeing.
      */
     if (report.drafts > 0) {
-      blocks.push(`${report.drafts} draft(s) await review and are counted in none of the ` +
-        'numbers above. A draft is indexed and searchable but governs nothing, is never ' +
-        'injected, and is not work anyone can dispatch until a person promotes it — which is ' +
-        'also where it gains a `' + PLAN_FIELD + '` and a `' + SEQ_FIELD + '`, so it carries ' +
-        'no plan to narrow by. `mycontext review list` lists them.');
+      blocks.push(`${report.drafts} draft(s) in the work categor(ies) this report covers ` +
+        `(${workCategories.join(', ')}) await review and are counted in none of the numbers ` +
+        'above. A draft is indexed and searchable but governs nothing, is never injected, and ' +
+        'is not work anyone can dispatch until a person promotes it — which is also where it ' +
+        'gains a `' + PLAN_FIELD + '` and a `' + SEQ_FIELD + '`, so it carries no plan to ' +
+        'narrow by. `mycontext review list` lists them, and lists every other project-layer ' +
+        'draft besides: this count is only the ones that would otherwise have been open work, ' +
+        'so the two numbers are not the same number and this one does not stand in for it.');
     }
     if (blocking.length > 0) {
       blocks.push(`${blocking.length} open question(s) stand between this list and open work` +

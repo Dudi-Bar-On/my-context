@@ -203,3 +203,103 @@ test('a corpus with no drafts says nothing about drafts', () => {
     removeTree(cwd);
   }
 });
+
+/* -------------------------------------------------------------------------- *
+ * FIX ROUND 1 — the two edges of "what is counted"
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **A draft's own `state` is a claim inside a proposal nobody has read.**
+ *
+ * `readyReport` skips `state: done` before anything else, because a finished
+ * task is not open work. A DRAFT at `state: done` is a different fact: the
+ * proposal says the work is finished, and no person has agreed that the
+ * proposal should exist at all. It still awaits review — `mycontext review
+ * list` lists it — so it has to be counted here, and the status clause is now
+ * asked FIRST for exactly that reason.
+ */
+test('a draft that claims state: done is still awaiting review, and is counted as one', () => {
+  const cwd = project();
+  try {
+    writeTask(cwd, 'items', 'active', 'TASK-walk-7', { plan: 'walk', seq: '7', state: 'todo', priority: '1' });
+    writeTask(cwd, '.drafts', 'draft', 'TASK-a-proposal-already-claiming-done', { state: 'done' });
+
+    const { code, out } = run(['ready', '--json'], cwd);
+    assert.equal(code, 0);
+    const json = JSON.parse(out) as {
+      ready: { id: string }[]; held: { id: string }[]; open: number; drafts: number;
+    };
+    assert.deepEqual(json.ready.map((r) => r.id), ['TASK-walk-7']);
+    assert.deepEqual(json.held.map((r) => r.id), []);
+    assert.equal(json.open, 1, 'a draft is never open work, whatever state it claims');
+    assert.equal(json.drafts, 1,
+      'THE GAP: skipped for being `done` before it was ever read as a draft, it was counted in '
+      + 'no number on this page while `mycontext review list` still listed it');
+
+    const text = run(['ready'], cwd);
+    assert.match(prose(text.out), /1 draft/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **The other edge, and it is a boundary rather than a gap.**
+ *
+ * `status` is ONE field — an item is `draft` or `deprecated`, never both — so
+ * there is no such thing as a deprecated draft and no ordering of the two
+ * clauses can strand one. What this pins is that asking the draft clause first
+ * did not start counting CANCELLED work as awaiting review: a deprecated task
+ * is not open work and is not a proposal, and `mycontext review list` does not
+ * list it either.
+ */
+test('a deprecated task is counted as neither open work nor a draft awaiting review', () => {
+  const cwd = project();
+  try {
+    writeTask(cwd, 'items', 'active', 'TASK-walk-7', { plan: 'walk', seq: '7', state: 'todo', priority: '1' });
+    writeTask(cwd, 'items', 'deprecated', 'TASK-walk-9', { plan: 'walk', seq: '9', state: 'todo', priority: '1' });
+
+    const { code, out } = run(['ready', '--json'], cwd);
+    assert.equal(code, 0);
+    const json = JSON.parse(out) as {
+      ready: { id: string }[]; held: { id: string }[]; open: number; drafts: number;
+    };
+    assert.deepEqual(json.ready.map((r) => r.id), ['TASK-walk-7']);
+    assert.equal(json.open, 1);
+    assert.equal(json.drafts, 0,
+      'a cancelled task is not a proposal — counting it here would point a reader at '
+      + '`mycontext review list`, which does not list it');
+    assert.doesNotMatch(prose(run(['ready'], cwd).out), /draft/);
+  } finally {
+    removeTree(cwd);
+  }
+});
+
+/**
+ * **The count and the command it names have to agree about the population.**
+ *
+ * `readyReport` walks `workItems` only, so `drafts` counts draft TASKS.
+ * `mycontext review list` lists every project-layer draft of any type. The
+ * sentence therefore says which population it counted and says that the
+ * command lists more — a count that pointed at a longer list without saying so
+ * is the two-numbers-that-disagree failure this lane is here to end.
+ */
+test('the drafts line says which population it counted, and that review list lists more', () => {
+  const cwd = project();
+  try {
+    writeTask(cwd, 'items', 'active', 'TASK-walk-7', { plan: 'walk', seq: '7', state: 'todo', priority: '1' });
+    writeTask(cwd, '.drafts', 'draft', 'TASK-a-proposal-nobody-approved', { state: 'todo' });
+
+    const { code, out } = run(['ready'], cwd);
+    assert.equal(code, 0);
+    const text = prose(out);
+    assert.match(text, /1 draft/);
+    assert.match(text, /work categor/,
+      'the sentence names the population it counted, not "drafts" unqualified');
+    assert.match(text, /task/, 'and names the category, so a reader can check the number');
+    assert.match(text, /lists every other project-layer draft/,
+      `and says the command it names lists more than it counted:\n${out}`);
+  } finally {
+    removeTree(cwd);
+  }
+});

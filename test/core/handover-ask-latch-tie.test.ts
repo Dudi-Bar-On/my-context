@@ -10,10 +10,28 @@
  * (`core/continuity.ts`) already takes over an mtime tie: the name is the
  * deterministic fact in hand.
  *
- * Forced rather than hoped for — both latches carry the SAME `askedAt` to the
- * millisecond, which is what the sweep this test belongs to says a fixture has
- * to do (CI run 35715432299 landed six `recordAudit` calls in one
- * millisecond).
+ * The TIE is forced rather than hoped for — both latches carry the SAME
+ * `askedAt` to the millisecond, which is what the sweep this test belongs to
+ * says a fixture has to do (CI run 35715432299 landed six `recordAudit` calls
+ * in one millisecond).
+ *
+ * ── WHAT THIS TEST CANNOT DO, SAID HERE AND NOT ONLY IN A REPORT ────────────
+ *
+ * **It does not go red on Windows.** NTFS returns `readdirSync` in
+ * alphabetical order, so under the old `ms <= bestMs` the first-listed latch
+ * was also the smallest-named one and the old code agreed with the new code on
+ * this machine. The behaviour that actually changed is on a filesystem that
+ * lists in creation order — the Linux leg of CI, and any ext4 directory large
+ * enough to hash — where the old answer was whatever the filesystem said that
+ * run and could differ between two calls a second apart.
+ *
+ * So this is a CONTRACT test, not a red-to-green one, and it is written to be
+ * worth something anyway: the latches are created `b` then `a`, so
+ * "first read" and "smallest name" are different answers wherever listing
+ * order is creation order, and the second assertion asks the same directory
+ * twice and requires the same answer. A reader who assumes the red existed on
+ * the machine this was written on would be wrong, which is why it is said
+ * here rather than left in a report nobody opens next to the file.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

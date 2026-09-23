@@ -1473,14 +1473,22 @@ const SPECS: ToolSpec[] = [
       // them — `TASK-mycontext-ready-counts-a-review-draft-as-open-work-so-the`.
       // `readyReport` leaves them out of ready, held and open; leaving them
       // unsaid HERE would make this surface the one that drops them silently.
+      // Scoped to the work categories in the same words the CLI uses, and for
+      // the reason its docblock gives: this counts draft TASKS and
+      // `mycontext review list` lists every project-layer draft of every type,
+      // so the sentence says which population it counted. Two surfaces, one
+      // wording — the drift this tool exists to make impossible.
       if (report.drafts > 0) {
         lines.push(
           '',
-          `${report.drafts} draft(s) await review and are counted in none of the numbers ` +
+          `${report.drafts} draft(s) in the work categor(ies) this report covers ` +
+          `(${workCategories.join(', ')}) await review and are counted in none of the numbers ` +
           'above. A draft is indexed and searchable but governs nothing, is never injected, ' +
           'and is not work anyone can dispatch until a person promotes it — which is also ' +
           `where it gains a "${PLAN_FIELD}" and a "${SEQ_FIELD}", so it carries no plan to ` +
-          'narrow by. mycontext review list lists them.',
+          'narrow by. mycontext review list lists them, and lists every other project-layer ' +
+          'draft besides: this count is only the ones that would otherwise have been open ' +
+          'work, so the two numbers are not the same number.',
         );
       }
 
