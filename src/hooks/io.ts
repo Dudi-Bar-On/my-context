@@ -748,6 +748,50 @@ export function unrecordedHookLine(
 }
 
 /**
+ * **The line PreCompact writes when the transcript behind its restore snapshot
+ * was read in part, or not at all.**
+ *
+ * `TASK-one-number-means-nothing-cited-could-not-read-and-read-only`. The row
+ * printed one figure — the number of ids the transcript arm found — for three
+ * different situations: nothing was cited, the transcript could not be read,
+ * and only the last 8 MB of it was read. At the size this workspace's own
+ * transcripts reach (65,046,326 bytes measured, a 12% tail) the third case
+ * drops every id cited in the first 57 MB and prints the first case's number.
+ * The row now tells them apart; this is the half the USER sees.
+ *
+ * **Two of the five states speak here, and the other three do not**, which is
+ * this hook's standing economy rather than a new one. `pre-compact.ts` already
+ * swallows `occupancyStandDownLine` because *"a compaction is the one moment
+ * where an unsolicited paragraph of ours competes with Claude Code's own
+ * compaction notice for a user who did not ask for either"*, and already makes
+ * one exception, argued on `ignoredAskLine`: the line that *"reports that a
+ * thing the product promised did not happen, at the last moment where knowing
+ * still helps"*. A transcript read only to its tail, or refused outright, is
+ * that exception — the session after this compaction will come back short and
+ * this is the last moment anyone could have known. A payload that carried no
+ * transcript at all promised nothing, and gets the row alone.
+ *
+ * **`shortfall` and `lost` are per site and the rest is shared** —
+ * `configUnreadableLine`'s shape, for its reason. What a partial read costs and
+ * what a refused read costs are different sentences, and the fault, the count
+ * that survived and the place the full breakdown lives are the same either way.
+ *
+ * **It says the snapshot was still written**, for `hookParseErrorLine`'s
+ * reason: `INV-hooks-fail-open` means a user reading this mid-compaction needs
+ * to know nothing was blocked and that the ids that WERE captured are safe.
+ */
+export function transcriptShortfallLine(
+  shortfall: string, lost: string, captured: number,
+): string {
+  return (
+    `my_context: the transcript behind this compaction's restore snapshot ${shortfall} — ${lost}. ` +
+    `The snapshot was still written with the ${captured} id(s) that were captured; nothing was ` +
+    'blocked and nothing else changed. `mycontext audit --op pre-compact` carries the same ' +
+    'breakdown on this compaction\'s row.\n'
+  );
+}
+
+/**
  * The one line SessionStart writes when a PINNED item did not fit.
  *
  * **`always: true` MEANS ALWAYS**, so a pinned tier that delivers part of

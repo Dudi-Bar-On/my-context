@@ -4,7 +4,7 @@ import { readOccupancy } from '../core/context-occupancy.ts';
 import {
   checkHandoverAsk, discloseIgnoredAsk, type HandoverAskVerdict,
 } from '../core/handover-ask.ts';
-import { scanTranscriptIds, writeSnapshot } from '../core/ledger.ts';
+import { scanTranscript, writeSnapshot, type TranscriptScan } from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { reviewNote, reviewTrigger, type TriggerVerdict } from '../review/trigger.ts';
 import { readSeen, seenIds } from '../core/seen-file.ts';
@@ -13,7 +13,7 @@ import { configLoadFailure, resolveWorkspace } from '../core/workspace.ts';
 import { assertDoor } from '../rules/deliver.ts';
 import {
   configUnreadableLine, hookParseErrorLine, parseHookInput, payloadOf, readStdin,
-  unrecordedHookLine, type HookPayload,
+  transcriptShortfallLine, unrecordedHookLine, type HookPayload,
 } from './io.ts';
 
 /**
@@ -259,8 +259,20 @@ export function buildRestoreSnapshot(
     }
 
     const fromLedger = known === null ? fromSeen : fromSeen.filter((id) => known.has(id));
-    const fromTranscript = scanTranscriptIds(input.transcript_path, known);
+    // The scan reports HOW MUCH of the transcript its answer rests on, and
+    // the row below prints that rather than a bare count — see
+    // `transcriptClause` for the three facts one number used to stand for.
+    const transcript = scanTranscript(input.transcript_path, known);
+    const fromTranscript = transcript.ids;
     const itemIds = [...new Set([...fromLedger, ...fromTranscript])].sort();
+
+    // Before the snapshot write, for the ignored-ask disclosure's reason: the
+    // write below can fail and take its own line with it, and this fact is
+    // about what was CAPTURED, which is true either way. Silent for the three
+    // states that cost the user nothing they could act on — see
+    // `transcriptShortfallLine` for why only these two speak.
+    const shortfall = transcriptShortfall(transcript, itemIds.length);
+    if (shortfall !== '') process.stderr.write(shortfall);
 
     // `writeSnapshot` retries the rename against transient Windows sharing
     // violations (an antivirus or indexer holding the target open makes
@@ -289,8 +301,8 @@ export function buildRestoreSnapshot(
         handoverAsk: measured.handoverAsk,
         note: measured.note + storeClause +
           `SNAPSHOT WRITE FAILED (${reason}). ${itemIds.length} captured id(s) ` +
-          `(${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
-          `transcript) were NOT persisted — this session's restore state will not survive ` +
+          `(${fromLedger.length} from the seen file, ${transcriptClause(transcript)}` +
+          `) were NOT persisted — this session's restore state will not survive ` +
           `the coming compaction.` + reviewClause(review),
       });
       process.stderr.write(
@@ -327,8 +339,8 @@ export function buildRestoreSnapshot(
       occupancyPercent: measured.occupancyPercent,
       handoverAsk: measured.handoverAsk,
       note: measured.note + storeClause +
-        `${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
-        `transcript, ${itemIds.length} captured` +
+        `${fromLedger.length} from the seen file, ${transcriptClause(transcript)}, ` +
+        `${itemIds.length} captured` +
         (knownSkipReason === null
           ? ''
           : `; known-id filter skipped (${knownSkipReason} — over-capture is safe)`) +
@@ -369,6 +381,85 @@ export function buildRestoreSnapshot(
     }
     return null;
   }
+}
+
+/**
+ * **What the transcript arm contributed, and what that number rests on.**
+ *
+ * `TASK-one-number-means-nothing-cited-could-not-read-and-read-only`. This
+ * clause used to be `${n} cited in the transcript`, and that one figure was
+ * the answer to three different questions: nothing was cited, the transcript
+ * could not be read, and only the last 8 MB of a 65 MB transcript was read.
+ * Measured in this workspace: a real session transcript of 65,046,326 bytes,
+ * against an 8 MB tail bound — 12% — so every id cited in the first 57 MB was
+ * dropped from the restore snapshot while the row printed the same `0` (or the
+ * same small count) a quiet session prints.
+ *
+ * **Only two of the five states print a number at all**, and that is
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` applied
+ * literally rather than decoratively. A whole read that found nothing genuinely
+ * measured zero and says so; a tail read measured its tail and says how much of
+ * the file that was. The other three measured NOTHING, so they carry no count —
+ * a `0` on any of them would be the unmeasured thing wearing the measured
+ * one's number, which is this item's defect re-introduced in its own repair.
+ */
+function transcriptClause(scan: TranscriptScan): string {
+  switch (scan.state) {
+    case 'whole':
+      return `${scan.ids.length} cited in the transcript ` +
+        `(whole transcript read, ${scan.totalBytes} bytes)`;
+    case 'tail':
+      return `${scan.ids.length} cited in the transcript TAIL ONLY (the last ${scan.bytesRead} ` +
+        `of ${scan.totalBytes} bytes; anything cited before that point is UNMEASURED, ` +
+        'not absent)';
+    case 'unreadable':
+      return `the transcript could not be read (${scan.why}), so what this session cited is ` +
+        'unmeasured rather than none';
+    case 'absent':
+      return 'no transcript was scanned (no transcript_path on the payload), so what this ' +
+        'session cited is unmeasured rather than none';
+    case 'not-scanned':
+      return `the transcript was not scanned (${scan.why}), so what this session cited is ` +
+        'unmeasured rather than none';
+  }
+}
+
+/**
+ * The same three facts on the channel the USER reads, for the two states that
+ * cost the restore something — or `''`.
+ *
+ * The argument for speaking at all, and for the other three staying quiet, is
+ * on `transcriptShortfallLine`: this hook deliberately swallows
+ * `occupancyStandDownLine` rather than compete with Claude Code's own
+ * compaction notice, and makes an exception only where a promise was not kept
+ * at the last moment knowing still helps. A transcript read to 12% of itself is
+ * that; a payload that carried no transcript is not.
+ *
+ * **The percentage is computed here rather than left to the reader**, for
+ * `pinnedSpillLine`'s reason about spelling out the difference: "the last
+ * 8388608 of 65046326 bytes" is arithmetic a reader does at a glance and gets
+ * wrong, and 12% is the number that makes them act.
+ */
+function transcriptShortfall(scan: TranscriptScan, captured: number): string {
+  if (scan.state === 'tail') {
+    const percent = Math.round((scan.bytesRead! / scan.totalBytes!) * 100);
+    return transcriptShortfallLine(
+      `was read only in part — the last ${scan.bytesRead} of ${scan.totalBytes} bytes, ` +
+      `about ${percent}% of it`,
+      'every item id cited before that point was not captured and will not be restored after ' +
+      'this compaction',
+      captured,
+    );
+  }
+  if (scan.state === 'unreadable') {
+    return transcriptShortfallLine(
+      `could not be read (${scan.why})`,
+      'nothing was captured from it, so what comes back after this compaction rests on the ' +
+      'per-session seen file alone',
+      captured,
+    );
+  }
+  return '';
 }
 
 /**

@@ -1,3 +1,11 @@
+// @basis TASK-one-number-means-nothing-cited-could-not-read-and-read-only,
+//   STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is
+//
+// Only the transcript-scan fixtures below rest on that item — they moved from
+// `scanTranscriptIds` (which answered with a bare `string[]`) to
+// `scanTranscript`, which answers with the ids AND how much of the transcript
+// they rest on. The rest of this file predates the basis rule and is covered by
+// `scripts/basis-undeclared.txt`; nothing about it is claimed here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -5,7 +13,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, utimesSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  pruneSnapshots, readSnapshotMeta, sanitizeSessionId, scanTextIds, scanTranscriptIds,
+  pruneSnapshots, readSnapshotMeta, sanitizeSessionId, scanTextIds, scanTranscript,
   snapshotPath,
   writeSnapshot, SNAPSHOT_RENAME_ATTEMPTS,
 } from '../../src/core/ledger.ts';
@@ -135,7 +143,7 @@ test('the transcript scan returns only ids that exist in the index', () => {
   ].join('\n'));
 
   const known = new Set(['CONST-pg-pool-cap', 'ADR-sqlite-jsonb', 'LESSON-unmentioned']);
-  assert.deepEqual(scanTranscriptIds(transcript, known),
+  assert.deepEqual(scanTranscript(transcript, known).ids,
     ['ADR-sqlite-jsonb', 'CONST-pg-pool-cap']);
   removeTree(root);
 });
@@ -147,17 +155,19 @@ test('the transcript scan with null knownIds returns every pattern match, dedupe
   // `null` = no known-id filter (the index was unavailable at capture time,
   // Task 10): over-capture is the safe direction — a snapshot id matching no
   // live item selects nothing at restore.
-  assert.deepEqual(scanTranscriptIds(transcript, null), ['CONST-alpha', 'STD-beta']);
+  assert.deepEqual(scanTranscript(transcript, null).ids, ['CONST-alpha', 'STD-beta']);
   removeTree(root);
 });
 
 test('the transcript scan is safe on a missing path, null, and a directory', () => {
   const root = sandbox();
   const known = new Set(['CONST-a']);
-  assert.deepEqual(scanTranscriptIds(null, known), []);
-  assert.deepEqual(scanTranscriptIds(undefined, known), []);
-  assert.deepEqual(scanTranscriptIds(path.join(root, 'nope.jsonl'), known), []);
-  assert.deepEqual(scanTranscriptIds(root, known), []);
+  // The IDS are empty in all four; WHICH of the four it was is a separate
+  // answer, pinned in `test/core/transcript-scan-states.test.ts`.
+  assert.deepEqual(scanTranscript(null, known).ids, []);
+  assert.deepEqual(scanTranscript(undefined, known).ids, []);
+  assert.deepEqual(scanTranscript(path.join(root, 'nope.jsonl'), known).ids, []);
+  assert.deepEqual(scanTranscript(root, known).ids, []);
   removeTree(root);
 });
 
@@ -208,7 +218,7 @@ test('the transcript scan reads the tail of an oversized transcript', () => {
   const filler = 'x'.repeat(9 * 1024 * 1024);
   writeFileSync(transcript, `CONST-buried-at-the-start\n${filler}\nCONST-near-the-end\n`);
   const known = new Set(['CONST-buried-at-the-start', 'CONST-near-the-end']);
-  assert.deepEqual(scanTranscriptIds(transcript, known), ['CONST-near-the-end']);
+  assert.deepEqual(scanTranscript(transcript, known).ids, ['CONST-near-the-end']);
   removeTree(root);
 });
 
@@ -231,13 +241,13 @@ test('scanTextIds is the file scan without the file, filter and all', () => {
   writeFileSync(transcript, text);
 
   const known = new Set(['CONST-alpha', 'STD-beta']);
-  assert.deepEqual(scanTextIds(text, known), scanTranscriptIds(transcript, known));
+  assert.deepEqual(scanTextIds(text, known), scanTranscript(transcript, known).ids);
   assert.deepEqual(scanTextIds(text, known), ['CONST-alpha', 'STD-beta']);
 
   // No filter means take every id-shaped token, the same over-capture the
   // file reader accepts; an EMPTY filter means the index knew nothing and the
   // answer is empty, which is the distinction the `null` carries.
-  assert.deepEqual(scanTextIds(text, null), scanTranscriptIds(transcript, null));
+  assert.deepEqual(scanTextIds(text, null), scanTranscript(transcript, null).ids);
   assert.deepEqual(scanTextIds(text, new Set()), []);
 
   assert.deepEqual(scanTextIds('', known), []);

@@ -104,6 +104,47 @@ const LEDGER_TABLE_COLUMNS: [string, string[]][] = [
  */
 export class LedgerUninitializedError extends Error {}
 
+/**
+ * The sentence a REPORT appends when the usage ledger itself would not open or
+ * would not answer, so its session count is UNMEASURED rather than zero.
+ *
+ * `auditReadFailureNote` (core/audit.ts) is its sibling one layer out: that one
+ * covers a ledger that opened fine and could not be brought UP TO DATE from the
+ * audit log, so the counts below it are a floor. This one covers the harder
+ * case — nothing was counted at all — and the two must not be told apart by
+ * their wording, which is why each is spelled exactly once and imported rather
+ * than restated.
+ *
+ * **It exists because `0` was being printed for it.**
+ * `TASK-nine-sites-report-a-measured-zero-for-something-they-could`, site M9:
+ * `mycontext status` and the `status_report`/`decay_report` tools each wrapped
+ * the whole open-and-read in a bare `catch` returning `sessionsRecorded: 0`,
+ * and 0 is what drives *"no sessions recorded yet"* and, in the decay report,
+ * *"nothing here has been measured; 'cold' currently means only 'never
+ * injected'"*. A brand-new workspace and a damaged ledger were the same
+ * sentence, and the second one is an agent being handed a list of governing
+ * constraints marked cold with no hint the measurement failed
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`,
+ * `INV-nothing-is-dropped-silently`).
+ *
+ * The reason is carried VERBATIM, never summarised, for
+ * `auditReadFailureNote`'s reason: the reader with a broken `.index.db` needs
+ * the engine's own complaint, and a report that rephrases it is a report that
+ * can drift from the one the next surface prints.
+ *
+ * `LedgerUninitializedError` is NOT this case and must never reach here: a
+ * corpus that has never injected anything has a real, measured zero, which is
+ * exactly the distinction that class carries.
+ */
+export function ledgerReadFailureNote(err: unknown): string {
+  return (
+    'NOTE: the usage ledger could not be read, so NOTHING below that derives from it was ' +
+    'measured — the session count is UNKNOWN rather than zero, and "cold" below means only ' +
+    '"this report has no injection history at all", never "not used". Nothing was deleted and ' +
+    `nothing was written. ${err instanceof Error ? err.message : String(err)}`
+  );
+}
+
 export class Ledger {
   #db: DatabaseSync;
   #closed = false;
@@ -922,7 +963,13 @@ export function readSnapshotMeta(root: string, sessionId: string): SnapshotRead 
   return { meta: { itemIds, capturedAt }, defect: wellFormed ? null : 'malformed-ids' };
 }
 
-const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
+/**
+ * The tail bound. Exported because it is no longer a private implementation
+ * detail: `scanTranscript` reports it as the number of bytes it actually read
+ * whenever a transcript is bigger than this, callers print that number, and a
+ * test that re-declared it would be a second copy free to disagree.
+ */
+export const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
 
 /**
  * Uppercase category prefix, hyphen, lowercase slug body — the shape guaranteed
@@ -931,47 +978,118 @@ const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
  */
 const ID_PATTERN = /\b[A-Z][A-Z0-9]{1,11}-[a-z0-9][a-z0-9-]*\b/g;
 
-function readTail(file: string): string {
+function readTail(file: string): { text: string; bytesRead: number; totalBytes: number } {
   const { size } = statSync(file);
-  if (size <= MAX_TRANSCRIPT_BYTES) return readFileSync(file, 'utf8');
+  if (size <= MAX_TRANSCRIPT_BYTES) {
+    return { text: readFileSync(file, 'utf8'), bytesRead: size, totalBytes: size };
+  }
   const fd = openSync(file, 'r');
   try {
     const buffer = Buffer.alloc(MAX_TRANSCRIPT_BYTES);
     readSync(fd, buffer, 0, MAX_TRANSCRIPT_BYTES, size - MAX_TRANSCRIPT_BYTES);
-    return buffer.toString('utf8');
+    return {
+      text: buffer.toString('utf8'), bytesRead: MAX_TRANSCRIPT_BYTES, totalBytes: size,
+    };
   } finally {
     closeSync(fd);
   }
 }
 
 /**
- * Item ids mentioned anywhere in the transcript that also exist in the index.
+ * How much of the transcript the scan actually saw.
  *
- * `knownIds: null` means "no known-id filter: the index was unavailable (or
- * knew nothing) at capture time" (Task 10). Over-capture is the safe
- * direction — a snapshot id matching no live item selects nothing at restore
- * — and the universe is bounded by the 8 MB transcript tail and the strict
- * id shape either way.
+ *  - `'whole'`       the file was read from its first byte to its last.
+ *  - `'tail'`        the file is bigger than `MAX_TRANSCRIPT_BYTES` and only
+ *                    that many bytes at the END of it were read. Everything
+ *                    cited before that point is UNMEASURED, not absent.
+ *  - `'absent'`      no transcript path was given at all.
+ *  - `'unreadable'`  a path was given and it could not be read (or is not a
+ *                    file). `why` says which.
+ *  - `'not-scanned'` the known-id filter was empty — the index knew nothing —
+ *                    so the file was never opened.
  */
-export function scanTranscriptIds(
+export type TranscriptScanState = 'whole' | 'tail' | 'absent' | 'unreadable' | 'not-scanned';
+
+/**
+ * A transcript scan, and everything about it the id list cannot say.
+ *
+ * **`ids.length` alone answered three different questions with one number**
+ * (`TASK-one-number-means-nothing-cited-could-not-read-and-read-only`):
+ * "nothing was cited", "the transcript could not be read" and "only the last
+ * 8 MB of a 65 MB transcript was read" all arrived as an empty or short array.
+ * At the size this workspace's own transcripts reach — 65,046,326 bytes
+ * measured, of which the tail bound covers 12% — the third case drops every id
+ * cited in the first 57 MB while printing the first case's number.
+ *
+ * So the state travels WITH the ids, and the byte counts are `null` exactly
+ * where nothing was read: `STD-a-measured-zero-is-drawn-and-named-an-
+ * unmeasured-thing-is` forbids a zero that stands in for a measurement nobody
+ * took, and a `0` byte count would be one.
+ */
+export interface TranscriptScan {
+  /** The ids found, deduped and sorted — as far as the scan could see. */
+  ids: string[];
+  state: TranscriptScanState;
+  /** Bytes actually read, or `null` when the file was never opened. */
+  bytesRead: number | null;
+  /** The file's size, or `null` when it was never stat'ed successfully. */
+  totalBytes: number | null;
+  /** Why nothing (or not all) was read; `null` on a clean whole read. */
+  why: string | null;
+}
+
+/**
+ * Item ids mentioned anywhere in the transcript that also exist in the index,
+ * WITH how much of the transcript that answer rests on.
+ *
+ * `knownIds: null` means "no known-id filter: the index was unavailable at
+ * capture time" (Task 10). Over-capture is the safe direction — a snapshot id
+ * matching no live item selects nothing at restore — and the universe is
+ * bounded by the tail bound and the strict id shape either way. An EMPTY
+ * `knownIds` is the other thing entirely: the index knew nothing, the scan is
+ * skipped, and it is reported as `'not-scanned'` rather than as a transcript
+ * that cited nothing.
+ *
+ * Never throws. Every failure is a state, because a throw here would be a
+ * third way for the same three facts to become one.
+ */
+export function scanTranscript(
   transcriptPath: string | null | undefined, knownIds: Set<string> | null,
-): string[] {
-  if (!transcriptPath || (knownIds !== null && knownIds.size === 0)) return [];
-  let text: string;
-  try {
-    if (!statSync(transcriptPath).isFile()) return [];
-    text = readTail(transcriptPath);
-  } catch {
-    return [];
+): TranscriptScan {
+  const unread = { ids: [], bytesRead: null, totalBytes: null };
+  if (!transcriptPath) {
+    return { ...unread, state: 'absent', why: 'the payload carried no transcript_path' };
+  }
+  if (knownIds !== null && knownIds.size === 0) {
+    return { ...unread, state: 'not-scanned', why: 'the index knew no ids to filter against' };
   }
 
-  return scanTextIds(text, knownIds);
+  let read: { text: string; bytesRead: number; totalBytes: number };
+  try {
+    if (!statSync(transcriptPath).isFile()) {
+      return { ...unread, state: 'unreadable', why: 'the path is not a file' };
+    }
+    read = readTail(transcriptPath);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return { ...unread, state: 'unreadable', why: code ?? String(err) };
+  }
+
+  return {
+    ids: scanTextIds(read.text, knownIds),
+    state: read.bytesRead < read.totalBytes ? 'tail' : 'whole',
+    bytesRead: read.bytesRead,
+    totalBytes: read.totalBytes,
+    why: read.bytesRead < read.totalBytes
+      ? `the transcript is larger than the ${MAX_TRANSCRIPT_BYTES}-byte tail bound`
+      : null,
+  };
 }
 
 /**
  * The same scan over text a caller already holds, rather than a file.
  *
- * Split out of `scanTranscriptIds` for `hooks/post-compact.ts`, whose input is
+ * Split out of `scanTranscript` for `hooks/post-compact.ts`, whose input is
  * the `compact_summary` on the payload — a string that exists nowhere on disk.
  * It is a split and not a second implementation on purpose: `ID_PATTERN` is
  * the one place that knows what an id looks like, and a second regex agreeing
