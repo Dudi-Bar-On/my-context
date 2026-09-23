@@ -209,3 +209,61 @@ test('the query-level refusal keeps its own sentence — a passage that names no
     );
   } finally { b.dispose(); }
 });
+
+/**
+ * **AND THE BRIEF ITSELF, WHICH IS THE ONE READER THAT CANNOT ASK THE SCREEN.**
+ *
+ * Review finding against 369bb4c2: `apiRetrievalMission` builds
+ * `MissionRequest.query` as `{ names, terms }` and **dropped `note` on the way
+ * in**, so the disclosure reached `body.query` — which the screen draws — and
+ * never reached `body.text`, which is what a dispatched subagent is handed and
+ * what `writeMission` writes to disk. That reader has no screen, no second
+ * request and no way to ask; the brief is the whole of what it knows. An empty
+ * material table with no sentence beside it is read there as *the archive holds
+ * nothing about this*, and the subagent reports exactly that.
+ *
+ * It is the same shape as the defect this whole item is about, one layer along:
+ * a disclosure proved on the surface one reader is on and absent from the
+ * surface the other is on.
+ */
+test('the mission text a subagent is handed carries the coverage note too', () => {
+  const b = box();
+  try {
+    b.write('s-one', [said(`the ${NAME} was where the work landed`, '2026-09-10T09:00:00.000Z')]);
+    b.scan();
+
+    const body = b.compose(`we talked about \`${NAME}\` yesterday`);
+    assert.equal(body.points, 0);
+    assert.ok(
+      body.query.note !== null && body.text.includes(body.query.note),
+      'the screen was told and the SUBAGENT was not, although the subagent is the reader that '
+      + 'cannot ask a second question. The brief says "open it at these points", names none, '
+      + `and explains nothing. Got:\n${body.text}`,
+    );
+    assert.match(
+      body.text, /## What you are looking for/,
+      'and it sits in the section that answers exactly that question',
+    );
+    assert.ok(
+      body.text.includes(`\`${NAME}\``),
+      'the names are still named — the coverage note is beside them, never instead of them',
+    );
+  } finally { b.dispose(); }
+});
+
+test('a complete index writes no coverage line into the brief at all', () => {
+  const b = box();
+  try {
+    b.write('s-one', [said(`the ${NAME} was where the work landed`, '2026-09-10T09:00:00.000Z')]);
+    b.scan();
+    b.fill();
+
+    const body = b.compose(`what came of \`${ABSENT}\``);
+    assert.equal(body.points, 0);
+    assert.doesNotMatch(
+      body.text, /\*\*Coverage\*\*/,
+      'a measured zero is a measured zero: a coverage line on a complete index would teach the '
+      + 'subagent to discount every empty answer it is ever handed',
+    );
+  } finally { b.dispose(); }
+});

@@ -995,7 +995,12 @@ export function apiRetrievalMission(ws: Workspace, raw: unknown): JsonResult {
     at,
     repoRoot: repo,
     resultPath: path.relative(repo, resultPathFor(repo, id)).split(path.sep).join('/'),
-    query: query.matchable ? { names: query.names, terms: query.terms } : null,
+    // `note` travels WITH the names, because the brief is read by the one
+    // reader that cannot ask the screen — a dispatched subagent — and it was
+    // being stripped here while `body.query` beside it carried it.
+    query: query.matchable
+      ? { names: query.names, terms: query.terms, note: query.note }
+      : null,
     pointers,
     resultShape: resultContract(),
   };
