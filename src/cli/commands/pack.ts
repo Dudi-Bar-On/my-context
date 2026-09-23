@@ -624,6 +624,9 @@ function cmdImport(
 
     const outcome = applyImport(ctx, plan, {
       name, source, origin, now: Date.now(), overwriteApproved,
+      // `pack import` keeps whatever an import landed before a later step
+      // failed, so the route out (`pack list`, `review promote`) is true here.
+      keepsPartialWrites: true,
     });
 
     // **Entirely refused is a failure; partly refused is not**

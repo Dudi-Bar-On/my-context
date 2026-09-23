@@ -251,15 +251,15 @@ export interface ImportOptions {
    * above init's own accurate "nothing was created". So the caller says which
    * it is, and `refusePartial` prints the route only where there is one.
    *
-   * **Optional, unlike `overwriteApproved`, and the asymmetry is deliberate.**
-   * Omitting that one would let a call site overwrite a corpus by accident;
-   * omitting this one costs a caller that discards a route sentence that is
-   * merely unhelpful, and the default is the answer that is true of every
-   * surface but one. What is NOT conditional on it is the disclosure itself:
-   * what was written and what was not is printed either way, because that is
-   * the invariant and the route is only a convenience on top of it.
+   * **Required, like `overwriteApproved`.** It was optional for one round
+   * (default: keeps), and the review of that round asked for this: a third
+   * caller added later would inherit "keeps" by omission, and print a route
+   * to a corpus it had just removed, with nobody having decided that. Every
+   * caller says which it is. What is NOT conditional on it is the disclosure
+   * itself: what was written and what was not is printed either way, because
+   * that is the invariant and the route is only a convenience on top of it.
    */
-  keepsPartialWrites?: boolean;
+  keepsPartialWrites: boolean;
 }
 
 /** What one import did. The four id lists partition `plan.allIds`. */
@@ -782,7 +782,7 @@ function refusePartial(
   // not told one exists: the record would be written inside the tree it is
   // about to remove — pointless, and on Windows one more open handle in the
   // way of the `rmSync` that has to succeed for its own message to be true.
-  const keeps = options.keepsPartialWrites !== false;
+  const keeps = options.keepsPartialWrites;
   let filed = done.recordWritten;
   if (keeps && !filed) {
     try {

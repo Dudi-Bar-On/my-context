@@ -197,7 +197,7 @@ function options(
   source: string, over: { overwriteApproved?: boolean; keepsPartialWrites?: boolean } = {},
 ) {
   return {
-    name: PACK_NAME, source, origin: source, now: FIXED_NOW, overwriteApproved: false, ...over,
+    name: PACK_NAME, source, origin: source, now: FIXED_NOW, overwriteApproved: false, keepsPartialWrites: true, ...over,
   };
 }
 
