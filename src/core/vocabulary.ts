@@ -252,15 +252,78 @@ export const INVERSE_RELATIONS: Record<string, string> = {
 };
 
 /**
+ * **The relation types that have NO inverse, ENUMERATED, with the reason each
+ * one is here.**
+ *
+ * `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan` names
+ * `INVERSE_RELATIONS` for failing open on a WRITE gate, and this is the half
+ * that was missing. `inverseOf` answered `null` for every name the map did not
+ * list, so "this relation is its own thing" and "nobody has said what this
+ * relation's inverse is" were the same answer — and the second one disables
+ * `linkItems`' mirror check, which is the gate that keeps one fact from being
+ * stored as two rows that disagree.
+ *
+ * Sixteen names, four of them paired above and fourteen declared here, and the
+ * two lists must between them cover `RELATION_TYPES` exactly. A seventeenth
+ * name added to the vocabulary and declared in NEITHER is now a THROW naming
+ * the omission, not a silently unguarded write.
+ */
+export const NO_INVERSE: Record<string, string> = {
+  conflicts_with:
+    'its own inverse. A pair entry would refuse a second, legitimately different '
+    + '`conflicts_with` edge, so two items may record it in both directions if someone means to.',
+  blocks: 'not an inverse pair with `unblocks` — see their meanings; they are different acts.',
+  unblocks: 'not an inverse pair with `blocks` — see their meanings; they are different acts.',
+  derived_from: 'one-directional: provenance is read from the derived item, which is where it is.',
+  constrains: 'one-directional: what constrains what is read from the constraining item.',
+  supersedes: 'one-directional. `superseded_by` is written by `supersedeItem` and is deliberately '
+    + 'NOT in the vocabulary at all, so there is no name here to pair with.',
+  mitigates: 'one-directional: what a mitigation answers is read from the mitigation.',
+  refines: 'one-directional: the refinement names what it refines.',
+  relates_to: 'symmetric in meaning and unmanaged by design — the loosest edge in the vocabulary, '
+    + 'and gating a mirror on it would refuse the one relation people reach for when unsure.',
+  links_to: 'symmetric in meaning and unmanaged, for the same reason as `relates_to`.',
+  depends_on: 'one-directional: the dependent item is the one that knows.',
+  caused_by: 'one-directional: causation is recorded on the effect.',
+  amends: 'one-directional: the amendment names what it amends.',
+  answers: 'one-directional: the answer names the question.',
+};
+
+/**
  * The passive reading of `type`, or `null` when it has no declared inverse.
  *
  * A function rather than a bare map read so that "this type has no inverse" is
  * one answer with one spelling, and so the READ surfaces that want to render a
  * phrase for an inbound edge ("enforced_by X" for an inbound `enforces`) share
  * it with the WRITE gate that refuses the stored mirror.
+ *
+ * **`Object.hasOwn`, not a bare index, and that is a live defect rather than
+ * tidiness.** `INVERSE_RELATIONS['constructor']` reaches
+ * `Object.prototype.constructor` — a FUNCTION, not `undefined` — so the `??`
+ * this used to end on returned it, and the write gate then compared stored
+ * relation names against a function and found no mirror. The same guard
+ * `tierForCategory`, `scopePolicyFor` and `agentEditsFor` (config.ts) all
+ * document, in the one place in this file that indexes by a caller's string.
+ *
+ * **An UNDECLARED vocabulary name throws.** A type that is in `RELATION_TYPES`
+ * and in neither map is a pair somebody added without saying which it is, and
+ * answering `null` for it silently turns off `linkItems`' mirror gate. A name
+ * that is NOT in the vocabulary still answers `null`: a stored row may carry
+ * anything, and a read surface asking what it reads as must get an answer
+ * rather than an exception.
  */
 export function inverseOf(type: string): string | null {
-  return INVERSE_RELATIONS[type] ?? null;
+  if (Object.hasOwn(INVERSE_RELATIONS, type)) return INVERSE_RELATIONS[type]!;
+  if (Object.hasOwn(NO_INVERSE, type)) return null;
+  if (RELATION_TYPES.includes(type)) {
+    throw new Error(
+      `my_context: "${type}" is in RELATION_TYPES and is declared in neither INVERSE_RELATIONS `
+      + 'nor NO_INVERSE, so nothing says whether it has a passive reading. Until it is declared, '
+      + "`linkItems`' mirror gate cannot tell a second row for one fact from a second fact — "
+      + 'declare it in one of the two maps in core/vocabulary.ts, with the reason.',
+    );
+  }
+  return null;
 }
 
 /**

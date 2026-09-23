@@ -219,6 +219,7 @@
  * Zero dependencies, no build step, erasable syntax only — the same constraints
  * as `src/`.
  */
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { loadLayer, type LoadError } from '../src/core/rebuild.ts';
@@ -233,12 +234,55 @@ import type { Item } from '../src/core/types.ts';
 const REPO = path.resolve(import.meta.dirname, '..');
 
 /**
- * The trees walked: the four `verify-citations.ts` names in its `SOURCE_ROOTS`,
- * and the four the task's own `scope` lists. Restated rather than imported
- * because that script runs `process.exit(main())` at module load and therefore
- * cannot be imported at all.
+ * **The trees walked used to be four — `['src', 'test', 'scripts', 'e2e']` —
+ * and that is the shape
+ * `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan` names.**
+ *
+ * A list of roots answers "clean" for everything outside it, and what was
+ * outside it here was `harness/` — twenty executable `.mjs` files, the CLI
+ * evidence harness — plus `hooks/`, `commands/` and `skills/`. A citation of a
+ * retired item reads exactly the same in a harness case as in `src/`, and
+ * nothing looked at one.
+ *
+ * So the population is every SOURCE file git tracks (`sourceWalk` below), and
+ * the removals are declared in `NOT_SOURCE` and printed in the summary. The
+ * documents are a separate walk for a reason `DOC_ROOTS` states below, and
+ * that split is unchanged.
+ *
+ * Kept exported under this name because `test/scripts/cited-items.test.ts`
+ * re-walks the tree four times independently and names it.
  */
 export const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
+
+/** Why a tracked file is not walked as source, stated so it can be printed. */
+export const NOT_SOURCE =
+  'not a source file — this walk reads `.ts`/`.js`/`.mjs`/`.cjs` comments; '
+  + 'the reference documents are the second walk (DOC_ROOTS), and a `.d.ts` declares no prose';
+
+/**
+ * Every tracked source file, repository-relative, and everything else with the
+ * reason it was left out.
+ *
+ * Fails CLOSED: `git ls-files` failing throws rather than yielding an empty
+ * list, because "0 files checked, 0 retired citations" is the one sentence
+ * this gate must never be able to print while blind — the script already says
+ * so in words for the empty case, and this keeps it from being reachable
+ * quietly.
+ */
+export function sourceWalk(root: string): { scanned: string[]; skipped: string[] } {
+  const out = execFileSync('git', ['-C', root, 'ls-files', '-z'], {
+    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+  });
+  const tracked = out.split('\0').filter((f) => f !== '');
+  if (tracked.length === 0) throw new Error(`git tracks no file under ${root}`);
+  const scanned: string[] = [];
+  const skipped: string[] = [];
+  for (const file of tracked) {
+    if (isSourceFile(file)) scanned.push(file);
+    else skipped.push(file);
+  }
+  return { scanned, skipped };
+}
 
 /**
  * **The DOCUMENTS walked, added 2026-09-17 by `rulings/111`, and imported
@@ -846,12 +890,11 @@ function main(): number {
   }
   const corpus = readCorpus(items, ws.config);
 
-  const files: string[] = [];
-  for (const root of SOURCE_ROOTS) walkSources(path.join(REPO, root), files);
-  files.sort();
+  const walk = sourceWalk(REPO);
+  const files = walk.scanned.map((f) => path.join(REPO, ...f.split('/'))).sort();
   if (files.length === 0) {
     write(
-      `my_context: no source files under ${SOURCE_ROOTS.join(', ')} — nothing was checked, ` +
+      'my_context: git tracks no source file — nothing was checked, ' +
         'which is not the same as nothing being wrong.',
     );
     return 1;
@@ -886,6 +929,16 @@ function main(): number {
     const body = render(report, showUnresolved);
     if (body !== '') process.stdout.write(`${body}\n`);
   }
+  // What was NOT walked, and why -- `STD-a-measured-zero-is-drawn-and-named`.
+  // The four-root list this walk replaced said nothing at all about the trees
+  // it left out, so a count of citations read the same whether the walk
+  // covered the repository or a quarter of it. Printed BEFORE the summary so
+  // that `main`'s tail stays the shape `test/scripts/cited-items.test.ts`
+  // reads it for: summary, load errors, unconditional `return 0`.
+  write(
+    `${walk.scanned.length} tracked source file(s) walked, ${walk.skipped.length} not: ` +
+      `${NOT_SOURCE}.`,
+  );
   write(summary(report, showUnresolved));
   for (const e of errors) write(`load error: ${e.file}: ${e.message}`);
   return 0;

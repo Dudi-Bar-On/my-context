@@ -14,7 +14,7 @@
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { agentEditsFor, type Config, type ResolvedCategory } from './config.ts';
+import { agentEditsFor, tierForCategory, type Config, type ResolvedCategory } from './config.ts';
 import { launderedEnums, launderedEnumSentence, type LaunderedEnum } from './item.ts';
 import { normalizePosix } from './paths.ts';
 import type { MutationContext, UpdateInput } from './mutate.ts';
@@ -297,16 +297,20 @@ export function trustedStatus(origin: Origin, tier: Tier, requested: Status): St
  * `'normative'`, the *more* restrictive tier, not `'rationale'`. Defaulting
  * to `'rationale'` would silently hand an agent status control over an item
  * whose governing category just vanished from config — the opposite of what
- * a security check should do when its input goes missing. `Object.hasOwn`
- * guards the same prototype-pollution hazard `resolveCategory` documents: a
- * bare index on `type: 'constructor'` would otherwise reach
- * `Object.prototype.constructor`, whose `.tier` is `undefined`, landing on
- * the same permissive default this function refuses to have.
+ * a security check should do when its input goes missing.
+ *
+ * **The argument is this function's; the ANSWER is no longer.** It was the
+ * only one of three surfaces that had it right, and the other two disagreed
+ * with it in two further directions —
+ * `TASK-the-unknown-category-default-is-answered-three-different`. So the
+ * default lives in `tierForCategory` (config.ts, beside `scopePolicyFor` and
+ * `agentEditsFor`, which answer the sibling questions), this function reads it
+ * there, and `isNormative` and the snapshot preview read the same one. The
+ * `Object.hasOwn` prototype-pollution guard travelled with it and is
+ * documented at the new home.
  */
 export function tierOf(ctx: MutationContext, item: Item): Tier {
-  return Object.hasOwn(ctx.config.categories, item.type)
-    ? ctx.config.categories[item.type].tier
-    : 'normative';
+  return tierForCategory(ctx.config, item.type);
 }
 
 /**

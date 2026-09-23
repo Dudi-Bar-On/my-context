@@ -48,7 +48,9 @@ import { mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../core/command-flags.ts';
 import { isJsonAlready, jsonEnvelopeFor, renderJsonError } from './json-envelope.ts';
-import { resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
+import {
+  resolveConfig, scopePolicyFor, tierForCategory, type Config,
+} from '../core/config.ts';
 import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
 import { alwaysInjection, scopeCell } from '../core/render-item.ts';
@@ -752,9 +754,14 @@ function addSnapshot(
   input.sourceFile = snapshot.sourceFile;
   input.sourceChecksum = snapshot.checksum;
 
-  const tier = Object.hasOwn(ws.config.categories, input.type)
-    ? ws.config.categories[input.type].tier
-    : 'rationale';
+  // `tierForCategory` (core/config.ts), not a literal. This line used to fail
+  // OPEN to `'rationale'` — the exact default `trust.ts` argues against one
+  // file over, and the third of the three disagreeing answers
+  // `TASK-the-unknown-category-default-is-answered-three-different` measured.
+  // What it decides here is which budget the snapshot's cost is reported
+  // against, so a rationale reading understates what an unlisted capture costs
+  // the injection that follows it.
+  const tier = tierForCategory(ws.config, input.type);
   // Printed on EVERY capture, not only a large one. A snapshot is the one
   // body a user did not type and therefore did not measure, and "accepted
   // without comment" is the outcome this codebase does not permit for a cost

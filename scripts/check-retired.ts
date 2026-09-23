@@ -30,27 +30,71 @@
  * correction log to stop naming what it corrected.
  *
  * Run by `npm run check:retired`, and by both workflows.
+ *
+ * ── WHERE IT LOOKS, AND WHY THAT CHANGED ───────────────────────────────────
+ *
+ * **It used to enumerate what it would SCAN**: `ROOTS` named three directories
+ * under `docs/`, and a document anywhere else — `reports/`, `README.md`,
+ * `docs/capabilities/`, a corpus item — could declare a `<!-- retired-phrases
+ * -->` block and nothing would ever read it. That is the worst shape a gate
+ * can have, because the contract here is an OPT-IN: an author writes the
+ * declaration in order to be checked, and the answer was silence that is
+ * indistinguishable from a pass.
+ *
+ * `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan` names
+ * this file for exactly that. So the population is now every Markdown document
+ * GIT TRACKS, and the only thing left out is a file that is not Markdown —
+ * declared in `SKIP_REASON_NOT_MARKDOWN`, counted, and printed, because the
+ * contract is an HTML comment inside a Markdown document and nothing else can
+ * carry one. A document that declares nothing still costs one read and
+ * contributes nothing, which is the correct price for never having to ask
+ * where the checker is allowed to look.
+ *
+ * `test/scripts/retired-phrases-gate.test.ts` holds the walk to the four trees
+ * `ROOTS` could not reach, and still plants a violation to prove it goes red.
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { execFileSync, } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { isMainEntry } from '../src/core/paths.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..');
-const ROOTS = ['docs/superpowers/plans', 'docs/superpowers/specs', 'docs/design'];
 
 const BLOCK = /<!--\s*retired-phrases\s*\n([\s\S]*?)-->/;
 
-interface Hit { doc: string; line: number; phrase: string; text: string }
+export interface Hit { doc: string; line: number; phrase: string; text: string }
+export interface Skip { file: string; why: string }
 
-function markdownFiles(dir: string, out: string[]): string[] {
-  let entries: string[];
-  try { entries = readdirSync(dir); } catch { return out; }
-  for (const entry of entries) {
-    const full = path.join(dir, entry);
-    if (statSync(full).isDirectory()) markdownFiles(full, out);
-    else if (entry.endsWith('.md')) out.push(full);
+/** The one reason a tracked file is not considered, stated so it can be printed. */
+export const SKIP_REASON_NOT_MARKDOWN =
+  'not Markdown — the contract is an HTML comment inside a Markdown document';
+
+/**
+ * Every tracked Markdown document, and every tracked file that is not one,
+ * with the reason it was left out.
+ *
+ * Fails CLOSED. `git ls-files` failing throws rather than yielding an empty
+ * list: "0 documents checked, every correction applied" is the sentence this
+ * gate must never be able to print while blind.
+ */
+export function candidates(root: string): { considered: string[]; skipped: Skip[] } {
+  const out = execFileSync('git', ['-C', root, 'ls-files', '-z'], {
+    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+  });
+  const files = out.split('\0').filter((f) => f !== '');
+  if (files.length === 0) {
+    throw new Error(
+      `git tracks no file under ${root}. This gate refuses to report a clean run over nothing.`,
+    );
   }
-  return out;
+  const considered: string[] = [];
+  const skipped: Skip[] = [];
+  for (const file of files) {
+    if (file.endsWith('.md')) considered.push(file);
+    else skipped.push({ file, why: SKIP_REASON_NOT_MARKDOWN });
+  }
+  return { considered, skipped };
 }
 
 /**
@@ -58,7 +102,7 @@ function markdownFiles(dir: string, out: string[]): string[] {
  * with no §0 are checked whole, which is right: a retired phrase declared
  * without a correction log to quote it has nowhere legitimate to appear.
  */
-function bodyStart(lines: string[]): number {
+export function bodyStart(lines: string[]): number {
   const zero = lines.findIndex((l) => /^## 0\./.test(l));
   if (zero === -1) return 0;
   for (let i = zero + 1; i < lines.length; i++) {
@@ -67,52 +111,91 @@ function bodyStart(lines: string[]): number {
   return lines.length;
 }
 
+/**
+ * The retired phrases still standing in one document's body, and the count of
+ * phrases it declared. A document that declares nothing returns no hits — it
+ * is read, and it contributes nothing, which is not the same as not being
+ * looked at.
+ */
+export function hitsIn(rel: string, text: string): Hit[] {
+  const m = BLOCK.exec(text);
+  if (m === null) return [];
+
+  const phrases = m[1]!.split(/\r?\n/).map((p) => p.trim()).filter((p) => p !== '');
+  const lines = text.split(/\r?\n/);
+  const from = bodyStart(lines);
+
+  // The declaration block is not a violation of its own rule, so its LINE
+  // RANGE is skipped. An earlier version tested each line against `BLOCK`
+  // after wrapping it in the comment delimiters -- a template that matches
+  // for EVERY possible line, so the checker skipped the whole document and
+  // could not fail. It was caught by reintroducing a real retired phrase and
+  // watching it pass: a checker is not verified until it has been made red.
+  const blockStart = lines.findIndex((l) => l.includes('<!-- retired-phrases'));
+  let blockEnd = blockStart;
+  if (blockStart !== -1) {
+    for (let i = blockStart; i < lines.length; i++) {
+      if (lines[i]!.includes('-->')) { blockEnd = i; break; }
+    }
+  }
+
+  const hits: Hit[] = [];
+  for (let i = from; i < lines.length; i++) {
+    if (blockStart !== -1 && i >= blockStart && i <= blockEnd) continue;
+    const line = lines[i]!;
+    for (const phrase of phrases) {
+      if (line.includes(phrase)) hits.push({ doc: rel, line: i + 1, phrase, text: line.trim() });
+    }
+  }
+  return hits;
+}
+
+/** How many phrases a document declares; 0 when it declares no block. */
+export function declaredIn(text: string): number {
+  const m = BLOCK.exec(text);
+  if (m === null) return 0;
+  return m[1]!.split(/\r?\n/).map((p) => p.trim()).filter((p) => p !== '').length;
+}
+
+export interface Tally {
+  considered: number; declaring: number; phrases: number; hits: number; skipped: Skip[];
+}
+
+/**
+ * What was read, what declared, what was skipped and why.
+ *
+ * `STD-a-measured-zero-is-drawn-and-named`. The old summary counted only the
+ * documents that DECLARED — a number with no denominator, which reads the same
+ * whether the walk covered the repository or three directories of it.
+ */
+export function summarise(t: Tally): string {
+  const n = (v: number): string => v.toLocaleString('en-US');
+  const lines = [
+    `${n(t.considered)} tracked Markdown document(s) considered: ${n(t.declaring)} declare `
+    + `retired phrases, ${n(t.phrases)} phrase(s) in all, ${n(t.hits)} still present in a body.`,
+    `  ${n(t.skipped.length)} tracked file(s) not considered: ${SKIP_REASON_NOT_MARKDOWN}.`,
+  ];
+  return lines.join('\n');
+}
+
 function main(): number {
   const argv = process.argv.slice(2);
   const quiet = argv.includes('--quiet');
 
-  const docs: string[] = [];
-  for (const root of ROOTS) markdownFiles(path.join(REPO, root), docs);
-  docs.sort();
+  const { considered, skipped } = candidates(REPO);
+  considered.sort();
 
   const hits: Hit[] = [];
   let declared = 0;
   let checked = 0;
 
-  for (const doc of docs) {
-    const text = readFileSync(doc, 'utf8');
-    const m = BLOCK.exec(text);
-    if (m === null) continue;
+  for (const rel of considered) {
+    const text = readFileSync(path.join(REPO, rel), 'utf8');
+    const phrases = declaredIn(text);
+    if (phrases === 0) continue;
     checked++;
-
-    const phrases = m[1]!.split(/\r?\n/).map((p) => p.trim()).filter((p) => p !== '');
-    declared += phrases.length;
-
-    const lines = text.split(/\r?\n/);
-    const from = bodyStart(lines);
-    const rel = path.relative(REPO, doc).split(path.sep).join('/');
-
-    // The declaration block is not a violation of its own rule, so its LINE
-    // RANGE is skipped. An earlier version tested each line against `BLOCK`
-    // after wrapping it in the comment delimiters -- a template that matches
-    // for EVERY possible line, so the checker skipped the whole document and
-    // could not fail. It was caught by reintroducing a real retired phrase and
-    // watching it pass: a checker is not verified until it has been made red.
-    const blockStart = lines.findIndex((l) => l.includes('<!-- retired-phrases'));
-    let blockEnd = blockStart;
-    if (blockStart !== -1) {
-      for (let i = blockStart; i < lines.length; i++) {
-        if (lines[i]!.includes('-->')) { blockEnd = i; break; }
-      }
-    }
-
-    for (let i = from; i < lines.length; i++) {
-      if (blockStart !== -1 && i >= blockStart && i <= blockEnd) continue;
-      const line = lines[i]!;
-      for (const phrase of phrases) {
-        if (line.includes(phrase)) hits.push({ doc: rel, line: i + 1, phrase, text: line.trim() });
-      }
-    }
+    declared += phrases;
+    hits.push(...hitsIn(rel, text));
   }
 
   for (const h of hits) {
@@ -124,10 +207,13 @@ function main(): number {
   }
 
   if (!quiet || hits.length > 0) {
-    process.stdout.write(
-      `\n${declared} retired phrase(s) declared across ${checked} document(s): ` +
-      `${hits.length} still present in a body.\n`,
-    );
+    process.stdout.write(`\n${summarise({
+      considered: considered.length,
+      declaring: checked,
+      phrases: declared,
+      hits: hits.length,
+      skipped,
+    })}\n`);
     if (hits.length === 0) {
       process.stdout.write('every recorded correction is also applied.\n');
     } else {
@@ -140,4 +226,4 @@ function main(): number {
   return hits.length > 0 ? 1 : 0;
 }
 
-process.exit(main());
+if (isMainEntry(import.meta.filename, process.argv[1])) process.exit(main());

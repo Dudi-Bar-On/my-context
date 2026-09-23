@@ -1,4 +1,4 @@
-import { scopePolicyFor, type Config } from './config.ts';
+import { scopePolicyFor, tierForCategory, type Config } from './config.ts';
 import {
   danglingEdges, isFocusActive, type Focus, type FocusAxes, type FocusReport,
 } from './focus.ts';
@@ -565,9 +565,21 @@ export function isEligible(item: Item, config: Config): boolean {
  * `seenFiltered`). A fourth spelling in a browser-facing read model is exactly
  * the drift `GateCode` exists to prevent, so the function travels instead of
  * the predicate.
+ *
+ * **What it used to spell, and no longer does:**
+ * `config.categories[item.type]?.tier === 'normative'`. That `?.` answered
+ * `false` for a category nobody declared — reading an unlisted input as
+ * `rationale`, which is the third of the three disagreeing answers
+ * `TASK-the-unknown-category-default-is-answered-three-different` measured,
+ * and the opposite of the one `tierOf` argues for one file over. The default
+ * is `tierForCategory` (config.ts) now, here and at the other two surfaces.
+ * Nothing injectable moves: `isEligible` is asked first everywhere this is
+ * used and already excludes an unknown category on its `enabled` lookup, and
+ * `injectableTypes` enumerates declared categories only. What changes is that
+ * the unlisted input no longer takes the benign branch.
  */
 export function isNormative(item: Item, config: Config): boolean {
-  return config.categories[item.type]?.tier === 'normative';
+  return tierForCategory(config, item.type) === 'normative';
 }
 
 /**

@@ -1,4 +1,4 @@
-// @basis TASK-code-and-tests-that-speak-with-a-retired-item-s-authority, TASK-std-absent-vs-zero-is-a-nickname-22-citations-use-and-no, RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none, TASK-ten-thousand-lines-of-documentation-are-held-by-one-gate
+// @basis TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan, TASK-code-and-tests-that-speak-with-a-retired-item-s-authority, TASK-std-absent-vs-zero-is-a-nickname-22-citations-use-and-no, RULE-a-citation-names-an-item-by-id-never-a-report-by-line-number, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none, TASK-ten-thousand-lines-of-documentation-are-held-by-one-gate
 /**
  * **The retired-authority check, proved by planting what it must name.**
  *
@@ -45,8 +45,8 @@ import { SUPERSEDED_BY } from '../../src/core/relations.ts';
 import { readCorpus, resolveId, type Corpus } from '../../scripts/check-handover.ts';
 import { documentsUnder } from '../../scripts/check-diagrams-parse.ts';
 import {
-  DOC_ROOTS, SOURCE_ROOTS, build, isSourceFile, liveSites, paragraphAround, scanFile,
-  successorChain, walkSources,
+  DOC_ROOTS, NOT_SOURCE, SOURCE_ROOTS, build, isSourceFile, liveSites, paragraphAround, scanFile,
+  sourceWalk, successorChain, walkSources,
 } from '../../scripts/check-cited-items.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import type { Item } from '../../src/core/types.ts';
@@ -433,6 +433,31 @@ test('the walk covers the four trees the task scoped and the browser modules in 
   assert.ok(isSourceFile('select.ts'));
   assert.ok(!isSourceFile('types.d.ts'), 'a declaration file is generated and cites nothing');
   assert.ok(!isSourceFile('web-ui-mockup.html'));
+});
+
+/**
+ * **And it covers what those four roots did NOT** —
+ * `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan`. A list
+ * of roots answers "clean" for everything outside it, and what was outside it
+ * was `harness/`: twenty executable `.mjs` files whose comments cite this
+ * corpus exactly as `src/` does, and which nothing here had ever read.
+ */
+test('the walk is the tracked tree, and what it leaves out carries its reason', () => {
+  const { scanned, skipped } = sourceWalk(REPO);
+  const set = new Set(scanned);
+
+  assert.ok(
+    scanned.some((f) => f.startsWith('harness/')),
+    'harness/ is executable source outside the four roots and must be walked',
+  );
+  for (const root of SOURCE_ROOTS) {
+    assert.ok(scanned.some((f) => f.startsWith(`${root}/`)), `${root}/ dropped out of the walk`);
+  }
+  assert.ok(scanned.length > 1000, `only ${scanned.length} source file(s) walked`);
+  assert.ok(scanned.every(isSourceFile), 'a non-source file reached the walk');
+  assert.ok(!skipped.some(isSourceFile), 'a source file was skipped');
+  assert.ok(!set.has('README.md'), 'a document belongs to the second walk, not this one');
+  assert.ok(NOT_SOURCE.length > 0, 'the skip must carry a printable reason');
 });
 
 /**

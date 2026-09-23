@@ -353,7 +353,24 @@ const DOC_FILES = ['README.md', 'docs/README.he.md'];
  * files, and it was outside every root this script knew. See `isSourceFile`
  * for the other half of that blind spot and for what the two of them cost.
  */
-const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
+/**
+ * **`harness`, `hooks`, `commands` and `skills` joined on 2026-09-23**, under
+ * `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan`, which
+ * names this list for the shape it has rather than for a tree it missed: a
+ * root list answers "nothing broken" for everything outside it, and `harness/`
+ * is twenty executable `.mjs` files that nothing here had ever read. `e2e`
+ * joined for exactly the same reason on 2026-08-29, one tree at a time, which
+ * is the repair that does not generalise.
+ *
+ * **Measured before and after, on the same tree, and the numbers are
+ * identical** — 587 citations in 180 source files, 40 broken, 19 faults. Not
+ * one of the four trees carries a citation in this form today. That is the
+ * point rather than an anticlimax: the widening buys nothing NOW and everything
+ * LATER, and a measured zero is drawn and named rather than left as a claim
+ * (`STD-a-measured-zero-is-drawn-and-named`). The table under "Widening it is
+ * two lines" above is unaffected, having been re-run.
+ */
+const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e', 'harness', 'hooks', 'commands', 'skills'];
 
 /**
  * **THE SEVENTH TREE, AND THE ONE THIS FILE REFUSED ON A MEASUREMENT THAT HAS
