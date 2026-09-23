@@ -1340,8 +1340,63 @@ export type ReadSurface = 'cli' | 'mcp';
 /** What a caller supplies; `protocol` and `at` are stamped here. */
 export type AuditInput = Omit<AuditRecord, 'protocol' | 'at'> & { at?: string };
 
+/**
+ * **Where a process was TOLD to keep its records instead of the workspace's
+ * own `.audit/` — never guessed.**
+ *
+ * `TASK-the-audit-log-still-records-two-session-ids-that-never`, measured
+ * 2026-09-13 and again 2026-09-23. `.my_context/.audit/` here holds 422
+ * `subagent-start` records under the session id `lane-still-gets-the-no-git-
+ * rule` and two under `eyeball`. No session ever had either id. They are the
+ * rows of `test/rules/lane-still-gets-the-no-git-rule.test.ts`, which runs the
+ * real subagent door against THIS repository because `rules/deliver.ts` ·
+ * `workspaceIsMyContext` puts the developer tier in force in exactly one
+ * directory on the machine, so a throwaway workspace cannot stand in for it.
+ * `mycontext audit` and the UI's watch screen read this stream, so those ids
+ * are shown to a person as lanes that ran here.
+ *
+ * **The redirect is the caller's statement, not this module's inference.**
+ * `rules/delivered.ts` forks its own record on `NODE_TEST_CONTEXT`, and the
+ * owner's ruling is that the audit writer must NOT copy that here: product
+ * code that detects it is under test and behaves differently is a second,
+ * hidden mode nobody declared, and the next test that forgets the convention
+ * writes the owner's log again with the product's blessing. An environment
+ * variable is the opposite shape — a caller says out loud where its records
+ * go, the value is visible in the process it was set on, and a caller that
+ * says nothing gets the workspace's own directory exactly as before.
+ *
+ * Named and read like its siblings — `MYCONTEXT_UI_SESSIONS_DIR`
+ * (`core/ui-sessions.ts`, pinned by `test/helpers/pin-sessions-dir.ts`),
+ * `MYCONTEXT_MIRROR_DIR` (`core/conversation-mirror.ts`) and
+ * `MYCONTEXT_RULES_DIR` — and inherited by every child a caller spawns, so a
+ * hook binary started under it keeps its records in the same box.
+ *
+ * **Read on every call rather than captured at module load**, so a caller can
+ * set it for one test and restore it afterwards and both halves are honoured.
+ * **`path.resolve`d**, because a relative value would follow whatever `cwd`
+ * the process happened to be in when a record was written, and records of one
+ * run landing in two directories is worse than either directory.
+ *
+ * **Point it at a path ending in `.audit`.** `ensureLogDir` writes the `*`
+ * .gitignore through `core/private-gitignore.ts`, which refuses a path holding
+ * no directory this product creates and discloses the refusal on stderr. The
+ * records are still written either way — the refusal is about the .gitignore,
+ * not the log — but a box named like what it stands in for is silent and is
+ * shaped the same.
+ *
+ * **It overrides for every `root` in the process, deliberately.** Keying it by
+ * workspace would make it a mapping a caller has to get right twice, and the
+ * one thing it is for — a process that must not touch the workspace it is
+ * pointed at — is a statement about the PROCESS. The cost is stated: while it
+ * is set, `readAudit`, `auditSegments`, `auditSize` and the `audit.db`
+ * projection all read the box and not the workspace, which is why a caller
+ * sets it around the work that writes and puts it back.
+ */
+export const AUDIT_DIR_ENV = 'MYCONTEXT_AUDIT_DIR';
+
 export function auditDir(root: string): string {
-  return path.join(root, '.audit');
+  const told = process.env[AUDIT_DIR_ENV] ?? '';
+  return told === '' ? path.join(root, '.audit') : path.resolve(told);
 }
 
 export function auditLogPath(root: string): string {
