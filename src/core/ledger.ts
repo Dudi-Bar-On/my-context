@@ -1005,10 +1005,36 @@ function readTail(file: string): { text: string; bytesRead: number; totalBytes: 
  *  - `'absent'`      no transcript path was given at all.
  *  - `'unreadable'`  a path was given and it could not be read (or is not a
  *                    file). `why` says which.
- *  - `'not-scanned'` the known-id filter was empty — the index knew nothing —
- *                    so the file was never opened.
+ *
+ * There is deliberately no state for "the filter was empty, so the file was
+ * not opened". It existed until round 1 of task 4.7's review and NO caller
+ * could reach it, while the doc read as though production did — one more fact
+ * asserted by a comment and by nothing else, which is this item's own defect
+ * wearing a different hat. Whether the ids were filtered is now a SEPARATE
+ * field (`unfiltered`), because it is a separate fact from how much was read.
  */
-export type TranscriptScanState = 'whole' | 'tail' | 'absent' | 'unreadable' | 'not-scanned';
+export type TranscriptScanState = 'whole' | 'tail' | 'absent' | 'unreadable';
+
+/**
+ * **What the caller knows about the index, which is what decides whether the
+ * ids can be checked against anything at all.**
+ *
+ *  - `{ ids }`       filter against these. An EMPTY set is legal and means
+ *                    exactly what it says — the index knows nothing, so nothing
+ *                    matches and the answer is a MEASURED zero over a file that
+ *                    was really read.
+ *  - `{ unfiltered }` no filter is possible, and WHY. The scan still reads:
+ *                    over-capture is the safe direction, because a snapshot id
+ *                    matching no live item selects nothing at restore, while a
+ *                    MISS is the direction this design forbids outright.
+ *
+ * **The two are a union rather than `Set | null` so that "there was no filter"
+ * cannot be passed without saying why.** That is the same rule the rest of this
+ * task enforces on counts: a caller that skips the filter knows the reason, the
+ * row has to print it, and a `null` carries the fact while dropping the reason
+ * on the floor.
+ */
+export type KnownIds = { ids: Set<string> } | { unfiltered: string };
 
 /**
  * A transcript scan, and everything about it the id list cannot say.
@@ -1036,32 +1062,40 @@ export interface TranscriptScan {
   totalBytes: number | null;
   /** Why nothing (or not all) was read; `null` on a clean whole read. */
   why: string | null;
+  /**
+   * Why the ids were NOT checked against the index, or `null` when they were.
+   *
+   * A count taken with no filter is a different fact from the same count taken
+   * with one — it may name ids that were deleted or renamed — and until this
+   * field the two printed identically. Separate from `state` on purpose: how
+   * much was READ and whether it was CHECKED are two questions, and one field
+   * answering both is how this item's defect got in.
+   */
+  unfiltered: string | null;
 }
 
 /**
  * Item ids mentioned anywhere in the transcript that also exist in the index,
- * WITH how much of the transcript that answer rests on.
+ * WITH how much of the transcript that answer rests on and whether anything
+ * checked it.
  *
- * `knownIds: null` means "no known-id filter: the index was unavailable at
- * capture time" (Task 10). Over-capture is the safe direction — a snapshot id
- * matching no live item selects nothing at restore — and the universe is
- * bounded by the tail bound and the strict id shape either way. An EMPTY
- * `knownIds` is the other thing entirely: the index knew nothing, the scan is
- * skipped, and it is reported as `'not-scanned'` rather than as a transcript
- * that cited nothing.
+ * `KnownIds` says which of those the caller could do. `{ unfiltered }` still
+ * READS — over-capture is the safe direction, a snapshot id matching no live
+ * item selects nothing at restore, and the universe is bounded by the tail
+ * bound and the strict id shape either way. `{ ids: new Set() }` is not that
+ * case: it says the index genuinely knows nothing, so nothing can match and
+ * the file is still read for a measured zero.
  *
- * Never throws. Every failure is a state, because a throw here would be a
- * third way for the same three facts to become one.
+ * Never throws. Every failure is a state, because a throw here would be one
+ * more way for these facts to collapse into each other.
  */
 export function scanTranscript(
-  transcriptPath: string | null | undefined, knownIds: Set<string> | null,
+  transcriptPath: string | null | undefined, known: KnownIds,
 ): TranscriptScan {
-  const unread = { ids: [], bytesRead: null, totalBytes: null };
+  const unfiltered = 'unfiltered' in known ? known.unfiltered : null;
+  const unread = { ids: [], bytesRead: null, totalBytes: null, unfiltered };
   if (!transcriptPath) {
     return { ...unread, state: 'absent', why: 'the payload carried no transcript_path' };
-  }
-  if (knownIds !== null && knownIds.size === 0) {
-    return { ...unread, state: 'not-scanned', why: 'the index knew no ids to filter against' };
   }
 
   let read: { text: string; bytesRead: number; totalBytes: number };
@@ -1076,13 +1110,14 @@ export function scanTranscript(
   }
 
   return {
-    ids: scanTextIds(read.text, knownIds),
+    ids: scanTextIds(read.text, 'ids' in known ? known.ids : null),
     state: read.bytesRead < read.totalBytes ? 'tail' : 'whole',
     bytesRead: read.bytesRead,
     totalBytes: read.totalBytes,
     why: read.bytesRead < read.totalBytes
       ? `the transcript is larger than the ${MAX_TRANSCRIPT_BYTES}-byte tail bound`
       : null,
+    unfiltered,
   };
 }
 

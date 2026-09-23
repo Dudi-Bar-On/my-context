@@ -19,6 +19,13 @@
  * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` forbids
  * dressing "unmeasured" up as "measured none", and `bytesRead`/`totalBytes` are
  * `null` exactly where nobody read anything.
+ *
+ * **A FOURTH fact joined them in round 1 of this task's review**, and it is the
+ * same shape once more: whether anything CHECKED the ids. `KnownIds` makes the
+ * caller say either which ids it knows — an empty set included, which is a real
+ * filter matching nothing — or why it knows none, and the answer carries that
+ * reason back in `unfiltered`. How much was read and whether it was checked are
+ * two questions; one field answering both is how this defect got in.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,7 +44,7 @@ test('a transcript read whole and citing nothing is a MEASURED zero, drawn and n
   const file = path.join(root, 't.jsonl');
   writeFileSync(file, '{"content":"no ids were mentioned in this session at all"}\n', 'utf8');
 
-  const scan = scanTranscript(file, new Set(['CONST-a']));
+  const scan = scanTranscript(file, { ids: new Set(['CONST-a']) });
   assert.deepEqual(scan.ids, []);
   assert.equal(scan.state, 'whole');
   assert.equal(scan.why, null);
@@ -50,7 +57,7 @@ test('a transcript read whole and citing nothing is a MEASURED zero, drawn and n
 
 test('a transcript that could not be read is UNMEASURED — no zero, and it says why', () => {
   const root = sandbox();
-  const known = new Set(['CONST-a']);
+  const known = { ids: new Set(['CONST-a']) };
 
   const missing = scanTranscript(path.join(root, 'gone.jsonl'), known);
   assert.deepEqual(missing.ids, []);
@@ -69,7 +76,7 @@ test('a transcript that could not be read is UNMEASURED — no zero, and it says
 });
 
 test('no transcript path at all is its own answer, never "read and found nothing"', () => {
-  const known = new Set(['CONST-a']);
+  const known = { ids: new Set(['CONST-a']) };
   for (const nothing of [null, undefined, '']) {
     const scan = scanTranscript(nothing, known);
     assert.deepEqual(scan.ids, []);
@@ -90,7 +97,8 @@ test('an oversized transcript reports the tail bound, with both byte counts', ()
   const filler = 'x'.repeat(MAX_TRANSCRIPT_BYTES + 1024);
   writeFileSync(file, `CONST-buried-at-the-start\n${filler}\nCONST-near-the-end\n`, 'utf8');
 
-  const scan = scanTranscript(file, new Set(['CONST-buried-at-the-start', 'CONST-near-the-end']));
+  const known = { ids: new Set(['CONST-buried-at-the-start', 'CONST-near-the-end']) };
+  const scan = scanTranscript(file, known);
   assert.deepEqual(scan.ids, ['CONST-near-the-end'], 'the tail bound still bites');
   assert.equal(scan.state, 'tail');
   assert.equal(scan.bytesRead, MAX_TRANSCRIPT_BYTES);
@@ -108,7 +116,7 @@ test('an oversized transcript reports the tail bound, with both byte counts', ()
  */
 test('nothing cited, could not read, and read only the tail are three different answers', () => {
   const root = sandbox();
-  const known = new Set(['CONST-a']);
+  const known = { ids: new Set(['CONST-a']) };
 
   const quiet = path.join(root, 'quiet.jsonl');
   writeFileSync(quiet, '{"content":"nothing cited here"}\n', 'utf8');
@@ -126,21 +134,71 @@ test('nothing cited, could not read, and read only the tail are three different 
 });
 
 /**
- * The fourth silence in the same function, closed for the same reason. An
- * EMPTY known-id filter means the index knew nothing, and the scan returns
- * before it opens the file — so this is not "the transcript cited nothing"
- * either, and the caller may not print it as such.
+ * **The empty filter is a real filter now, and it READS.**
+ *
+ * It used to return a `'not-scanned'` state without opening the file, and no
+ * caller ever reached it — round 1 of this task's review found the state dead
+ * and the doc claiming production hit it. An empty set says the index knows
+ * zero ids, which is a fact about the INDEX; what the transcript cited is a
+ * separate fact, and the only honest way to report it is to read the file and
+ * find nothing matching. That is a measured zero over real bytes.
  */
-test('a scan skipped because the index knew nothing says so rather than returning a zero', () => {
+test('an EMPTY known-id set reads the transcript and answers a measured zero', () => {
   const root = sandbox();
   const file = path.join(root, 't.jsonl');
   writeFileSync(file, 'CONST-a was cited right here\n', 'utf8');
 
-  const scan = scanTranscript(file, new Set());
+  const scan = scanTranscript(file, { ids: new Set() });
   assert.deepEqual(scan.ids, []);
-  assert.equal(scan.state, 'not-scanned');
-  assert.ok(scan.why !== null && scan.why !== '');
-  assert.equal(scan.bytesRead, null, 'the file was never opened, so no byte count may be claimed');
+  assert.equal(scan.state, 'whole');
+  assert.equal(scan.bytesRead, statSync(file).size,
+    'the file was not read, so the zero is a guess rather than a measurement');
+  assert.equal(scan.unfiltered, null, 'an empty filter is still a filter that ran');
+
+  removeTree(root);
+});
+
+/**
+ * The other half of the same distinction: NO filter was possible. The scan
+ * still reads — over-capture is the safe direction, and a MISS is the one this
+ * design forbids — and it carries the caller's reason back so the row can say
+ * the count was never checked against anything.
+ */
+test('an unfiltered scan still reads, takes every id-shaped token, and says why nothing checked it', () => {
+  const root = sandbox();
+  const file = path.join(root, 't.jsonl');
+  writeFileSync(file, 'CONST-a and STD-b and NOTANID were mentioned\n', 'utf8');
+
+  const scan = scanTranscript(file, { unfiltered: 'index unavailable' });
+  assert.deepEqual(scan.ids, ['CONST-a', 'STD-b'],
+    'an unavailable index must over-capture, never under-capture');
+  assert.equal(scan.state, 'whole');
+  assert.equal(scan.unfiltered, 'index unavailable');
+
+  // The reason travels even where nothing was read at all: a count that does
+  // not exist and a count nothing checked are still two different facts.
+  assert.equal(scanTranscript(null, { unfiltered: 'index empty' }).unfiltered, 'index empty');
+
+  removeTree(root);
+});
+
+/**
+ * An EMPTY transcript file — the review's Minor. It is a whole read of zero
+ * bytes, so `0 bytes` here is measured rather than missing, and it must not be
+ * told apart from a real read by accident.
+ */
+test('an empty transcript file is a whole read of zero bytes, not an unread one', () => {
+  const root = sandbox();
+  const file = path.join(root, 'empty.jsonl');
+  writeFileSync(file, '', 'utf8');
+
+  const scan = scanTranscript(file, { ids: new Set(['CONST-a']) });
+  assert.deepEqual(scan.ids, []);
+  assert.equal(scan.state, 'whole');
+  assert.equal(scan.bytesRead, 0);
+  assert.equal(scan.totalBytes, 0);
+  assert.equal(scan.why, null);
+  assert.equal(scan.unfiltered, null);
 
   removeTree(root);
 });

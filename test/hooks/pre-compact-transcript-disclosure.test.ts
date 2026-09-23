@@ -29,7 +29,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdtempSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync, mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -168,6 +170,64 @@ test('a transcript read only to its tail says so, with both byte counts, on both
   assert.match(run.stderr, /not be restored|not captured/,
     'the user was not told what the partial read costs the restore');
   assert.equal(run.stderr.trimEnd().split('\n').length, 1, 'the disclosure is more than one line');
+});
+
+/**
+ * **The fourth and fifth situations the same number stood for: an index that
+ * knew nothing, and an index that would not open.**
+ *
+ * Both skip the known-id filter, so both produce a count of ids NOBODY CHECKED
+ * against the corpus — a different fact from the same count taken with the
+ * filter on, and the row has to say which. That is this item's shape one layer
+ * over: `3 cited in the transcript` means something else when nothing filtered
+ * it.
+ *
+ * **And both must still CAPTURE, which is why the fix is a disclosure and not
+ * a narrower filter.** An empty index cannot tell "deleted" from "never
+ * indexed" — `pre-compact.ts` argues it at length, and
+ * `test/hooks/pre-compact.test.ts` · *the reviewer's MISS* pins it for the seen
+ * arm. The transcript arm is where it matters MORE, not less:
+ * `test/hooks/manual-load-restore.test.ts` says a manually loaded item is
+ * carried by the transcript arm ALONE, so filtering the transcript through an
+ * empty index would drop exactly the item that had no other carrier. A miss is
+ * the one direction this design forbids, so both cases here assert the id
+ * survives as well as that the row names the reason.
+ */
+test('an EMPTY index and an UNAVAILABLE index are two rows, and neither shrinks the capture', (t) => {
+  const withEmptyIndex = sandbox(t);
+  addItem(withEmptyIndex, 'CONST-cited-under-an-empty-index');
+  // The schema exists and the items table is empty — the shape a refresh
+  // dropped under a held write lock leaves behind.
+  Store.open(resolveWorkspace(withEmptyIndex).dbPath).close();
+  const emptyTranscript = path.join(withEmptyIndex, 't.jsonl');
+  writeFileSync(emptyTranscript, '{"content":"per CONST-cited-under-an-empty-index"}\n', 'utf8');
+  const empty = preCompact(withEmptyIndex, emptyTranscript);
+
+  assert.deepEqual(empty.ids, ['CONST-cited-under-an-empty-index'],
+    'an empty index narrowed the transcript arm to nothing — the MISS this design forbids');
+  assert.match(empty.note, /UNFILTERED \(index empty\)/,
+    'the count does not say it was taken with no filter, or why there was none');
+
+  const withNoIndex = sandbox(t);
+  addItem(withNoIndex, 'CONST-cited-with-no-index');
+  rmSync(resolveWorkspace(withNoIndex).dbPath, { force: true });
+  const noneTranscript = path.join(withNoIndex, 't.jsonl');
+  writeFileSync(noneTranscript, '{"content":"per CONST-cited-with-no-index"}\n', 'utf8');
+  const unavailable = preCompact(withNoIndex, noneTranscript);
+
+  assert.deepEqual(unavailable.ids, ['CONST-cited-with-no-index'],
+    'an unavailable index narrowed the transcript arm to nothing');
+  assert.match(unavailable.note, /UNFILTERED \(index unavailable\)/,
+    'an index that would not open reads like an index that knew nothing');
+
+  // And a filtered count says nothing of the kind, or the clause would be
+  // noise on every healthy compaction.
+  const healthy = sandbox(t);
+  addItem(healthy, 'CONST-a');
+  index(healthy);
+  const healthyTranscript = path.join(healthy, 't.jsonl');
+  writeFileSync(healthyTranscript, '{"content":"per CONST-a"}\n', 'utf8');
+  assert.doesNotMatch(preCompact(healthy, healthyTranscript).note, /UNFILTERED/);
 });
 
 /**

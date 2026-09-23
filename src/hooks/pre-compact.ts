@@ -4,7 +4,9 @@ import { readOccupancy } from '../core/context-occupancy.ts';
 import {
   checkHandoverAsk, discloseIgnoredAsk, type HandoverAskVerdict,
 } from '../core/handover-ask.ts';
-import { scanTranscript, writeSnapshot, type TranscriptScan } from '../core/ledger.ts';
+import {
+  scanTranscript, writeSnapshot, type KnownIds, type TranscriptScan,
+} from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { reviewNote, reviewTrigger, type TriggerVerdict } from '../review/trigger.ts';
 import { readSeen, seenIds } from '../core/seen-file.ts';
@@ -244,21 +246,30 @@ export function buildRestoreSnapshot(
     // refresh lag into suppression, the one direction this design forbids.
     // The filter's whole purpose (do not resurrect deleted/renamed ids)
     // only means anything when the index actually knows something.
-    let known: Set<string> | null = null;
-    let knownSkipReason: string | null = null;
+    //
+    // **The two skips are two values now, not one `null` and a string beside
+    // it** (task 4.7 review, round 1). They were `known = null` plus a
+    // `knownSkipReason` the scan never saw, so the scan could not say why its
+    // count was unchecked and the row said it in a clause of its own, detached
+    // from the number it qualifies. `KnownIds` carries the reason INTO the
+    // scan, which is the same rule this task enforces on every other count
+    // here: the fact and the reason travel together or they drift apart.
+    let known: KnownIds = { unfiltered: 'index unavailable' };
     let store: Store | null = null;
     try {
       store = Store.openReadOnly(ws.dbPath);
       const ids = store.ids();
-      if (ids.length === 0) knownSkipReason = 'index empty';
-      else known = new Set(ids);
+      known = ids.length === 0 ? { unfiltered: 'index empty' } : { ids: new Set(ids) };
     } catch {
-      knownSkipReason = 'index unavailable';
+      // `known` stays `index unavailable` — the value it was declared with.
     } finally {
       try { store?.close(); } catch { /* fail open */ }
     }
+    const knownSkipReason = 'unfiltered' in known ? known.unfiltered : null;
 
-    const fromLedger = known === null ? fromSeen : fromSeen.filter((id) => known.has(id));
+    const fromLedger = 'ids' in known
+      ? fromSeen.filter((id) => known.ids.has(id))
+      : fromSeen;
     // The scan reports HOW MUCH of the transcript its answer rests on, and
     // the row below prints that rather than a bare count — see
     // `transcriptClause` for the three facts one number used to stand for.
@@ -404,23 +415,26 @@ export function buildRestoreSnapshot(
  * one's number, which is this item's defect re-introduced in its own repair.
  */
 function transcriptClause(scan: TranscriptScan): string {
+  // Only where a count was actually printed: "unchecked" qualifies a NUMBER,
+  // and hanging it off "the transcript could not be read" would qualify an
+  // absence, which is the collapse this whole clause exists to stop.
+  const unchecked = scan.unfiltered === null
+    ? ''
+    : ` — UNFILTERED (${scan.unfiltered}), so ids the corpus no longer has may be among them`;
   switch (scan.state) {
     case 'whole':
       return `${scan.ids.length} cited in the transcript ` +
-        `(whole transcript read, ${scan.totalBytes} bytes)`;
+        `(whole transcript read, ${scan.totalBytes} bytes)${unchecked}`;
     case 'tail':
       return `${scan.ids.length} cited in the transcript TAIL ONLY (the last ${scan.bytesRead} ` +
         `of ${scan.totalBytes} bytes; anything cited before that point is UNMEASURED, ` +
-        'not absent)';
+        `not absent)${unchecked}`;
     case 'unreadable':
       return `the transcript could not be read (${scan.why}), so what this session cited is ` +
         'unmeasured rather than none';
     case 'absent':
       return 'no transcript was scanned (no transcript_path on the payload), so what this ' +
         'session cited is unmeasured rather than none';
-    case 'not-scanned':
-      return `the transcript was not scanned (${scan.why}), so what this session cited is ` +
-        'unmeasured rather than none';
   }
 }
 
