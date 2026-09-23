@@ -41,6 +41,7 @@
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { createItem, type MutationContext } from '../core/mutate.ts';
+import { writePrivateGitignore } from '../core/private-gitignore.ts';
 import { SUMMARY_MAX_CHARS } from '../core/validate.ts';
 import { claimKey, sameClaim } from './claim.ts';
 import { alreadyDeclined, declinedAtSameId } from './declined.ts';
@@ -314,7 +315,7 @@ function writeSightings(root: string, rows: Sighting[]): void {
   const tmp = `${target}.tmp-${process.pid}`;
   try {
     mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(path.join(path.dirname(target), '.gitignore'), '*\n', 'utf8');
+    writePrivateGitignore(path.dirname(target));
     writeFileSync(tmp, `${JSON.stringify(rows.slice(-SIGHTING_CAP), null, 2)}\n`, 'utf8');
     renameSync(tmp, target);
   } catch {

@@ -36,8 +36,9 @@
  * there: the failure mode is not a missing log, it is a proposal nobody
  * approved arriving in somebody else's checkout.
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { writePrivateGitignore } from './private-gitignore.ts';
 
 /**
  * The directory, relative to the corpus root. **Read by `loadLayer` as a
@@ -73,6 +74,8 @@ export function isDraftFilePath(filePath: string): boolean {
 export function ensureDraftDir(root: string): string {
   const dir = path.join(root, DRAFT_DIR);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+  // `core/private-gitignore.ts` owns the line — 2026-09-23, a repository's
+  // own root `.gitignore` was found truncated to `*` by one of these writers.
+  writePrivateGitignore(dir);
   return dir;
 }

@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import {
   appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync,
-  truncateSync, writeFileSync,
+  truncateSync,
 } from 'node:fs';
 import path from 'node:path';
 import { acquireLock } from './lock.ts';
+import { writePrivateGitignore } from './private-gitignore.ts';
 
 // --- The append-only JSONL log, once ----------------------------------------
 //
@@ -94,7 +95,10 @@ export interface JsonlLogSpec {
  */
 export function ensureLogDir(dir: string): string {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+  // One writer owns this line since the 2026-09-23 incident, in which a
+  // repository's own root `.gitignore` was found truncated to `*`. It refuses
+  // a target that is not a directory this product created, and discloses.
+  writePrivateGitignore(dir);
   return dir;
 }
 

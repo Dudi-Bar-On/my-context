@@ -214,7 +214,24 @@ export function deliveredFile(root: string): string {
 function ensureDir(root: string): string {
   const dir = path.join(root, DELIVERED_DIR);
   mkdirSync(dir, { recursive: true });
-  try { writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8'); } catch { /* best effort */ }
+  // **THE 2026-09-23 INCIDENT, ASKED LOCALLY.** `core/private-gitignore.ts`
+  // is the authority on this line for the other eleven sites: a repository's
+  // own root `.gitignore` was found truncated to `*`, so a writer now refuses
+  // a target that is not its own and a file that already carries rules.
+  // **The store may not import it.** D41 spec §7 — asserted by
+  // `test/rules/isolation.test.ts` — allows `src/rules/` exactly one edge
+  // into `src/core/`, the frontmatter parser, so the two questions are asked
+  // here instead of the policy being imported. Narrower than the authority
+  // on purpose: this directory's name is known, so nothing here has to
+  // generalise about which names are private.
+  try {
+    if (path.basename(dir) !== DELIVERED_DIR) return dir;
+    const marker = path.join(dir, '.gitignore');
+    let existing = '';
+    try { existing = readFileSync(marker, 'utf8'); } catch { /* absent is the first write */ }
+    if (existing.trim() !== '' && existing.trim() !== '*') return dir;
+    writeFileSync(marker, '*\n', 'utf8');
+  } catch { /* best effort */ }
   return dir;
 }
 

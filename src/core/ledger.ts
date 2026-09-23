@@ -6,6 +6,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { retryOnTransientFsError } from './rebuild.ts';
+import { writePrivateGitignore } from './private-gitignore.ts';
 import { readSessionNames } from './session-names.ts';
 
 export type LedgerTier = 'pinned' | 'jit' | 'restored';
@@ -761,7 +762,8 @@ export function writeSnapshot(root: string, sessionId: string, itemIds: string[]
   const target = snapshotPath(root, sessionId);
   const dir = path.dirname(target);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+  // `core/private-gitignore.ts` owns the line — the 2026-09-23 incident.
+  writePrivateGitignore(dir);
 
   const snapshot: Snapshot = {
     sessionId,
@@ -1121,7 +1123,7 @@ function writeCarryOnceEntries(root: string, entries: CarryOnceEntry[]): { writt
     // Beside the file, on every write — the same reason `continuity.ts` and
     // `focus.ts` write one here: `state/` may have no `.gitignore` yet if
     // nothing else has written into it in this workspace.
-    writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+    writePrivateGitignore(dir);
     const body = `${JSON.stringify({ protocol: CARRY_ONCE_PROTOCOL, ids: entries }, null, 2)}\n`;
     writeFileSync(tmp, body, 'utf8');
     retryOnTransientFsError(() => renameSync(tmp, target));

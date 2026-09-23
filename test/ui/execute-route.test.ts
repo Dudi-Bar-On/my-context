@@ -26,7 +26,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
@@ -641,14 +641,22 @@ test('a failed completion write still returns 200, discloses it, and leaves the 
   await withServer(async (h) => {
     const root = workspace(h.cwd);
     const run: CommandRunner = () => {
-      // Break the NEXT append without touching the row already on disk:
-      // `ensureLogDir` rewrites `.audit/.gitignore` on every append, so a
-      // DIRECTORY at that path fails the write while `audit.jsonl` — and the
-      // `execute` row inside it — stays exactly as it was. A mode bit would not
-      // do: win32 does not honour it, and this suite runs there.
-      const gitignore = path.join(root, '.audit', '.gitignore');
-      rmSync(gitignore, { force: true });
-      mkdirSync(gitignore, { recursive: true });
+      // Break the NEXT append without touching the row already on disk: the
+      // log file itself is made READ-ONLY, so `appendFileSync` fails EPERM
+      // while `audit.jsonl` — and the `execute` row inside it — stays exactly
+      // as it was. Measured on win32, where this suite runs: a read-only FILE
+      // is honoured there (it is the directory mode bit that is not).
+      //
+      // **This used to plant a DIRECTORY at `.audit/.gitignore`**, on the
+      // ground that `ensureLogDir` rewrites that marker on every append. It no
+      // longer breaks anything, and that is the fix for
+      // TASK-the-product-overwrote-the-repository-s-root-gitignore-with-a: after
+      // the 2026-09-23 incident the marker is written by
+      // `core/private-gitignore.ts`, which DISCLOSES a marker it could not
+      // write and never costs the caller the record it was appending. The
+      // subject of this test is the completion row, so the breakage moved to
+      // the file the row goes in.
+      chmodSync(auditLogPath(root), 0o444);
       return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
     };
     rebind(run);
@@ -666,6 +674,9 @@ test('a failed completion write still returns 200, discloses it, and leaves the 
     assert.ok(start !== undefined, 'the execute row was lost with the completion row');
     assert.equal(start.command?.exitCode, null);
     assert.equal(doneRow(h.cwd), undefined);
+
+    // Handed back before teardown: a read-only file survives a tree removal.
+    chmodSync(auditLogPath(root), 0o666);
   });
 });
 
