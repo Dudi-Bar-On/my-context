@@ -1303,10 +1303,28 @@ export function searchArchiveTiered(
       bounded,
     });
   }
+  // **The SAME coverage disclosure `searchArchive` makes, from the same
+  // function — and this is the one that reaches the reader.**
+  //
+  // `searchArchive`'s repair for site M10 of
+  // `TASK-nine-sites-report-a-measured-zero-for-something-they-could` did not
+  // reach the search box, because the search box does not call it: the live
+  // route is `GET /api/conversations/search` -> `apiConversationSearch` ->
+  // THIS function, whose own `searchable`/`note` pair was populated only by the
+  // short-query and all-exclusions refusals above. So an unbuilt or partially
+  // built prose index still answered `searchable: true, note: null, hits: []`,
+  // which the screen draws as *the archive does not contain this*.
+  //
+  // `coverageNote` is CALLED, never copied: one sentence for one condition, so
+  // the two entry points into this module cannot come to describe the same
+  // index two ways. Asked only on an empty hit list, for that function's own
+  // reason — an answer that found something needs no disclosure, and this is
+  // the hot path.
+  const coverage = hits.length === 0 ? coverageNote(index) : null;
   return {
     query: trimmed,
-    searchable: true,
-    note: null,
+    searchable: coverage === null,
+    note: coverage,
     terms: parsed.terms,
     short: parsed.short,
     excluded: parsed.excluded,

@@ -2311,7 +2311,27 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       limit,
     }));
     const first = answers[0];
-    if (first !== undefined && !first.searchable) {
+    // **`every`, not `first`, and the reason is a second kind of refusal.**
+    //
+    // Until `TASK-nine-sites-report-a-measured-zero-for-something-they-could`
+    // (M10) the only things that could make an answer unsearchable were
+    // properties of the QUERY — under the character floor, or nothing but
+    // exclusions — and those are identical across every per-session answer, so
+    // reading the first was reading all of them.
+    //
+    // The coverage refusal is not like that. It is a property of the INDEX, but
+    // `searchArchiveTiered` raises it only on an answer whose own hit list is
+    // empty — so with `?name=` matching several sessions, the first can be
+    // empty while a later one holds the hits. Returning on `first` alone would
+    // then throw away real hits to report that the index is behind, which is
+    // the same class of drop pointed the other way. `every` fires exactly when
+    // the MERGED answer is empty, which is the only time an empty list can be
+    // mistaken for an answer about the archive.
+    //
+    // `first.note` is still the sentence to serve: every unsearchable answer in
+    // the array carries the same one, because both kinds of refusal are about
+    // something all of them share — the query, or the index.
+    if (first !== undefined && answers.every((a) => !a.searchable)) {
       return empty({
         searchable: false, note: first.note, excluded: first.excluded, index: shelf,
       });

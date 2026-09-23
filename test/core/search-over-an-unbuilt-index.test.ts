@@ -19,12 +19,26 @@
  * may perform, so a browser or an agent reaching a workspace where nobody has
  * run it is not an edge case — it is the state every workspace starts in.
  *
- * **Where the answer is printed, so "disclosed" means something here.**
- * `searchable`/`note` is the convention this module already owns and the one
- * both consumers already draw: `apiConversationSearch`
- * (`src/ui/read-model-conversations.ts`) passes the pair through unchanged, and
- * `read-model-retrieval.ts` says in its own header that *"`searchArchive` says
- * so rather than answering 'nothing found'"*. Nothing new is invented here.
+ * **Where the answer is printed — and this file's first version got that
+ * wrong, which is worth keeping rather than quietly correcting.** It claimed
+ * "both consumers already draw it", naming `apiConversationSearch`. They do
+ * not, and neither does what it named:
+ *
+ *  - `apiConversationSearch` (`ui/read-model-conversations.ts`) — the route the
+ *    live search box calls — does not call `searchArchive` at all. It calls
+ *    `searchArchiveTiered`, a separate function with its own result type, and
+ *    a disclosure on THIS function never reached the screen.
+ *    `test/ui/search-route-over-an-unbuilt-index.test.ts` is where that is
+ *    proved now, through the route, and it is the test that matters for M10.
+ *  - `read-model-retrieval.ts`'s `pointersFor` reads `.hits` and drops the
+ *    rest, so the sentence in its header describes an intention rather than
+ *    the code. Its body has its own `query.matchable`/`query.note` pair to
+ *    carry this, and wiring it there is that surface's to do.
+ *
+ * What IS true of `searchable`/`note` is that it is the convention this module
+ * already owns — it exists so an empty list cannot be mistaken for an answer,
+ * and it was being used for exactly one case. Nothing new is invented here;
+ * what was missing was reaching the callers.
  *
  * ── THE COST, STATED, BECAUSE IT IS ON A HOT PATH ─────────────────────────
  *
