@@ -1211,8 +1211,45 @@ export async function render(root, ctx) {
       left: num(Math.max(left, 0)), res: num(Math.round(RESERVE * 100)),
       over: num(Math.max(total - win.size, 0)),
     };
+    /**
+     * **THE CHIP CARRIES A WORD, and it shipped without one.**
+     *
+     * `TASK-two-browser-gates-are-red-before-any-lane-touches-them-and`
+     * (`ui-gates/1`, filed 2026-09-08) names this exact element as the first
+     * of its two reds: *"`simulate "" class="chip ok"` - a chip with its state
+     * in its COLOUR and no word inside it … An empty `chip ok` on the Budget
+     * simulator carries nothing but green."*
+     *
+     * The sentence beside it was always there and was always the explanation;
+     * what was missing is the STATE, inside the pill, in a form that survives
+     * a monochrome print, a colour-blind reader and `forced-colors`. The glyph
+     * is the second channel and it was already set (`data-g`); the word is the
+     * first, and `e2e/chip-hue-authority.spec.ts:403` requires it by name
+     * rather than accepting either — *"`.chip.carry` and `.chip.index` resolve
+     * to the same `◇`, so on those two the glyph alone does not separate them
+     * and the word does."*
+     *
+     * Three words for three states, keyed in both tables, deliberately one
+     * short word each: the pill is a pill, and the paragraph after it is where
+     * the numbers live.
+     */
     let key = 'sim.winOk';
-    if (total > win.size) { key = 'sim.winOver'; chip.className = 'chip crit'; chip.dataset.g = '■'; } else if (left < reserve) { key = 'sim.winTight'; chip.className = 'chip warn'; chip.dataset.g = '▲'; } else { chip.className = 'chip ok'; chip.dataset.g = '●'; }
+    let word = 'sim.winOkChip';
+    if (total > win.size) {
+      key = 'sim.winOver';
+      word = 'sim.winOverChip';
+      chip.className = 'chip crit';
+      chip.dataset.g = '■';
+    } else if (left < reserve) {
+      key = 'sim.winTight';
+      word = 'sim.winTightChip';
+      chip.className = 'chip warn';
+      chip.dataset.g = '▲';
+    } else {
+      chip.className = 'chip ok';
+      chip.dataset.g = '●';
+    }
+    chip.append(...ctx.t(word));
     winLine.append(chip, ' ', ...ctx.t(key, subs));
 
     /* **A FULL WINDOW IS A STATE WITH A NEXT STEP, NOT A FAILURE**

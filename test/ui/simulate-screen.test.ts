@@ -1440,9 +1440,15 @@ test('with a window the check is over all FIVE budgets, not the one being dragge
   // overflow the window — the exact failure the check exists to catch.
   const line = notesOf(root).find((t) => t.includes('across all five tiers'));
   assert.ok(line !== undefined, 'the whole-window check drew nothing');
-  assert.equal(line!.trim(), tFlat(en, 'sim.winOk', {
+  // **THE CHIP'S OWN WORD IS PART OF THIS LINE, since 2026-09-23.** It used to
+  // be an empty pill carrying the state in its colour and nothing else —
+  // `TASK-two-browser-gates-are-red-before-any-lane-touches-them-and`'s first
+  // red, and `e2e/chip-hue-authority.spec.ts:403` is what fails on it. The
+  // word is read from the table rather than written here, so a translation
+  // that changes moves both sides together.
+  assert.equal(line!.trim(), `${tFlat(en, 'sim.winOkChip', {})} ${tFlat(en, 'sim.winOk', {
     total: '8,700', win: '1,000,000', pct: '1', left: '991,300', res: '25',
-  }));
+  })}`);
 });
 
 test('a sum that overflows the window is refused as a sum, and the chip says so', async () => {

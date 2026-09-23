@@ -983,13 +983,36 @@ let renderGeneration = 0;
 export async function render(root, ctx) {
   const mine = ++renderGeneration;
 
+  /**
+   * **ONE `screenHead` CALL SITE, and the count is the reason it is shared.**
+   *
+   * Both paths below — the refusal and the answer — clear the section and draw
+   * the SAME heading, because a heading that differed between them would be a
+   * second answer to "which screen am I on". Written twice, it also made this
+   * screen look like two screens to the one gate that counts them:
+   * `test/ui/glyph-set.test.ts` reads every `screenHead(…)` CALL SITE off the
+   * shipped screens and pins the total, and CI run 35784645557 failed on both
+   * platforms with *"the screen count moved — 17 screens call screenHead: 18
+   * !== 17"* the moment the generation guard above gave this render a second
+   * one. No new screen exists, so the number is right and the duplication was
+   * not.
+   *
+   * It stays INSIDE `render`, after the generation check at each call, rather
+   * than being hoisted: clearing is the thing the guard protects, and a helper
+   * that cleared on its own would be the "clear first" the docblock above
+   * exists to refuse.
+   */
+  const drawHead = () => {
+    root.replaceChildren();
+    screenHead(ctx, root, 'doc.h', 'doc.v', 'doc.sub');
+  };
+
   let data;
   try {
     data = await ctx.api('/api/doctor');
   } catch (error) {
     if (mine !== renderGeneration) return;
-    root.replaceChildren();
-    screenHead(ctx, root, 'doc.h', 'doc.v', 'doc.sub');
+    drawHead();
     // Drawn INSTEAD of the three cards, never beside them: a doctor that could
     // not run and a corpus with no findings are opposite facts, and three
     // empty cards would report the good one.
@@ -998,8 +1021,7 @@ export async function render(root, ctx) {
   }
   if (mine !== renderGeneration) return;
 
-  root.replaceChildren();
-  screenHead(ctx, root, 'doc.h', 'doc.v', 'doc.sub');
+  drawHead();
 
   // **THE TALLY, and it is drawn at every count including zero.**
   //

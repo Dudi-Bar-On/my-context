@@ -5077,6 +5077,42 @@ const STRIP_MAX_ROWS = 4;
 function fitStrip() {
   const strip = document.getElementById('strip');
   if (strip === null || stripPlan === null) return;
+  /**
+   * **A BAR THAT IS NOT ON SCREEN CANNOT BE MEASURED, AND MEASURING IT ANYWAY
+   * THREW THE READER'S ROWS AWAY.**
+   *
+   * `stripDeficit` only counts a box that is `clientWidth > 0 && scrollWidth >
+   * clientWidth`, so against a `display:none` bar every box reports zero and
+   * the loop below concludes that nothing is cut — which is the ONE input that
+   * decides how many rows the bar gets. The answer is always the floor: two
+   * rows, whatever the reader was actually being shown.
+   *
+   * It is reached, and by a path a person takes. `styles.css:626` hides the
+   * strip outright in the expanded conversation viewer
+   * (`.app.doc-wide … .strip{display:none}`), and `watchStripFit`'s width
+   * observer fires on the way in with `contentRect.width` of 0 — a width that
+   * has genuinely moved — so a fit runs against the hidden bar and collapses
+   * it. **Measured 2026-09-23 on a quiet machine, `--workers=1`, chromium AND
+   * chrome, both deterministic**: `e2e/conversations-panels.spec.ts:444` (en)
+   * expands the viewer and comes back, and the well returns 25px TALLER than
+   * it left — exactly one `grid-auto-rows:25px` strip row
+   * (`styles.css:974`) — because the bar came back with two rows where it had
+   * three. That is a visible jump for the reader, not only a red assertion.
+   *
+   * So a hidden bar is left exactly as it was. Nothing is lost by waiting:
+   * the same width observer fires again when the strip is shown, with a real
+   * width, and that fit is the one with something to measure.
+   *
+   * **AND ONLY ONCE THERE IS SOMETHING TO PRESERVE.** `layoutStrip` below is
+   * the ONLY thing in this product that creates a `.striprow` at all, and it
+   * is only ever called from here — so a bail-out before it, on a first fit
+   * that happens to run while the bar has not been laid out yet, leaves the
+   * bar with no rows whatsoever. Measured: `e2e/strip-picker.spec.ts:281`
+   * timed out on `waiting for locator('#strip .striprow') to be visible`.
+   *
+   * So a hidden bar is never MEASURED, and an unbuilt bar is always BUILT.
+   */
+  if (strip.clientWidth === 0 && strip.querySelector('.striprow') !== null) return;
   // **THE CHOICE IS APPLIED BEFORE ANYTHING IS MEASURED** — `semantic/17`. A
   // hidden pill has no width, so every measurement below is of the bar the
   // reader asked for rather than of the bar as built; and a loud pill he

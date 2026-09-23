@@ -1238,6 +1238,12 @@ export const strings = {
   'sim.recBad': 'A budget must be a positive integer written in digits. Got {typed}. Nothing was changed.',
   // ── Validation is against the whole window (plan:budget seq:3) ───────────
   'sim.winh': 'All five budgets, against the whole window',
+  // The chip's own word, so the state is never in the colour alone
+  // (`ui-gates/1`, `e2e/chip-hue-authority.spec.ts:403`). Short on purpose: the
+  // pill says WHICH state, the sentence beside it says the numbers.
+  'sim.winOkChip': 'fits',
+  'sim.winTightChip': 'tight',
+  'sim.winOverChip': 'over',
   'sim.winOk': '{total} tokens across all five tiers of a {win}-token window — {pct}% — leaving {left} tokens to work in, clearing the {res}% reserve.',
   'sim.winTight': '{total} tokens across five tiers of a {win}-token window — {pct}%. It fits, but leaves only {left} tokens free, under the {res}% reserve. Fitting with nothing left to work in is still wrong.',
   'sim.winOver': '{total} tokens across all five tiers does not fit a {win}-token window: {over} tokens over. A budget that passes alone while the five together fail is exactly what this check catches.',

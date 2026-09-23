@@ -78,6 +78,20 @@ export default defineConfig({
    */
   globalSetup: './global-setup.ts',
 
+  /**
+   * **And the snapshot that setup takes is deleted here.**
+   *
+   * Since 2026-09-23 (`ui-gates/1`, `rulings/114`) `globalSetup` does more
+   * than sync: it FREEZES the corpus into a temporary workspace and points the
+   * workers at it, so the session state a spec asserts on cannot move while
+   * the run is in progress. `e2e/frozen-corpus.ts` carries that argument.
+   * A frozen corpus is a real ~200 MB copy, so a run that does not delete its
+   * own is a disk bill — `%TEMP%` has already been measured holding 118
+   * undeleted scratch twins (2026-09-11). `global-teardown.ts` never fails the
+   * run: the tests have already answered by the time it runs.
+   */
+  globalTeardown: './global-teardown.ts',
+
   fullyParallel: true,
   /**
    * **Capped, because the default was buying nothing and costing determinism.**

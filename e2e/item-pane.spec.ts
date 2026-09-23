@@ -1,3 +1,5 @@
+// @basis TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the
 /**
  * **Clicking an id opens the item detail pane.**
  *
@@ -35,8 +37,39 @@ import { test, expect } from './app.ts';
  * visited first. The fix is the same one, applied at the shell boundary.
  */
 async function firstLink(page: import('@playwright/test').Page) {
+  const here = page.locator('#screen button.linkid').first();
+  if (await here.isVisible().catch(() => false)) return here;
+  /*
+   * **THE SCREEN IS DISCOVERED, NOT ASSUMED — corrected 2026-09-23**, and the
+   * move is the one `an id on a different screen opens the pane too` below
+   * already makes, in its own words: *"WHICH of them renders one depends on
+   * what the corpus holds … Hard-coding a screen made this test skip, and a
+   * skipped test proves nothing about the property it is named for."* The same
+   * is true of the screen the app happens to BOOT on, which is what this
+   * helper was trusting.
+   *
+   * It stopped being true the moment the browser suite started from the
+   * session state a clean checkout has (`e2e/frozen-corpus.ts`): the
+   * preview's `linkid`s are the CARRIED block, and a session that has carried
+   * nothing draws none — which `app-layout.spec.ts`'s own carry test already
+   * treats as a legitimate state rather than a failure. Measured on the full
+   * gate, 2026-09-23: *"no button.linkid rendered"*, three tests, both
+   * projects, on a corpus holding 1,116 items.
+   *
+   * So the property is measured where the product offers it. This is not a
+   * weaker assertion — every test below still requires a real `linkid` to
+   * exist and to open the pane; what it no longer requires is that a
+   * particular screen be the one holding it.
+   */
+  for (const screen of ['injected', 'doctor', 'learn', 'coverage', 'decay']) {
+    await page.evaluate((s) => { location.hash = `#/${s}`; }, screen);
+    await expect(page.locator(`[data-p="${screen}"]`)).toBeAttached({ timeout: 10_000 });
+    const candidate = page.locator(`[data-p="${screen}"] button.linkid`).first();
+    if (await candidate.isVisible({ timeout: 10_000 }).catch(() => false)) return candidate;
+  }
   const link = page.locator('#screen button.linkid').first();
-  await expect(link, 'no button.linkid rendered — this test cannot measure what it is for')
+  await expect(link, 'no button.linkid rendered on the boot screen or on any of injected, '
+    + 'doctor, learn, coverage or decay — this test cannot measure what it is for')
     .toBeVisible({ timeout: 15_000 });
   return link;
 }

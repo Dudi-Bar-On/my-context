@@ -40,7 +40,6 @@ e2e/capture-execute.spec.ts
 e2e/chart-css-authority.spec.ts
 e2e/chart-scale.spec.ts
 e2e/chart-type-size.spec.ts
-e2e/chip-hue-authority.spec.ts
 e2e/cli-help.spec.ts
 e2e/composer-staging.spec.ts
 e2e/composer-suggest.spec.ts
@@ -60,7 +59,6 @@ e2e/focus-tags.spec.ts
 e2e/injected-empty.spec.ts
 e2e/injected-real-spills.spec.ts
 e2e/injection-preview.spec.ts
-e2e/item-pane.spec.ts
 e2e/keyboard.spec.ts
 e2e/language.spec.ts
 e2e/live-stream.spec.ts

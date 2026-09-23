@@ -1,4 +1,6 @@
-// @basis TASK-the-find-options-the-owner-asked-for-twice-in-a-floating,
+// @basis TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the,
+// TASK-the-find-options-the-owner-asked-for-twice-in-a-floating,
 // TASK-the-find-panel-offers-regular-expressions-and-no-help-and,
 // TASK-the-find-panel-s-counts-move-as-you-type-and-the-regex-mode,
 // DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn,
@@ -899,7 +901,7 @@ for (const lang of ['en', 'he'] as const) {
      */
     const top = async (selector: string): Promise<number> => page.locator(selector)
       .evaluate((el) => Math.round(el.getBoundingClientRect().top));
-    const panelTop = await top(SEARCH);
+    const panelTop = await top(`${SEARCH} .mcpanelhead`);
 
     await find(page, 'byte');
     /*
@@ -912,7 +914,7 @@ for (const lang of ['en', 'he'] as const) {
      */
     const first = { counts: await top('.mcpanelcounts'),
       stepper: await top('.mcpanelcounts .tvnavfounds'),
-      sentence: await top('.tvroot > p.tvcount') };
+      sentence: await top('.tvroot > p.tvcount'), panel: panelTop };
     console.log(`[counts ${lang}] panel ${panelTop} ${JSON.stringify(first)}`);
 
     // Directly under the box, which is the other half of his sentence: the
@@ -936,11 +938,45 @@ for (const lang of ['en', 'he'] as const) {
 
     const after = { counts: await top('.mcpanelcounts'),
       stepper: await top('.mcpanelcounts .tvnavfounds'),
-      sentence: await top('.tvroot > p.tvcount') };
+      sentence: await top('.tvroot > p.tvcount'), panel: await top(`${SEARCH} .mcpanelhead`) };
     console.log(`[counts ${lang}] after ${JSON.stringify(after)}`);
-    expect(after.counts, 'the count block moved when the panel below it grew')
-      .toBe(first.counts);
-    expect(after.stepper, 'the stepper moved').toBe(first.stepper);
+    /*
+     * **MEASURED FROM THE PANEL'S OWN HEAD, NOT FROM THE WINDOW — corrected
+     * 2026-09-23.**
+     *
+     * The complaint this test is written from is *"pleaes put the counts it a
+     * statis place up under the edit search expression"*: they slid DOWN THE
+     * PANEL as he typed. That is a distance inside the panel. A viewport top
+     * additionally measures WHERE THE PANEL'S CONTENT IS SCROLLED TO, and that
+     * is not the reader's complaint — it is this automation's own doing.
+     *
+     * **Measured, and it is deterministic rather than a flake.** `he` on
+     * bundled Chromium, 5 runs out of 5, identical numbers every time, and
+     * REPRODUCED AGAINST PRISTINE `HEAD` SOURCES so it is nothing this round
+     * changed: opening the help grows the panel body from 310px to 876px, past
+     * the `max-block-size: calc(100vh - top - 1rem)` that `placeAt`
+     * (`src/ui/public/lib/panel.js:243`) writes, so the dialog becomes its own
+     * scroller. `option()` and `mode()` then tick controls that are now below
+     * the fold, and Playwright scrolls each one into view before clicking it —
+     * so the panel's CONTENT ends 44px higher while the dialog BOX has not
+     * moved at all (542 before, 542 after). Head 544 -> 500, counts
+     * 615 -> 571, stepper 619 -> 575: everything moved together, by the scroll.
+     *
+     * **Inside the panel nothing moved**: counts 71px under the head before and
+     * 71px after, stepper 75px and 75px. `en` never reaches it and Google
+     * Chrome never reaches it — only the Hebrew panel on Chromium grows tall
+     * enough to scroll — which is exactly the signature of a frame-of-reference
+     * bug in the measurement rather than of a layout that gives way.
+     *
+     * So the distance is taken in the frame his sentence is in: from the
+     * panel's own head, which scrolls with the block it is measuring.
+     */
+    expect(after.counts - after.panel,
+      'the count block moved DOWN THE PANEL when the panel below it grew — his own '
+      + `complaint. Head ${first.panel} -> ${after.panel}, counts ${first.counts} -> ${after.counts}`)
+      .toBe(first.counts - first.panel);
+    expect(after.stepper - after.panel, 'the stepper moved down the panel')
+      .toBe(first.stepper - first.panel);
     /*
      * **AND WHAT IS PINNED FOR THE SENTENCE, SAID EXACTLY.** The stepper is
      * above it because `.tvnavfounds` holds only short lines and `p.tvcount`

@@ -1,4 +1,8 @@
-// @basis INSTR-testing-happens-against-the-current-corpus-and-an-exception, TASK-the-browser-suite-returns-to-the-real-corpus-and-the, TASK-last-ui-task-return-the-ui-to-the-real-corpus
+// @basis INSTR-testing-happens-against-the-current-corpus-and-an-exception,
+// TASK-the-browser-suite-returns-to-the-real-corpus-and-the,
+// TASK-last-ui-task-return-the-ui-to-the-real-corpus,
+// TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the
 /**
  * The APP, opened against THIS REPOSITORY'S OWN CORPUS.
  *
@@ -133,8 +137,35 @@ const REPO = path.resolve(import.meta.dirname, '..');
  * refuse over — the live corpus is present in every checkout by construction,
  * which is the whole point of dogfooding a tool on its own records.
  */
+export const CORPUS_ENV = 'MYCONTEXT_E2E_CORPUS';
+
+/**
+ * **AND SINCE 2026-09-23 THE SUITE SERVES A FROZEN SNAPSHOT OF IT, WHICH IS
+ * THE SAME CORPUS AND NOT THE SAME DIRECTORY.**
+ *
+ * `e2e/global-setup.ts` copies `.my_context/` into a temporary workspace
+ * before any worker starts, links the rest of the repository beside it, and
+ * sets `MYCONTEXT_E2E_CORPUS` to the result — so this expression resolves, in
+ * every worker, to the snapshot. `e2e/frozen-corpus.ts` carries the whole
+ * argument; in one line: the corpus a spec reads is this project's real one,
+ * at real scale, and it stops moving for the length of a run.
+ *
+ * Nothing above changes. The items are this repository's items, the 1,100-item
+ * scale that caught the diagonal fan is the scale under test, and there is
+ * still exactly ONE answer to "what is the app looking at". What is gone is
+ * the third party nobody wrote down: the agent session driving the suite,
+ * appending a seen line for every item delivered to it while `app-layout`
+ * asserted on the delivered preview (measured red, 2026-09-22).
+ *
+ * The override is therefore now read TWICE — once here, by every worker, to
+ * find the snapshot, and once in `global-setup.ts`, in the runner process,
+ * before the snapshot exists, where it still means what it always meant: point
+ * this run at a deliberately broken copy, or at a scratch workspace, and watch
+ * it go red. An operator who sets it gets a frozen copy of the corpus they
+ * named, and their original is not written to or deleted.
+ */
 export const CORPUS = ((): string => {
-  const override = process.env['MYCONTEXT_E2E_CORPUS'];
+  const override = process.env[CORPUS_ENV];
   if (override !== undefined) return path.resolve(override);
   return REPO;
 })();
