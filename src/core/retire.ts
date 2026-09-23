@@ -356,26 +356,50 @@ export interface DoorLoad {
   injected: number;
   /** Mean items cut for budget per record. */
   spilled: number;
+  /**
+   * Mean items DISCLOSED per record: named as undeliverable at any budget
+   * (`SpilledRef.neverOffered`), never priced and never offered.
+   *
+   * Beside `spilled` rather than inside it, because the two answer different
+   * questions about a door. `spilled` rising means the door is asking for more
+   * than its budget allows; `disclosed` rising means the sessions passing
+   * through it hold ids the corpus has moved on from — a stale snapshot, not a
+   * tight budget — and raising a number would fix neither.
+   */
+  disclosed: number;
 }
 
 export function payloadTrend(records: AuditRecord[]): DoorLoad[] {
-  const rows = new Map<string, { op: string; day: string; n: number; i: number; s: number }>();
+  const rows = new Map<
+    string, { op: string; day: string; n: number; i: number; s: number; d: number }
+  >();
   for (const record of records) {
     if (record.kind !== 'injection') continue;
     const day = record.at.slice(0, 10);
     const key = `${record.op} ${day}`;
-    const row = rows.get(key) ?? { op: record.op, day, n: 0, i: 0, s: 0 };
+    const row = rows.get(key) ?? { op: record.op, day, n: 0, i: 0, s: 0, d: 0 };
     row.n += 1;
     // `?? []` is ABSENCE, not zero — the reading `contributions` states: a
     // record written before a field existed and one whose list was empty are
     // both "this record names no id here".
     row.i += (record.injected ?? []).length;
-    row.s += (record.spilled ?? []).length;
+    // **Split on `SpilledRef.neverOffered`**, the mark the selector sets on an
+    // id it disclosed rather than cut (`TASK-the-restore-tier-drops-snapshot-
+    // ids-with-no-disclosure-where`). `spilled` is documented as the load a
+    // door CUT FOR BUDGET, and a superseded or vanished snapshot id was never
+    // offered to that budget: counting it here would report a door as
+    // over-subscribed on the day a session arrived with a stale snapshot. A
+    // record with no marks — every line written before the field existed —
+    // splits entirely into `s`, exactly as before.
+    const spills = record.spilled ?? [];
+    row.s += spills.filter((ref) => ref.neverOffered !== true).length;
+    row.d += spills.filter((ref) => ref.neverOffered === true).length;
     rows.set(key, row);
   }
   return [...rows.values()]
     .map((row): DoorLoad => ({
       op: row.op, day: row.day, records: row.n, injected: row.i / row.n, spilled: row.s / row.n,
+      disclosed: row.d / row.n,
     }))
     .sort((a, b) => (a.op === b.op ? a.day.localeCompare(b.day) : a.op.localeCompare(b.op)));
 }

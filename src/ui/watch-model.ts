@@ -744,6 +744,18 @@ export interface Spill {
    * never as zero.
    */
   tokens: number | null;
+  /**
+   * **This row is a DISCLOSURE, not a budget loss** — `SpilledRef.neverOffered`
+   * carried through unchanged (`TASK-the-restore-tier-drops-snapshot-ids-with-
+   * no-disclosure-where`). The restore tier names an id it could not bring back
+   * — superseded, on a disabled or rationale category, hidden by a focus,
+   * already delivered, or gone from the corpus — and no budget would have taken
+   * it, so a screen must not offer "raise the budget" as the answer.
+   *
+   * ABSENT on every ordinary row, and on every row read out of a record written
+   * before the mark existed: the field is a claim, not a default.
+   */
+  neverOffered?: true;
 }
 
 function flattenSpills(records: AuditRecord[], item: string | null): Spill[] {
@@ -763,6 +775,8 @@ function flattenSpills(records: AuditRecord[], item: string | null): Spill[] {
         tier: s.tier,
         reason: s.reason,
         tokens: typeof record.tokens === 'number' ? record.tokens : null,
+        // Carried, never re-derived, and only when the record makes the claim.
+        ...(s.neverOffered === true ? { neverOffered: true as const } : {}),
       });
     }
   }

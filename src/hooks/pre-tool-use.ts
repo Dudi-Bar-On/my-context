@@ -403,6 +403,14 @@ export function buildJitOutput(
       ...(selection.spilled.length === 0 ? {} : {
         spilled: selection.spilled.map((s): SpilledRef => ({
           id: s.id, tier: s.tier, reason: s.reason,
+          // The `neverOffered` mark travels here for `core/inject.ts`'s reason,
+          // and as a conditional key for the same one: an ordinary spill's row
+          // stays byte-identical. A JIT event never runs the restore tier
+          // (`tiersRun`), so nothing sets it on this path today — written
+          // anyway, because the two copies of this map are one contract and a
+          // divergence between them would be a field that exists on one door
+          // and not the other.
+          ...(s.neverOffered === true ? { neverOffered: true as const } : {}),
         })),
       }),
       // Counts, not ids — the same reason the session-start record carries

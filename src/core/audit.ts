@@ -783,6 +783,26 @@ export interface InjectedRef {
 /** One item the budget excluded, and why — `select`'s own `Spill`, flattened. */
 export interface SpilledRef extends InjectedRef {
   reason: string;
+  /**
+   * **This id was never offered to a budget at all** — `select`'s own
+   * `Spill.neverOffered`, carried through rather than re-derived, and the one
+   * field on this record that changes what a COUNTER may do with the row.
+   *
+   * The restore tier discloses every snapshot id it could not bring back
+   * (`TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where`): a
+   * superseded item, one on a disabled or rationale category, one hidden by
+   * the active focus, one already delivered, or one the corpus no longer has.
+   * None of them lost to a number, and none would come back if a number
+   * changed — so `contributions`, `payloadTrend` and the projection's
+   * `role = 'spilled'` rows must not count them as budget losses.
+   *
+   * **Optional, and absent rather than `false`, which is what keeps this an
+   * ADDITIVE change to a durable on-disk contract.** Every line written before
+   * this field existed reads exactly as it always did — `neverOffered`
+   * undefined is an ordinary budget spill — and no reader has to know when the
+   * field arrived. That is the same rule `at` above follows.
+   */
+  neverOffered?: true;
 }
 
 /**

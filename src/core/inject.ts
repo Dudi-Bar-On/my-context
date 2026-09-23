@@ -1129,6 +1129,15 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
         ...(selection.spilled.length === 0 ? {} : {
           spilled: selection.spilled.map((s): SpilledRef => ({
             id: s.id, tier: s.tier, reason: s.reason,
+            // **The mark travels, and only when it is set.** A restore
+            // disclosure and a budget loss are two different facts
+            // (`Spill.neverOffered`), and a log that recorded them alike made
+            // `contributions`, `payloadTrend` and the watch ratios count a
+            // superseded id as an item the budget cut. Spread as a conditional
+            // key rather than written as `neverOffered: s.neverOffered`, so an
+            // ordinary spill's row is byte-identical to the rows written before
+            // this field existed.
+            ...(s.neverOffered === true ? { neverOffered: true as const } : {}),
           })),
         }),
         // The pinned tier's own disclosure, beside `injected` and `spilled`.

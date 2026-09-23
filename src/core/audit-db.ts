@@ -325,7 +325,26 @@ function insertRecords(db: DatabaseSync, file: string, records: AuditRecord[]): 
       insertItem.run(seq, entry.id, 'injected', entry.tier);
     }
     for (const entry of record.spilled ?? []) {
-      insertItem.run(seq, entry.id, 'spilled', entry.tier);
+      // **`spilled` means the budget cut it; a DISCLOSED id is a fourth role.**
+      //
+      // `audit_item.role = 'spilled'` is documented above as *an item that was
+      // eligible and did not fit*, and it is what every spill count in the
+      // product reads: `topItems(db, 'spilled', …)` behind the watch screen's
+      // ratio and spill charts, and the doctor's governing-spill check. Since
+      // `TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where` a
+      // record can also name an id the restore tier DISCLOSED — superseded, on
+      // a disabled or rationale category, hidden by a focus, already delivered,
+      // or gone from the corpus — which was never priced and never offered, and
+      // which no budget would bring back. Filing it under 'spilled' made every
+      // one of those counters read a stale snapshot as a budget under pressure.
+      //
+      // **A row is still written, under its own role, rather than skipped.**
+      // `queryProjection`'s `itemId` filter matches ANY role, so the record
+      // stays findable by the id it names — dropping the row would answer "what
+      // happened to this item" with silence, which is the failure this whole
+      // item is about. Old lines carry no mark and are unaffected, so a
+      // projection built before this change classifies them exactly as it did.
+      insertItem.run(seq, entry.id, entry.neverOffered === true ? 'disclosed' : 'spilled', entry.tier);
     }
   }
 }
