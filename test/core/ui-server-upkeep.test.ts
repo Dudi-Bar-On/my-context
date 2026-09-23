@@ -619,12 +619,20 @@ test(
         execFileSync(TASKKILL, ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
       } catch { /* already gone, which is the goal state */ }
     };
+    // A pid file is read only once it holds a pid. `writeFileSync` creates the
+    // file and then writes into it, and a read that lands between the two sees
+    // an empty file — `Number('')` is 0, and CI run 35847793065 (windows-latest,
+    // commit 1a49343c) then ran `taskkill /PID 0` and failed on it. Empty, or
+    // anything that is not a positive integer, is 'not yet', the same as ENOENT.
     const readPidWhenWritten = async (file: string): Promise<number> => {
       for (let i = 0; i < 120; i += 1) {
-        try { return Number(readFileSync(file, 'utf8')); } catch { /* not yet */ }
+        try {
+          const pid = Number(readFileSync(file, 'utf8').trim());
+          if (Number.isInteger(pid) && pid > 0) return pid;
+        } catch { /* not yet */ }
         await new Promise((r) => { setTimeout(r, 50); });
       }
-      throw new Error(`nothing ever wrote ${file}`);
+      throw new Error(`nothing ever wrote a pid into ${file}`);
     };
     // The control arm's precondition — that THIS MACHINE reaps the old
     // shape's child when its parent is killed — is itself asynchronous on a
