@@ -371,6 +371,18 @@ export function resolveAnchor(index: ConversationIndex, id: string): ResolvedAnc
     };
   }
 
+  // **The walk's own reason first, and the probe only if it has none.** Since
+  // `swallow/11` the cursor carries `failed` — set at the `openSync` and at the
+  // `readSync` inside `line-walk.ts`, so it is the platform's own message about
+  // the read that actually went looking for this anchor. `whyUnreadable` stays
+  // as the fall-back for the case the cursor cannot describe: nothing read,
+  // nothing failed, no end reached, which is a file that changed under the walk.
+  if (cursor.failed !== undefined) {
+    return {
+      anchor, file, record: null, text: null,
+      unreadable: `${file} could not be read (${cursor.failed})`,
+    };
+  }
   if (cursor.scannedBytes === 0 && !cursor.reachedEnd) {
     return { anchor, file, record: null, text: null, unreadable: whyUnreadable(file) };
   }

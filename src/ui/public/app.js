@@ -2381,10 +2381,43 @@ function showExited() {
  */
 async function refusalDetail(response) {
   const raw = await response.text();
-  if (raw === '') return String(response.status);
+  if (raw === '') return statusOnly(response.status);
   let detail = '';
   try { detail = String(JSON.parse(raw).error ?? ''); } catch { detail = ''; }
-  return detail === '' ? String(response.status) : detail;
+  return detail === '' ? statusOnly(response.status) : detail;
+}
+
+/**
+ * **A response that told the reader nothing but its status — and a 500 is not
+ * a 403** (`swallow/11` m19, second clause: *"a 500 and a 403 reach the reader
+ * through the same `errorNote`"*).
+ *
+ * Both used to be `String(response.status)`, so both arrived at the page as a
+ * bare number in the same `.spill` frame. They are opposite facts with nothing
+ * in common to do about them. A 4xx is a running server saying no to THIS
+ * REQUEST: `request()` raises a banner for 401 and 403, clears the token and
+ * lets the very next call recover. A 5xx is the server failing while handling
+ * the request — nothing about the credential is wrong, no banner is raised,
+ * and a reader who reads the digits as a refusal goes and fetches a fresh
+ * nonce that cannot help. `errorNote`'s own rule is that *"an endpoint that
+ * refused and a corpus that is empty are two facts, and this project's own
+ * invariant is that the difference survives"*.
+ *
+ * **ONLY the 5xx class is narrowed, and the 4xx strings are byte-identical.**
+ * That is not timidity, it is a contract: `request()` throws `new Error('401')`
+ * for a request it never sends, deliberately spelled to match what a real
+ * token-missing response produces, and `e2e/ctx-post.spec.ts` matches that
+ * message against `/^(401|403)$/`. The class that gains a sentence is the one
+ * no caller reads and no spec pins.
+ *
+ * **The status stays IN the sentence.** It is the one thing that was measured,
+ * and a reader who cannot quote the number cannot look anything up.
+ */
+function statusOnly(status) {
+  if (status < 500) return String(status);
+  return `${status} — the server failed while handling this request and sent no reason. `
+    + 'This is not a refusal: the page\'s credential is not the problem and a new one will not '
+    + 'change it. The server\'s own console carries what went wrong.';
 }
 
 /**
