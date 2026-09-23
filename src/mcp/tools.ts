@@ -1,12 +1,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  auditFailureNote, kindOf, PROGRESS_OPS, readAudit, recordAudit, recordItemRead,
+  auditFailureNote, auditReadFailureNote, kindOf, PROGRESS_OPS, readAudit, recordAudit,
+  recordItemRead,
 } from '../core/audit.ts';
 import { RULE_DIRECTIVES } from '../core/command-flags.ts';
 import { askHandoverNow } from '../core/handover-ask.ts';
 import { computeDecay } from '../core/decay.ts';
-import { Ledger } from '../core/ledger.ts';
+import { Ledger, ledgerReadFailureNote } from '../core/ledger.ts';
 import { topUpLedger } from '../core/ledger-replay.ts';
 import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
@@ -258,22 +259,67 @@ const DECAY_COLD_CAVEAT =
  * `cli/commands/status.ts`'s own (unexported, near-identical) helpers take,
  * duplicated here for the same module-scope reason `DECAY_COLD_CAVEAT` is. An
  * unreadable audit log must not take a report down; the answer is then
- * computed from whatever the ledger already holds. */
+ * computed from whatever the ledger already holds.
+ *
+ * **Both degradations are now SAID, and both catches used to be bare.** This
+ * helper is the third copy of a shape whose other two copies
+ * (`cli/commands/status.ts`, `cli/commands/decay.ts`) were fixed by
+ * `TASK-one-unreadable-directory-makes-the-audit-projection-look` and
+ * `TASK-nine-sites-report-a-measured-zero-for-something-they-could` (M9). This
+ * one was missed, so `status_report` and `decay_report` — the surface an AGENT
+ * reads, where an under-count is acted on rather than merely read — kept
+ * under-counting in silence after the two human-facing commands had stopped.
+ *
+ *   - The INNER catch: the ledger opened but could not be brought up to date
+ *     from the audit log, so every count is a FLOOR. `auditReadFailureNote`.
+ *   - The OUTER catch: the ledger did not answer at all, so there is no count.
+ *     `ledgerReadFailureNote`, and `sessionsRecorded` is `null` rather than
+ *     `0`, because `0` is what drives *"no sessions recorded yet"* and
+ *     *"nothing here has been measured"* — the sentences a brand-new corpus
+ *     correctly gets (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-
+ *     thing-is`).
+ *
+ * The wordings are IMPORTED from `core/`, not written here: two surfaces
+ * inventing their own phrasing for one condition is how `status` and
+ * `status_report` come to disagree about what an unreadable ledger means, and
+ * this tool's own docblock forbids exactly that drift for its numbers. */
 function readLedgerView(
   root: string, dbPath: string, window: number,
-): { usage: ReturnType<Ledger['allUsage']>; recentlyUsed: string[]; sessionsRecorded: number } {
+): {
+  usage: ReturnType<Ledger['allUsage']>;
+  recentlyUsed: string[];
+  /** `null` when the ledger could not be read at all — never `0`, which is a
+   * real and different answer a fresh corpus legitimately produces. */
+  sessionsRecorded: number | null;
+  /** Why a count is short or missing, or `null` when nothing is wrong. Never
+   * absent, so a caller can tell "checked" from "this build does not say". */
+  logUnreadable: string | null;
+} {
   let ledger: Ledger | null = null;
+  let logUnreadable: string | null = null;
   try {
     ledger = Ledger.open(dbPath);
-    try { topUpLedger(root, ledger); } catch { /* aggregate from what is there */ }
+    try {
+      topUpLedger(root, ledger);
+    } catch (err) {
+      // Aggregate from what is there — and say that that is what happened.
+      logUnreadable = auditReadFailureNote(err);
+    }
     const recent = ledger.recentSessions(window);
     return {
       usage: ledger.allUsage(),
       recentlyUsed: ledger.itemsUsedIn(recent),
       sessionsRecorded: ledger.sessionCount(),
+      logUnreadable,
     };
-  } catch {
-    return { usage: [], recentlyUsed: [], sessionsRecorded: 0 };
+  } catch (err) {
+    // `logUnreadable ??`: if the top-up already failed and a read then threw,
+    // the top-up's reason is the earlier and more specific one, and
+    // overwriting it would drop one disclosure to make room for another.
+    return {
+      usage: [], recentlyUsed: [], sessionsRecorded: null,
+      logUnreadable: logUnreadable ?? ledgerReadFailureNote(err),
+    };
   } finally {
     try { ledger?.close(); } catch { /* nothing to close */ }
   }
@@ -1703,21 +1749,43 @@ const SPECS: ToolSpec[] = [
       const ledger = readLedgerView(projectRoot, ws.dbPath, window);
       const report = computeDecay({
         items, config: ws.config, usage: ledger.usage, recentlyUsed: ledger.recentlyUsed,
-        window, sessionsRecorded: ledger.sessionsRecorded,
+        // `?? 0` only to satisfy `computeDecay`'s own hedge arithmetic. The
+        // unmeasured fact travels past it in `ledger.logUnreadable`, printed
+        // FIRST below, and the count this report prints is
+        // `ledger.sessionsRecorded`, which stays `null`.
+        window, sessionsRecorded: ledger.sessionsRecorded ?? 0,
       });
 
       if (report.cold.length === 0 && report.warm.length === 0) {
-        return 'my_context: nothing to report — no active normative items in this project yet.'
+        // **Before the empty answer, deliberately** — `cli/commands/decay.ts`
+        // puts it in the same place for the same reason. "Nothing to report"
+        // is the shortest report this tool has and the one in which a hole in
+        // the measurement is least visible, and an agent acts on it.
+        return (ledger.logUnreadable === null ? '' : `${ledger.logUnreadable}\n\n`)
+          + 'my_context: nothing to report — no active normative items in this project yet.'
           + loadErrorNote(errors);
       }
 
-      const lines: string[] = [
+      const lines: string[] = [];
+      if (ledger.logUnreadable !== null) lines.push(ledger.logUnreadable, '');
+      lines.push(
         `my_context decay — items not injected in the last ${report.window} session(s). ` +
-        `The ledger holds ${report.sessionsRecorded} session(s).`,
+        (ledger.sessionsRecorded === null
+          ? 'How many session(s) the ledger holds is UNKNOWN — see the note above.'
+          : `The ledger holds ${ledger.sessionsRecorded} session(s).`),
         DECAY_COLD_CAVEAT,
         'Do not supersede or deprecate anything on this report alone — verify real usage first.',
-      ];
-      if (report.sessionsRecorded === 0) {
+      );
+      // Three states, not two. `null` may not borrow the sentence below it: a
+      // brand-new corpus has genuinely measured nothing and says so, while an
+      // unreadable ledger has measured nothing AND has a reason, and telling
+      // an agent the first when the second is true is M9 exactly.
+      if (ledger.sessionsRecorded === null) {
+        lines.push(
+          '(the session count is UNMEASURED, not zero — every row below is listed as cold ' +
+          'because this report has no injection history to check it against)',
+        );
+      } else if (report.sessionsRecorded === 0) {
         lines.push(
           '(no sessions recorded yet — nothing here has been measured; "cold" currently ' +
           'means only "never injected")',
@@ -2145,7 +2213,11 @@ const SPECS: ToolSpec[] = [
       const ledger = readLedgerView(projectRoot, ws.dbPath, window);
       const decay = computeDecay({
         items, config: ws.config, usage: ledger.usage, recentlyUsed: ledger.recentlyUsed,
-        window, sessionsRecorded: ledger.sessionsRecorded,
+        // `?? 0` for `computeDecay`'s hedge arithmetic only — see the same
+        // call in `decay_report`. `ledger.logUnreadable` carries the
+        // unmeasured fact, and the usage line below prints
+        // `ledger.sessionsRecorded`, which stays `null`.
+        window, sessionsRecorded: ledger.sessionsRecorded ?? 0,
       });
 
       const findings = runChecks({
@@ -2205,9 +2277,22 @@ const SPECS: ToolSpec[] = [
         );
       }
 
+      // **Before the usage line and independent of it**, exactly where
+      // `mycontext status` prints the same sentence and for the same reason: a
+      // number a reader has already read is a number they have already
+      // believed, and the reading this makes impossible is "no sessions
+      // recorded yet" over a ledger holding thousands, or over one nobody
+      // could open. This tool's numbers may not drift from the CLI's, and a
+      // disclosure is one of its numbers.
+      if (ledger.logUnreadable !== null) lines.push('', ledger.logUnreadable);
       lines.push(
         '',
-        ledger.sessionsRecorded === 0
+        // Three states, not two — `TASK-nine-sites-report-a-measured-zero-for-
+        // something-they-could`, M9.
+        ledger.sessionsRecorded === null
+          ? 'usage: NOT MEASURED — the usage ledger could not be read (see the note above), so ' +
+            'there is no session count and nothing below it rests on injection history.'
+          : ledger.sessionsRecorded === 0
           ? 'usage: no sessions recorded yet — decay reporting starts once items begin to be injected.'
           : `usage: ${ledger.sessionsRecorded} session(s) recorded. ${decay.cold.length} normative ` +
             `item(s) not injected in the last ${window} session(s) — not evidence they are unused, ` +

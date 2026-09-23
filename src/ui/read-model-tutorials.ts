@@ -67,7 +67,38 @@ export interface TutorialListRow {
 
 export interface TutorialsBody {
   tutorials: TutorialListRow[];
-  heRollup: { done: number; total: number };
+  /**
+   * **`null` when no manifest was read, and that is why it is nullable rather
+   * than a pair of zeroes beside a flag.**
+   *
+   * `TASK-nine-sites-report-a-measured-zero-for-something-they-could` (M7 of
+   * report 3) found this field answering `{ done: 0, total: 0 }` over a
+   * `docs/tutorials/manifest.json` that would not parse — a translation-debt
+   * MEASUREMENT taken over a file nothing had read, which the screen then drew
+   * as "0 of 0 translated" beside an empty roster. That reads as *this project
+   * has no tutorials*, which is the one thing it does not mean.
+   *
+   * The item's recommendation is to MAKE THE ZERO UNREPRESENTABLE rather than
+   * merely discouraged, and the template it names is `context-occupancy.ts`'s
+   * missing `percent` field: a caller cannot print a rollup it was not given,
+   * so there is no path by which the unmeasured case draws as a measured one.
+   * `{ done: 0, total: 0 }` stays a legal and truthful answer for a manifest
+   * that WAS read and holds nothing to count.
+   */
+  heRollup: { done: number; total: number } | null;
+  /**
+   * Why no manifest was read, or `null` when one was. Never absent and never
+   * `''`, so a reader can tell "measured" from "this build does not say" —
+   * the distinction `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-
+   * thing-is` turns on.
+   *
+   * It carries the underlying reason verbatim rather than a summary, the same
+   * shape `read-model-config.ts` serves `parseError`/`resolveError` in one
+   * directory over: the reader with a broken manifest needs the parser's own
+   * complaint, and `INV-nothing-is-dropped-silently` is what the old bare
+   * `catch` broke by keeping it.
+   */
+  unmeasured: string | null;
 }
 
 /**
@@ -163,26 +194,49 @@ function tutorialListRow(repoRoot: string, entry: TutorialManifestEntry): Tutori
  * project's OWN defect to fix, not a reason to fail every other row this
  * screen would otherwise draw correctly. Either way this endpoint answers 200
  * instead of throwing, because it needs no open index to say so.
+ *
+ * **The 200 was always right; the ZEROES beside it were not.** Both of those
+ * paths used to answer `heRollup: { done: 0, total: 0 }` and swallow the
+ * reason — `TASK-nine-sites-report-a-measured-zero-for-something-they-could`,
+ * site M7. A rollup is a count of files this endpoint looked at, so over a
+ * manifest it never read there is no count to report, only a reason; and the
+ * reason was the one thing the `catch` discarded
+ * (`INV-nothing-is-dropped-silently`). Both now answer `heRollup: null` with
+ * `unmeasured` carrying the parser's own words, so the screen draws a refusal
+ * where it used to draw a clean bill of health over nothing.
  */
 export function apiTutorials(ws: Workspace, url: URL): JsonResult {
   const bad = unknownParams(url, []);
   if (bad) return badRequest(bad);
-  const empty: TutorialsBody = { tutorials: [], heRollup: { done: 0, total: 0 } };
+  /** No roster, no rollup, and the reason in place of both. */
+  const unmeasured = (why: string): JsonResult => ({
+    status: 200,
+    body: { tutorials: [], heRollup: null, unmeasured: why } satisfies TutorialsBody,
+  });
   const projectRoot = ws.projectRoot;
-  if (projectRoot === null) return { status: 200, body: empty };
+  if (projectRoot === null) {
+    return unmeasured(
+      'no project is open here, so docs/tutorials/manifest.json was never looked for — the ' +
+      'tutorial roster below is UNMEASURED, not empty, and no translation debt was counted.',
+    );
+  }
   const repoRoot = path.dirname(projectRoot);
   let manifest: TutorialManifestEntry[];
   try {
     manifest = loadTutorialManifest(repoRoot);
-  } catch {
-    return { status: 200, body: empty };
+  } catch (err) {
+    return unmeasured(
+      'docs/tutorials/manifest.json could not be read, so no tutorial was measured — the roster ' +
+      'below is UNMEASURED, not empty, and the Hebrew rollup is unknown rather than zero: ' +
+      `${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   const tutorials = manifest.map((entry) => tutorialListRow(repoRoot, entry));
   const heRollup = {
     done: tutorials.filter((t) => t.he === 'done').length,
     total: tutorials.filter((t) => t.en !== 'unmeasured').length,
   };
-  const body: TutorialsBody = { tutorials, heRollup };
+  const body: TutorialsBody = { tutorials, heRollup, unmeasured: null };
   return { status: 200, body };
 }
 
