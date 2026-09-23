@@ -15,17 +15,17 @@ tags:
   - silent-failure
   - "plan:store"
   - "seq:13"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: a99f4d20a17bed3d
+checksum: d62c2e2f9cc55063
 plan: store
 seq: "13"
-state: doing
+state: done
 priority: "3"
 ---
 

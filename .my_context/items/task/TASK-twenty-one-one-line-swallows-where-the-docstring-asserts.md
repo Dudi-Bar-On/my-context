@@ -20,17 +20,17 @@ tags:
   - pattern
   - "plan:swallow"
   - "seq:11"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 2788cbe4fe0b276d
+checksum: 8879475ee024ddd8
 plan: swallow
 seq: "11"
-state: todo
+state: doing
 priority: "3"
 ---
 
