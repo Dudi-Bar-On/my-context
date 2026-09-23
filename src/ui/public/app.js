@@ -5272,7 +5272,21 @@ function watchStripFit(strip) {
     });
     sizer.observe(strip);
   }
-  if (typeof ResizeObserver === 'function') new ResizeObserver(queue).observe(strip);
+  // **AND THERE IS NO SECOND OBSERVER — removed 2026-09-23, B4 / `ui-gates/1`.**
+  //
+  // A bare `new ResizeObserver(queue).observe(strip)` sat on the next line from
+  // `d9397803` (2026-09-01) until today. `b4a6301f`, the same day, added the
+  // width-guarded block above and never removed the original — so the bar
+  // carried two observers, and the second one queued a fit on exactly the
+  // height changes the paragraph above refuses to queue on. The guard's own
+  // argument was defeated on the line after it was written.
+  //
+  // It survived because `fitStrip` is idempotent once the bar is settled, so
+  // the extra fit converges in a frame and shows nothing. That is a reason it
+  // was never SEEN, not a reason to keep it: `test/ui/strip-observer.test.ts`
+  // now reads this function's own source and holds "one ResizeObserver on the
+  // strip, width-guarded", in the idiom `test/ui/glyph-set.test.ts` uses for
+  // `screenHead`'s call sites.
 }
 
 /* ══ THE BAR'S CONTENT IS THE READER'S — `semantic/17` ═════════════════════

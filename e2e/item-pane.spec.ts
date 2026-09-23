@@ -20,7 +20,61 @@
  * So this file asserts BEHAVIOUR, not shape. Parity now covers the six rules;
  * what parity structurally cannot cover is whether the click does anything.
  */
-import { test, expect } from './app.ts';
+import { seededTest, expect } from './scratch-corpus.ts';
+import { realInjections } from './seeds.ts';
+import { settleScreen } from './settle.ts';
+
+/**
+ * **WHAT THIS FILE REQUIRES: a session that has actually been delivered to, so
+ * that some screen draws an item id.** Declared here, arranged by the fixture,
+ * rather than hoped for — `e2e/scratch-corpus.ts`'s whole reason for existing.
+ *
+ * ── WHY IT STOPPED BEING TRUE OF THE AMBIENT CORPUS ───────────────────────
+ *
+ * Every test below needs ONE `button.linkid` to click. The preview's linkids
+ * are the CARRIED block (`screens/preview.js`, `.carrieditem`), and carried
+ * means "delivered to this session earlier" — so a session that has carried
+ * nothing draws none, which `app-layout.spec.ts`'s own carry test already
+ * treats as a legitimate state rather than a failure.
+ *
+ * Until 2026-09-23 this file rode the live machine's accumulated session
+ * state and that state happened to contain a delivery. `e2e/frozen-corpus.ts`
+ * then sandboxed the session state per run — deliberately, under `rulings/114`,
+ * so that a red is attributable and a local run agrees with a fresh clone —
+ * and a clean checkout has NO delivery history at all. Measured on the full
+ * gate that night: *"no button.linkid rendered on the boot screen or on any of
+ * injected, doctor, learn, coverage or decay"*, on a corpus holding 1,116
+ * items. Nothing about the product had changed; the state this file was
+ * leaning on had simply stopped being ambient.
+ *
+ * `realInjections()` is that state, PRODUCED rather than authored: the real
+ * hooks are fed the real payloads on stdin in a private copy of this corpus,
+ * which is deleted when the worker ends. **No `squeezeBudgets`**, for the same
+ * reason `injected-empty.spec.ts` gives: at the real budgets a session start
+ * delivers ~45 items, and it is the delivery that draws the ids.
+ *
+ * `seededTest` and not `writingSeededTest`, because nothing here writes: every
+ * test opens a pane, reads it and closes it.
+ */
+const test = seededTest(realInjections());
+
+/**
+ * The walk visits up to six screens and each one may take a settle, so the
+ * 30-second default is the wrong bound to fail against — it would report "test
+ * timeout" where the interesting sentence is which screens drew what. The twin
+ * itself is worker-scoped and charged to the fixture's own budget.
+ */
+test.beforeEach(() => { test.setTimeout(120_000); });
+
+/**
+ * The screen that was found to draw an id, remembered for the worker.
+ *
+ * The twin is worker-scoped and its corpus cannot move under these tests, so
+ * the answer cannot differ between them — and the walk is up to six screen
+ * loads nobody should pay for four times. Same move, same reason, as
+ * `pane-size.spec.ts`' own `chosen`.
+ */
+let linkingScreen: string | null = null;
 
 /** The first id button on the injection preview — the screen the owner was on.
  *
@@ -37,8 +91,6 @@ import { test, expect } from './app.ts';
  * visited first. The fix is the same one, applied at the shell boundary.
  */
 async function firstLink(page: import('@playwright/test').Page) {
-  const here = page.locator('#screen button.linkid').first();
-  if (await here.isVisible().catch(() => false)) return here;
   /*
    * **THE SCREEN IS DISCOVERED, NOT ASSUMED — corrected 2026-09-23**, and the
    * move is the one `an id on a different screen opens the pane too` below
@@ -60,18 +112,35 @@ async function firstLink(page: import('@playwright/test').Page) {
    * weaker assertion — every test below still requires a real `linkid` to
    * exist and to open the pane; what it no longer requires is that a
    * particular screen be the one holding it.
+   *
+   * **AND IT WAITS FOR THE SCREEN TO HAVE DRAWN, corrected 2026-09-23 (B4).**
+   * The first cut of this walk asked `candidate.isVisible({ timeout })`, and
+   * `isVisible()` does not retry — the option is inert. So each screen was
+   * inspected in the same tick as its section attached, which is the tick
+   * `route()` writes its holding chip into and nothing else, and the walk
+   * reported "no linkid anywhere" after looking at five empty sections. The
+   * settle is `e2e/settle.ts`' shared one, with the linkid named as the thing
+   * that must have MATCHED — the same instrument `pane-size.spec.ts` uses to
+   * walk the same screens for the same reason.
    */
-  for (const screen of ['injected', 'doctor', 'learn', 'coverage', 'decay']) {
+  const walked: string[] = [];
+  let link = null;
+  for (const screen of linkingScreen === null
+    ? ['preview', 'injected', 'doctor', 'learn', 'coverage', 'decay']
+    : [linkingScreen]) {
     await page.evaluate((s) => { location.hash = `#/${s}`; }, screen);
     await expect(page.locator(`[data-p="${screen}"]`)).toBeAttached({ timeout: 10_000 });
     const candidate = page.locator(`[data-p="${screen}"] button.linkid`).first();
-    if (await candidate.isVisible({ timeout: 10_000 }).catch(() => false)) return candidate;
+    const { settled, count } = await settleScreen(page, screen, { requires: 'button.linkid' });
+    const found = await candidate.count();
+    walked.push(`${screen}: ${settled ? 'drew' : 'never settled'}, ${count} nodes, ${found} linkid`);
+    if (found > 0) { linkingScreen = screen; link = candidate; break; }
   }
-  const link = page.locator('#screen button.linkid').first();
-  await expect(link, 'no button.linkid rendered on the boot screen or on any of injected, '
-    + 'doctor, learn, coverage or decay — this test cannot measure what it is for')
-    .toBeVisible({ timeout: 15_000 });
-  return link;
+  expect(link, 'no button.linkid rendered on any of preview, injected, doctor, learn, coverage '
+    + `or decay, so this test cannot measure what it is for — walked ${walked.join(' · ')}. The `
+    + 'twin is seeded with `realInjections()` precisely so that the preview has a CARRIED block '
+    + 'to draw ids from; if it drew none, the seed did not take').not.toBeNull();
+  return link!;
 }
 
 test('clicking an id opens the pane, fills it, and widens the grid', async ({ app }) => {
@@ -174,7 +243,13 @@ test('an id on a different screen opens the pane too', async ({ app }) => {
   // screen key and silently falls back to the preview — which would have made
   // this pass while measuring the first screen twice.
   let link = null;
-  for (const screen of ['injected', 'doctor', 'learn', 'coverage', 'decay']) {
+  // **And it must be a DIFFERENT screen from the one the first click was on.**
+  // `firstLink` now discovers its screen rather than assuming the preview, so
+  // the list it chose from has to be the list this walk excludes, or a run
+  // where it picked `coverage` would measure `coverage` twice and call the
+  // second reading a route change.
+  for (const screen of ['preview', 'injected', 'doctor', 'learn', 'coverage', 'decay']
+    .filter((name) => name !== linkingScreen)) {
     await page.evaluate((s) => { location.hash = `#/${s}`; }, screen);
     await expect(page.locator(`[data-p="${screen}"]`)).toBeAttached({ timeout: 10_000 });
     // **Scoped to the section, because screens STACK.** `route()` leaves every
