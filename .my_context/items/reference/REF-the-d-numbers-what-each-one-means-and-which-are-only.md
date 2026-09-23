@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a version a program can read was added on 2026-09-16 so no progress report has to guess at the words.
-summary_of: 2839b9dc37a9fb73
+summary_of: 3819dc92db3ca144
 summary_was:
   - 2026-09-16 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; eleven more were added on 2026-09-13 from the consolidated review findings.
   - 2026-09-13 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D52 widened on 2026-09-13 to the log that records what was delivered.
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: 1b5348c23c9a8b95
+checksum: fcb5402260b941cf
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -402,7 +402,7 @@ D54    | open          | review/3, review/4
 D55    | open          | hooks/22, hooks/35
 D56    | open          | live/25, live/26, live/28
 D57    | closed        | REQ-every-anchor-capability-is-reachable-from-the-screen-and-a
-D58    | open          | rulings/21, rulings/83, rulings/84
+D58    | open          | rulings/21, rulings/83, DEC-the-ui-sends-a-content-security-policy-with-script-src-self
 D59    | open          | walk/82
 D60    | open          | walk/142
 D61    | open          | walk/2
