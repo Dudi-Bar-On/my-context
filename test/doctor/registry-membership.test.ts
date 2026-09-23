@@ -204,6 +204,18 @@ export const EXCLUDED: ReadonlyMap<string, string> = new Map([
     'read is a property of the read, not of an item. Only its name puts it in this derivation.',
   ],
   [
+    'checkRuleStore',
+    'answers about the INSTALL — which PRODUCT RULE STORE is on disk, whether a door could read ' +
+    'it, and whether it is the one that shipped — and not about the corpus, so it is the same ' +
+    'shape as `checkCliOnPath` above and is called the same way: directly, by `cmdDoctor` ' +
+    '(cli/commands/doctor.ts) and by `apiDoctor` (ui/read-model.ts). Registering it would be ' +
+    'worse than redundant, it is FORBIDDEN: `runChecks` lives in `src/doctor/checks.ts`, which ' +
+    '`test/rules/isolation.test.ts` names in `CORPUS_MACHINERY` and requires to reach nothing ' +
+    'under `src/rules/` — spec §7, a store the corpus has never heard of. Its own module ' +
+    'docblock carries the argument. Arrived with ' +
+    'TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody.',
+  ],
+  [
     'checkSnapshotDrift',
     'IS run on every `runChecks` — as the first line of `checkSourceDrift`, which registers for ' +
     'both. It is a separate function because a snapshot and an anchored assertion share almost ' +

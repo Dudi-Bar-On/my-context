@@ -69,6 +69,12 @@ import { writeTee } from '../../src/core/statusline-tee.ts';
 import type { Item, Relation } from '../../src/core/types.ts';
 import { VERSION } from '../../src/core/version.ts';
 import { listRepoFiles, runChecks, type Finding } from '../../src/doctor/checks.ts';
+// `ruleStoreFindings` is `apiDoctor`'s second half and is NOT in `runChecks`:
+// spec §7 keeps `doctor/checks.ts` from reaching `src/rules/` at all
+// (`test/rules/isolation.test.ts`). See the `/api/doctor` tests below.
+import { ruleStoreFindings } from '../../src/doctor/rule-store.ts';
+import { RULES_DIR_ENV } from '../../src/rules/deliver.ts';
+import { writeManifest } from '../../src/rules/manifest.ts';
 import { commandList, helpTopic, HELP_TOPICS } from '../../src/help/index.ts';
 import { pendingReview, queueAge } from '../../src/review/pending.ts';
 import { appendJsonlLine } from '../../src/core/jsonl-log.ts';
@@ -1545,6 +1551,27 @@ function tallyOf(items: Item[], key: (i: Item) => string): Record<string, number
   return counts;
 }
 
+/**
+ * One sound `product`-tier entry, for the throwaway rule store the
+ * `/api/doctor` fault test seals and then breaks. It is a fixture store and
+ * never `src/rules/entries` — see that test.
+ */
+const RULE_STORE_ENTRY = [
+  '---',
+  'id: a-body-stops-at-the-first-heading',
+  'kind: fact',
+  'tier: product',
+  'title: a body stops at the first ## heading',
+  'truth: everything from the first `## ` heading onwards is dropped when a body is stored',
+  'breaks: the tail of a body is lost with no error, and the write reports success',
+  'example: the 2026-09-07 item whose Observations block vanished on save',
+  'check: "preventive:the write path refuses a body carrying a ## heading"',
+  '---',
+  '',
+  'True for anyone who installs the tool.',
+  '',
+].join('\n');
+
 const checksFor = (ws: Workspace, items: Item[]): Finding[] => runChecks({
   root: ws.projectRoot!,
   repoRoot: path.dirname(ws.projectRoot!),
@@ -1840,7 +1867,17 @@ test('/api/doctor is runChecks verbatim — unfiltered, ungrouped, unsorted', ()
     const result = apiDoctor(ws, url('doctor', ''));
     assert.equal(result.status, 200);
     const { findings } = result.body as DoctorBody;
-    assert.deepEqual(findings, checksFor(ws, items),
+    // `runChecks` PLUS the rule-store disclosure, and the second half is
+    // written out rather than left to be equal by luck. `apiDoctor` appends
+    // `ruleStoreFindings` — `TASK-two-checks-route-their-only-disclosure-to-a-
+    // surface-nobody` — because a check reported in the terminal and absent
+    // from the screen is the routing defect that item is about, one door over.
+    // It cannot be in `checksFor`: `runChecks` lives in `doctor/checks.ts`,
+    // which `test/rules/isolation.test.ts` requires to reach nothing under
+    // `src/rules/` (spec §7). Against this fixture's store — the shipped one,
+    // which is sound — it contributes NOTHING, so writing it here is what
+    // keeps the assertion honest rather than accidentally true.
+    assert.deepEqual(findings, [...checksFor(ws, items), ...ruleStoreFindings(ws.projectRoot!)],
       'the array is carried, not reshaped: same order, same objects, same optional `item`');
 
     // Non-vacuity, and the shape of the screen's three groups: all three
@@ -1889,6 +1926,59 @@ test('/api/doctor is runChecks verbatim — unfiltered, ungrouped, unsorted', ()
       'non-vacuity: a corpus where every finding names an item cannot test the optional case',
     );
   } finally { f.done(); }
+});
+
+/**
+ * **The screen is told what the terminal is told** —
+ * `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`.
+ *
+ * The test above proves `/api/doctor` carries the rule-store call; it cannot
+ * prove the call SAYS anything, because this fixture's store is the shipped one
+ * and the shipped one is sound. So the fault is planted here, against a store
+ * of this test's own under `MYCONTEXT_RULES_DIR` — never `src/rules/entries`,
+ * which `KNOWN-running-the-test-suite-can-leave-the-shipped-rule-store` is
+ * about.
+ *
+ * `mycontext doctor --json` is held to the same thing by
+ * `test/cli/doctor-rule-store.test.ts`. Two surfaces, one disclosure, and P5's
+ * complaint — *"the disclosure is routed to a surface nobody is on"* — answered
+ * on both.
+ */
+test('/api/doctor carries the rule-store disclosure when the store cannot be verified', () => {
+  const f = fixture();
+  const store = mkdtempSync(path.join(tmpdir(), 'myctx-rm-rulestore-'));
+  const before = process.env[RULES_DIR_ENV];
+  try {
+    writeFileSync(path.join(store, 'fact.md'), RULE_STORE_ENTRY, 'utf8');
+    writeManifest(store);
+    writeFileSync(path.join(store, 'manifest.json'), '{ this is not json', 'utf8');
+    process.env[RULES_DIR_ENV] = store;
+
+    const result = apiDoctor(f.ws, url('doctor', ''));
+    assert.equal(result.status, 200);
+    const { findings } = result.body as DoctorBody;
+    const disclosure = findings.find((x) => x.code === 'rule_store_unverified');
+    assert.ok(disclosure, 'the screen must not be the surface that shows nothing at all');
+    assert.equal(disclosure!.level, 'info');
+    assert.equal(disclosure!.about, 'rule_store_unverified');
+    assert.deepEqual(disclosure!.remedy, { route: 'copy', argv: ['mycontext', 'rules', 'verify'] });
+    assert.match(disclosure!.message, /manifest/);
+
+    // It is a DISCLOSURE, so `/api/status`'s badge is untouched by it — the
+    // same `about` filter that keeps it out of the terminal's counts.
+    const health = apiStatus(f.ws, url('status', '')).body as StatusBody;
+    assert.equal(
+      health.health.errors + health.health.warnings + health.health.infos
+        + health.health.acknowledged,
+      findings.filter((x) => x.about === undefined).length,
+      'a note about a check must not move the number a reader reads as work',
+    );
+  } finally {
+    if (before === undefined) delete process.env[RULES_DIR_ENV];
+    else process.env[RULES_DIR_ENV] = before;
+    removeTree(store);
+    f.done();
+  }
 });
 
 test('/api/decay is computeDecay over the ledger, with history() verbatim beside it', () => {

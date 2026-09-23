@@ -3087,6 +3087,19 @@ health: 0 error(s), 0 warning(s), 0 note(s) — details from `mycontext doctor`.
 <!-- example: doctor -->
 ```text
 my_context doctor: 0 error(s), 0 warning(s), 0 note(s) across 0 finding(s).
+
+my_context: notes about the checks themselves — what they could not measure, said once. These are
+  NOT findings, are not counted above, and nothing is owed on them.
+
+  governing_spill_coverage — about the `governing_spill_pressure` check
+    `governing_spill_pressure` did not look at this corpus's spill history at all, because the audit
+    query index has never been built in this workspace, which is an empty state and not a fault —
+    nothing here has run `mycontext audit` yet. That is an UNMEASURED run and not a clean one:
+    nothing is being asserted here about whether any governing item is spilling repeatedly, in
+    either direction. This check is READ-ONLY and deliberately so — building or catching up that
+    index is a write, and it is `mycontext audit`'s job rather than doctor's — so run `mycontext
+    audit` and this line is replaced by whatever the history actually says. Nothing else in this
+    report is affected: no other check reads the index.
 ```
 <!-- /example -->
 

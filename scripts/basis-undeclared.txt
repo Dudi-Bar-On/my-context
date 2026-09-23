@@ -283,7 +283,6 @@ test/doctor/checks.test.ts
 test/doctor/citation-form.test.ts
 test/doctor/cli-on-path.test.ts
 test/doctor/corpus-size.test.ts
-test/doctor/governing-spill-pressure.test.ts
 test/doctor/state-unaudited.test.ts
 test/doctor/task-needs.test.ts
 test/doctor/three-unread-fields.test.ts

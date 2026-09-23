@@ -394,8 +394,35 @@ export function wasDelivered(root: string, key: string): boolean {
  * after the disclosure and before the row would leave a person told and a log
  * that disagrees with them.
  */
+/**
+ * **What the applicable-count callback hands back, and why it is not a bare
+ * number any more** — `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`.
+ *
+ * It was `() => number`, and `assertDoor`'s implementation of it answered `0`
+ * for a store it could not read at all — so the `missed` row below recorded
+ * *"0 constant(s) would have applied"*: a measurement nobody took, written
+ * into the log spec §8.2 counts, in the one shape that reads as an assurance.
+ * `STD-a-measured-zero-is-drawn-and-named` is explicit that a measured zero
+ * and an unmeasured one are different facts, and this is the write path
+ * version of it.
+ *
+ * `unreadable` carries the reason instead. It changes NOTHING about what the
+ * assertion does — the row is still written, the sentence is still withheld
+ * (see the argument below), the hook still cannot fail on a store fault — and
+ * only what the row SAYS.
+ */
+export interface ApplicableCount {
+  /**
+   * Constants that would have applied. **Not a measurement when `unreadable`
+   * is set** — the caller could not count, and `0` there means uncounted.
+   */
+  count: number;
+  /** Why the store could not be counted at all, or `''` when it was read. */
+  unreadable: string;
+}
+
 export function assertDelivered(
-  root: string, key: string, applicable: () => number, at?: string,
+  root: string, key: string, applicable: () => ApplicableCount, at?: string,
 ): string {
   const rows = deliveries(root, key);
   if (rows.some((row) => row.kind === 'delivered')) return '';
@@ -413,15 +440,21 @@ export function assertDelivered(
    * pays for it at all: past the latch, the store is read at most once per
    * key, ever.
    */
-  const count = applicable();
+  const { count, unreadable } = applicable();
   recordDelivery(root, {
     ...(at === undefined ? {} : { at }),
     kind: 'missed',
     key,
     door: key.includes('::') ? 'subagent-start' : 'session-start',
     entries: 0,
+    // **"I counted none" and "I could not count" are two sentences here, and
+    // they used to be one.** See `ApplicableCount`: a store that could not be
+    // read answered `0`, and this row then asserted a zero nobody measured.
     note: `no delivery row for this key at the moment the assertion ran; ` +
-      `${count} constant(s) would have applied`,
+      (unreadable === ''
+        ? `${count} constant(s) would have applied`
+        : `the product rule store could not be read, so how many constant(s) would have ` +
+          `applied is UNMEASURED rather than zero — ${unreadable}`),
   });
   /**
    * **A miss with nothing to miss is RECORDED and not REPORTED, and this is a

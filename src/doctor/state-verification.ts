@@ -24,13 +24,15 @@
 
 import path from 'node:path';
 import { readAudit, type AuditRecord } from '../core/audit.ts';
-import { openProjectionReadOnlyChecked, topItems } from '../core/audit-db.ts';
+import {
+  ProjectionAbsentError, ProjectionStaleError, openProjectionReadOnlyChecked, topItems,
+} from '../core/audit-db.ts';
 import type { Config } from '../core/config.ts';
 import { DONE_STATE, STATE_FIELD, taskState, workItems } from '../core/needs.ts';
 import { governs, isEligible } from '../core/select.ts';
 import { checksum } from '../core/slug.ts';
 import type { Item } from '../core/types.ts';
-import { ACK, AUDIT_FILES, NOTHING, PERSON, type Finding } from './finding.ts';
+import { ACK, AUDIT_FILES, NOTHING, PERSON, type Finding, type Remedy } from './finding.ts';
 
 /**
  * **How a check gets the audit log, so that one `doctor` run reads it once.**
@@ -72,6 +74,57 @@ export const GOVERNING_SPILL_REPEAT_THRESHOLD = 20;
  *  handful of heavier-spilling rationale-adjacent categories, cheap enough that the query stays
  *  a single indexed GROUP BY (`topItems`, `core/audit-db.ts`). */
 export const GOVERNING_SPILL_SAMPLE = 40;
+
+/**
+ * `mycontext audit` — the one command that builds, catches up or rebuilds the
+ * audit projection, and therefore the only honest remedy for a check that
+ * could not open it. See `checkGoverningSpillPressure`'s docblock for why it
+ * is `copy` and not `run`; `AUDIT_FILES` (./finding.ts) is the sibling that
+ * made the same call for the same reason.
+ */
+export const AUDIT: Remedy = { route: 'copy', argv: ['mycontext', 'audit'] };
+
+/**
+ * **The one `info` disclosure that ends `checkGoverningSpillPressure`'s
+ * silence** — `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`.
+ *
+ * `about: 'governing_spill_pressure'` routes it out of the worklist and the
+ * counts exactly as the pressure finding itself is routed, so every property
+ * the check's docblock claims for that finding — read-only, `info`, not
+ * counted toward the exit code — holds for this one too. A separate `code`
+ * from the check it is about, because "there is no pressure to report" and
+ * "this check could not look" are different answers and one code for both is
+ * the defect one level down; `state_audit_coverage` beside `state_unaudited`
+ * and `task_verification_coverage` beside `task_unverified` are the two
+ * worked examples of the same spelling in this file.
+ *
+ * The three states arrive told apart by CLASS, never by message text, which is
+ * what `openProjectionReadOnlyChecked` documents them as being for.
+ */
+function projectionUnreadable(err: unknown): Finding {
+  const detail = err instanceof Error ? err.message : String(err);
+  const why = err instanceof ProjectionAbsentError
+    ? `the audit query index has never been built in this workspace, which is an empty state ` +
+      `and not a fault — nothing here has run \`mycontext audit\` yet`
+    : err instanceof ProjectionStaleError
+      ? `the audit query index is ${err.state} relative to the append-only log it derives from, ` +
+        `so it cannot vouch for the history this check would have counted`
+      : `the audit query index could not be read: ${detail}`;
+
+  return {
+    level: 'info', code: 'governing_spill_coverage',
+    about: 'governing_spill_pressure',
+    remedy: AUDIT,
+    message:
+      `\`governing_spill_pressure\` did not look at this corpus's spill history at all, because ` +
+      `${why}. That is an UNMEASURED run and not a clean one: nothing is being asserted here ` +
+      `about whether any governing item is spilling repeatedly, in either direction. This check ` +
+      `is READ-ONLY and deliberately so — building or catching up that index is a write, and it ` +
+      `is \`mycontext audit\`'s job rather than doctor's — so run \`mycontext audit\` and this ` +
+      `line is replaced by whatever the history actually says. Nothing else in this report is ` +
+      `affected: no other check reads the index.`,
+  };
+}
 
 /**
  * **A doctor line for the failure the corpus's own audit history already
@@ -117,17 +170,50 @@ export const GOVERNING_SPILL_SAMPLE = 40;
  * this finding named an item, which — deliberately, being a disclosure rather
  * than a worklist row — it does not.
  *
- * **Read-only, and silent rather than alarmed when it cannot look.**
+ * **Read-only, and UNALARMED — but no longer SILENT — when it cannot look.**
  * `openProjectionReadOnlyChecked` builds nothing and repairs nothing (its own
  * docblock); a projection that has never been built (`mycontext audit` has
- * never run here), or one that is behind or diverged from the log it derives
- * from, is caught the same way as any other read failure and this check
- * simply has nothing to say this run — bringing the projection current is a
- * WRITE (`syncProjection`), and it is `mycontext audit`'s job, not doctor's,
- * for the same separation `openProjectionReadOnlyChecked`'s own docblock
- * draws for the web UI's read routes. `doctor` stays read-only; this
- * secondary, optional disclosure over OPTIONAL infrastructure is not worth
- * spending doctor's write-free guarantee on.
+ * never run here), one that is behind or diverged from the log it derives
+ * from, and one that is damaged are all read failures here, because bringing
+ * the projection current is a WRITE (`syncProjection`) and it is `mycontext
+ * audit`'s job, not doctor's, for the same separation
+ * `openProjectionReadOnlyChecked`'s own docblock draws for the web UI's read
+ * routes. `doctor` stays read-only; this secondary, optional disclosure over
+ * OPTIONAL infrastructure is not worth spending doctor's write-free guarantee
+ * on. **That decision is untouched, and it is not what was wrong.**
+ *
+ * Until `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody` the
+ * catch returned `[]`, so a `doctor` run showed NOTHING AT ALL — not even that
+ * the check could not look. Report 3 of the silent-failures review
+ * (`reports/2026-09-12-silent-failures-reviewed.md`, pattern P5) named that as
+ * the last step of an otherwise well-argued trade: *"A DOCTOR RUN SHOWS
+ * NOTHING AT ALL, NOT EVEN THAT THE CHECK COULD NOT LOOK. One `info`
+ * disclosure would preserve every stated property (read-only, not counted
+ * toward the exit code) and end the silence."* It is `INV-nothing-is-dropped-
+ * silently` at the one place it was broken hardest to notice: silence from a
+ * check READS AS COVERAGE. So the catch now emits exactly that one `info`
+ * disclosure, `about`-routed like the finding below it, counted toward
+ * nothing, on the surface the reader is on — `mycontext doctor`'s own output
+ * and its `--json` findings — rather than nowhere.
+ *
+ * **The three states are kept apart in the message** because
+ * `openProjectionReadOnlyChecked` is emphatic that they are different facts
+ * about a user's audit trail and tells them apart BY CLASS so that a caller
+ * need not match on a message. A disclosure that said "could not look" three
+ * identical ways would re-collapse, one level down, exactly what that door
+ * refuses to collapse: never built is an EMPTY STATE and no fault at all,
+ * behind-or-diverged is a projection that cannot vouch for the log, and
+ * anything else is damage.
+ *
+ * **The remedy is `copy` and it is `mycontext audit`** — reachable in all
+ * three states, which is the other half of what P5 objected to (an advertised
+ * remedy nobody can reach). `openProjection` CREATES a missing projection,
+ * `syncProjection` catches up a behind one and discards and rebuilds a
+ * diverged or damaged one, and `mycontext audit` is the command that calls
+ * both. It is `copy` rather than `run` for `AUDIT_FILES`'s own stated reason:
+ * `PALETTE` carries no `audit` entry, so there is nothing for the server to
+ * rebuild and naming a nearby id would put a different command behind a
+ * confirm that looked right.
  *
  * **`topItems(db, 'spilled', N)` is not tier-scoped**, matching the CLI's own
  * `mycontext audit --top spilled` — the query that produced the ruling's own
@@ -139,8 +225,8 @@ export function checkGoverningSpillPressure(root: string, items: Item[], config:
   let db;
   try {
     db = openProjectionReadOnlyChecked(root);
-  } catch {
-    return [];
+  } catch (err) {
+    return [projectionUnreadable(err)];
   }
   try {
     const byId = new Map(items.map((i) => [i.id, i]));

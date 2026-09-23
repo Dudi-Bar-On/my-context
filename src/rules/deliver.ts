@@ -558,17 +558,120 @@ export function resolveStoreDir(storeDir?: string): string {
  * key is genuinely unanswered, so the parse is paid at most once per key.
  */
 export function assertDoor(stateRoot: string, key: string, storeDir?: string): string {
+  // A store that cannot be read is still counted as nothing, for the reason
+  // `assertDelivered` states: a sentence saying a reader may be missing the
+  // constants, when there were none for them to miss, is a check crying wolf.
+  // What changed is that the REASON is no longer swallowed — see
+  // `readStoreAtDoor`, and `checkRuleStore` (src/doctor/checks.ts), which is
+  // the surface it reaches.
   return assertDelivered(stateRoot, key, () => {
-    try {
-      return loadRules(resolveStoreDir(storeDir), workspaceIsMyContext(stateRoot)).entries.length;
-    } catch {
-      // A store that cannot be read is a store that would have delivered
-      // nothing, and reporting against it would blame the door for the
-      // store's own damage — which `mycontext rules verify` is the surface
-      // for.
-      return 0;
-    }
+    const read = readStoreAtDoor(stateRoot, storeDir);
+    return {
+      count: read.applicable,
+      // Only `unloadable` is a failure to COUNT. A `partial` store was read
+      // and its count is real — the entries it refused are `checkRuleStore`'s
+      // to disclose, not this row's to hedge.
+      unreadable: read.fault !== null && read.fault.kind === 'unloadable' ? read.fault.detail : '',
+    };
   });
+}
+
+/**
+ * **Why a door could not count the constants it would have delivered** — the
+ * three shapes, kept apart, because they are three different facts about
+ * somebody's install and only two of them are damage.
+ *
+ * `unloadable` is the one `assertDoor`'s `catch` used to swallow: the
+ * directory is not there, or is not readable, or every file in it was refused
+ * by the parser. `partial` is a store that loaded with entries missing — those
+ * entries are in force NOWHERE and nothing said so. `unsealed` is the seal:
+ * `verifyManifest` cannot say the entries are the ones that shipped. Only the
+ * first two are visible from a door; the seal is read by `checkRuleStore` and
+ * never on the hook path (see `readStoreAtDoor`).
+ */
+export type StoreFault =
+  | { kind: 'unloadable'; dir: string; detail: string }
+  | { kind: 'partial'; dir: string; refused: readonly EntryError[] }
+  | { kind: 'unsealed'; dir: string; problems: readonly Problem[] };
+
+/** What one door's read of the store found. `applicable` is not a measurement when `fault` is set. */
+export interface DoorStoreRead {
+  /** The directory actually read — `resolveStoreDir`'s answer, never a second one. */
+  dir: string;
+  /** Constants that would have applied. `0` beside a `fault` means UNCOUNTED, not none. */
+  applicable: number;
+  fault: StoreFault | null;
+}
+
+/**
+ * **The read `assertDoor` performs, lifted out of its `try` so the refusal has
+ * a name** — `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`.
+ *
+ * Report 3 of the silent-failures review (pattern P5) took no issue with the
+ * ATTRIBUTION: *"reporting against it would blame the door for the store's own
+ * damage — which `mycontext rules verify` is the surface for … The attribution
+ * argument is sound; the routing sends the only disclosure to a command that
+ * runs on nobody's schedule."* So the trade is kept exactly: a rule-store fault
+ * still cannot throw out of `PreToolUse`, still costs the reader no sentence on
+ * a channel they are not watching, and still returns a count of zero. What it
+ * no longer does is DISCARD the reason. `checkRuleStore` (src/doctor/checks.ts)
+ * asks this same question of this same directory and puts the answer on the
+ * screen the reader is already on.
+ *
+ * **`loadRules` does not throw for the ordinary faults, and that is why the
+ * `catch` was never the whole silence.** An absent or unreadable directory
+ * comes back as `entries: []` with one `refused` row naming it; a file that
+ * will not parse comes back as another. Read through `.entries.length` alone,
+ * every one of those is indistinguishable from a store that simply has nothing
+ * applicable in this workspace — which is the ordinary state of a stranger's
+ * install and of every sandbox in this suite. The `try` is kept for what is
+ * left (`workspaceIsMyContext` resolving the package root, and anything the
+ * loader does not catch for itself), and now reports rather than absorbs it.
+ *
+ * **The seal is deliberately NOT read here.** `verifyManifest` is a second
+ * file read on a path held to a 50 ms p95 ceiling, and the door's own question
+ * — *how many constants would have applied* — does not depend on it: an entry
+ * whose bytes moved still parses and still governs. `storeFault` adds it for
+ * the surface that is allowed to pay.
+ */
+export function readStoreAtDoor(stateRoot: string, storeDir?: string): DoorStoreRead {
+  const dir = resolveStoreDir(storeDir);
+  let set: RuleSet;
+  try {
+    set = loadRules(dir, workspaceIsMyContext(stateRoot));
+  } catch (err) {
+    return {
+      dir, applicable: 0,
+      fault: { kind: 'unloadable', dir, detail: err instanceof Error ? err.message : String(err) },
+    };
+  }
+  if (set.entries.length === 0 && set.refused.length > 0) {
+    return {
+      dir, applicable: 0,
+      fault: { kind: 'unloadable', dir, detail: set.refused.map((r) => r.error).join(' ') },
+    };
+  }
+  if (set.refused.length > 0) {
+    return { dir, applicable: set.entries.length, fault: { kind: 'partial', dir, refused: set.refused } };
+  }
+  return { dir, applicable: set.entries.length, fault: null };
+}
+
+/**
+ * **The whole question about the store a door would read right now**, for the
+ * one surface that is allowed to pay for the seal: `readStoreAtDoor`'s answer,
+ * and then `verifyManifest` — the same call `mycontext rules verify` makes, so
+ * doctor and that command cannot disagree about one directory.
+ *
+ * The load fault wins where both are true: a store nothing can read is not
+ * usefully described by what its manifest says about it.
+ */
+export function storeFault(stateRoot: string, storeDir?: string): StoreFault | null {
+  const read = readStoreAtDoor(stateRoot, storeDir);
+  if (read.fault !== null && read.fault.kind === 'unloadable') return read.fault;
+  const answer = verifyManifest(read.dir);
+  if (!answer.ok) return { kind: 'unsealed', dir: read.dir, problems: answer.problems };
+  return read.fault;
 }
 
 /* ══ A STORE UPDATE UNDER A RUNNING SESSION — SPEC §12.3 ═══════════════════ */

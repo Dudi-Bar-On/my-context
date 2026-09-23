@@ -125,6 +125,11 @@ import { RETIRED_STATUSES } from '../core/select.ts';
 import {
   listRepoFiles, type Finding,
 } from '../doctor/checks.ts';
+// `ruleStoreFindings` and NOT `cli/commands/doctor.ts`'s copy of the call:
+// that module pulls in `openMutateContext` and the command registry behind it,
+// which is the entire write surface, to reach one wrapper. `doctor/rule-store.ts`
+// is where both surfaces read it from — see `apiDoctor`.
+import { ruleStoreFindings } from '../doctor/rule-store.ts';
 import { healthSnapshot, type HealthReading } from './read-model-health.ts';
 import { helpTopic, HELP_TOPICS } from '../help/index.ts';
 import type { Budgets, Config } from '../core/config.ts';
@@ -1813,7 +1818,29 @@ export function apiDoctor(ws: Workspace, url: URL): JsonResult {
       items: store.all(),
       config: ws.config,
     });
-    const body: DoctorBody = { findings: health.findings, reading: health.reading };
+    // **The rule store, appended and not folded into `healthSnapshot`** —
+    // `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`. It is
+    // `cmdDoctor`'s `ruleStoreFindings` (cli/commands/doctor.ts), asked here
+    // so that BOTH surfaces carry the same disclosure: a check reported in the
+    // terminal and absent from the screen is the routing defect that item is
+    // about, reintroduced one door over.
+    //
+    // It is outside the snapshot on purpose. `healthSnapshot` caches a
+    // measurement OF THE CORPUS and `reading` names the moment that
+    // measurement was taken; the rule store is the installed package, it
+    // changes on a different clock, and a fresh answer stapled to a cached
+    // `reading` would make that field say something it does not mean. The
+    // cost is one `readdirSync` of the entries directory plus one 5 KB
+    // manifest read per request, which is the same read a door already
+    // performs at session start.
+    //
+    // It carries `about`, so it is a DISCLOSURE: `/api/status`'s `health`
+    // tally filters on that field and is unchanged by it, which is why this
+    // does not belong in `healthSnapshot` for the tally's sake either.
+    const body: DoctorBody = {
+      findings: [...health.findings, ...ruleStoreFindings(root)],
+      reading: health.reading,
+    };
     return { status: 200, body };
   });
 }
