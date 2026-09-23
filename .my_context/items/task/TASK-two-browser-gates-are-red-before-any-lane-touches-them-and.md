@@ -17,17 +17,17 @@ tags:
   - ui
   - "plan:ui-gates"
   - "seq:1"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-08
 valid_until: null
-checksum: 4e72edf997faba72
+checksum: 3760d5e37f256919
 plan: ui-gates
 seq: "1"
-state: doing
+state: done
 priority: "2"
 ---
 
