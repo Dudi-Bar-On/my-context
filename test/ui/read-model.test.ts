@@ -1,4 +1,5 @@
-// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
+// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items,
+//        TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where
 /**
  * The select/render/simulate/sessions/injected/status/doctor/decay read model,
  * and the route table under it.
@@ -807,6 +808,100 @@ test('/api/simulate/sweep finds the eviction rung and names the evicted ids', ()
   } finally { f.done(); }
 });
 
+/**
+ * **The restore tier's disclosure, through the two endpoints that PRICE a
+ * selection** — `TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-
+ * where`.
+ *
+ * Since that item, `selection.spilled` no longer names only items: a snapshot
+ * id the corpus has since lost is disclosed with `reason: 'unknown id'` and
+ * `neverOffered: true`. Both endpoints used to treat every spilled id as an
+ * item they could price, and said so in a `throw` — so the disclosure that was
+ * supposed to keep a compaction honest would have turned the preview into a
+ * 500, which is the same reader losing the same information through a louder
+ * door.
+ *
+ * The three cases below are the whole of it: the price of a thing that does not
+ * exist is not 0 but *nothing*; a ladder must not promise a budget would buy
+ * back what no budget was offered; and both facts are read off
+ * `Spill.neverOffered` rather than off the reason string.
+ */
+test('/api/simulate serves a snapshot id the corpus no longer has, and prices nothing for it', () => {
+  const f = fixture();
+  try {
+    const result = apiSimulate(
+      f.ws,
+      url('simulate', 'event=compact&cold=1&restore=RULE-pin-me,RULE-deleted-since'),
+    );
+    assert.equal(result.status, 200, 'a disclosure must not be a 500');
+    const body = result.body as {
+      selection: Selection; costs: { id: string; tokens: number | null }[];
+    };
+
+    const spill = body.selection.spilled.find((s) => s.id === 'RULE-deleted-since');
+    assert.ok(spill, 'the disclosure itself survives the trip through the endpoint');
+    assert.equal(spill!.tier, 'restored');
+    assert.equal(spill!.reason, 'unknown id');
+    assert.equal(spill!.neverOffered, true);
+
+    // One entry per id — the invariant `costs` states about itself — and the
+    // one that names no item carries `null` rather than a 0 that would read as
+    // a measured price.
+    const priced = body.costs.find((c) => c.id === 'RULE-deleted-since');
+    assert.ok(priced, 'the row keeps its id; a shorter costs array is the silent drop');
+    assert.equal(priced!.tokens, null);
+    const ids = new Set([
+      ...body.selection.full.map((e) => e.item.id),
+      ...body.selection.spilled.map((s) => s.id),
+    ]);
+    assert.equal(body.costs.length, ids.size, 'costs prices full ∪ spilled, no more and no less');
+    // Non-vacuity: the same call still prices a real item with a real number.
+    assert.ok(body.costs.some((c) => typeof c.tokens === 'number' && c.tokens > 0));
+  } finally { f.done(); }
+});
+
+test('/api/simulate/sweep serves a snapshot id it cannot price, and never sweeps it', () => {
+  const f = fixture();
+  try {
+    const result = apiSimulateSweep(
+      f.ws,
+      url('simulate/sweep',
+        'event=compact&cold=1&tier=restored&restore=RULE-always-use-posix-paths,RULE-deleted-since'),
+    );
+    assert.equal(result.status, 200, 'a disclosure must not be a 500');
+    const body = result.body as {
+      candidateCount: number; neverOffered: string[];
+      rungs: { threshold: number; count: number; evicted: string[] }[];
+    };
+
+    assert.deepEqual(body.neverOffered, ['RULE-deleted-since'],
+      'the id is absent from the ladder and the response says so');
+    assert.equal(body.candidateCount, 1, 'exactly the one id the budget was actually offered');
+    // The ladder is about the real candidate only: no rung names the id that
+    // no budget could ever admit.
+    for (const rung of body.rungs) {
+      assert.equal(rung.evicted.includes('RULE-deleted-since'), false);
+    }
+  } finally { f.done(); }
+});
+
+test('a snapshot id that still resolves but no budget could admit is not swept either', () => {
+  const f = fixture();
+  try {
+    // A rationale-tier item: it exists, it is active, and the restore tier can
+    // never deliver it. Pricing it as a candidate would draw a rung claiming a
+    // bigger `restored` budget brings it back.
+    const result = apiSimulateSweep(
+      f.ws,
+      url('simulate/sweep', 'event=compact&cold=1&tier=restored&restore=DEC-we-chose-sqlite'),
+    );
+    assert.equal(result.status, 200);
+    const body = result.body as { candidateCount: number; neverOffered: string[] };
+    assert.deepEqual(body.neverOffered, ['DEC-we-chose-sqlite']);
+    assert.equal(body.candidateCount, 0);
+  } finally { f.done(); }
+});
+
 // --- 4 · the three ledger outcomes ------------------------------------------
 
 test('a corpus nothing has ever injected into yields ledger === null, and still serves', () => {
@@ -1569,7 +1664,15 @@ test('/api/status is `status --json`\'s document, composed from the same functio
     // word-for-word. Two governing normative items saying the same words is
     // exactly what that check exists to surface.
     const reportable = findings.filter((x) => x.about === undefined);
-    assert.equal(findings.length - reportable.length, 1, 'one disclosure, and it is excluded below');
+    // Asserted as the SET of disclosure codes rather than as a count: a count
+    // breaks the next time a check grows a disclosure, and says nothing about
+    // which one. `governing_spill_coverage` is the second and arrived with
+    // `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`.
+    assert.deepEqual(
+      findings.filter((x) => x.about !== undefined).map((x) => x.code).sort(),
+      ['contradiction_drain_limits', 'governing_spill_coverage'],
+      'every `about` finding is a disclosure and is excluded below',
+    );
     assert.deepEqual(body.health, {
       errors: reportable.filter((x) => x.level === 'error' && x.acknowledged !== true).length,
       warnings: reportable.filter((x) => x.level === 'warn' && x.acknowledged !== true).length,
@@ -1756,6 +1859,12 @@ test('/api/doctor is runChecks verbatim — unfiltered, ungrouped, unsorted', ()
       ['warn', 'summary_absent', 'RULE-always-use-posix-paths'],
       ['warn', 'summary_absent', 'RULE-never-log-the-customer-email'],
       ['warn', 'summary_absent', 'RULE-pin-me'],
+      // The governing-spill disclosure, added by
+      // `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`: an
+      // `about` finding, so it draws no row and is excluded from the health
+      // tally above — but `/api/doctor` carries `runChecks` VERBATIM, so it is
+      // here.
+      ['info', 'governing_spill_coverage', null],
       // `checkCorpusContradictions` (plan:contra seq:3), and it is a TRUE
       // finding this fixture builds on purpose: `enrich` clones `RULE-pin-me`
       // into `RULE-a-captured-rule`, so the two carry the same body word for

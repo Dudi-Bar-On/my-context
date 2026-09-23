@@ -195,6 +195,36 @@ export interface Spill {
    * admits against a budget and knows nothing about scope.
    */
   band?: number;
+  /**
+   * **This id was never offered to the budget at all** — set only by the
+   * restore tier's disclosure
+   * (`TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where`), and
+   * the one fact that separates *"the budget ran out"* from *"there was nothing
+   * to admit"*.
+   *
+   * Every other record in `spilled` is a candidate that lost to a number:
+   * `fitToBudget` priced it, the tier could not afford it, and raising that
+   * tier's budget would bring it back. A snapshot id that is superseded, on a
+   * disabled or rationale category, hidden by the active focus, already
+   * delivered, or unknown to the corpus is none of those things — no budget
+   * would ever admit it, and there is no item to price.
+   *
+   * **It exists so that no reader has to parse `reason` to tell the two
+   * apart.** Three consumers need the difference and all three would otherwise
+   * be reading English: `core/render.ts` files a budget loss and a disclosure
+   * under different sentences, `/api/simulate` cannot price an id with no item,
+   * and `/api/simulate/sweep` must not claim a bigger budget would bring back
+   * something no budget was ever offered. A regex over a reason string is the
+   * two-spellings defect with extra steps, and it breaks the day the wording
+   * improves.
+   *
+   * **ABSENT rather than `false` everywhere else**, which is `band`'s own rule
+   * and for `band`'s own reason: `Spill` is serialised verbatim by
+   * `/api/select` and compared field-for-field by the golden tests, so a
+   * `neverOffered: false` on every ordinary record would be a shape change on
+   * every surface for a case that did not occur.
+   */
+  neverOffered?: true;
 }
 
 /**
@@ -1706,6 +1736,76 @@ export function select(items: Item[], ctx: SelectContext, config: Config): Selec
     entries.push(...result.entries);
     spilled.push(...result.spilled);
     tokens += result.used;
+
+    // **EVERY SNAPSHOT ID THAT DID NOT COME BACK SAYS WHY** —
+    // `TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where`, and
+    // it is `INV-nothing-is-dropped-silently` at the moment a session has just
+    // lost its window and is least able to notice an absence.
+    //
+    // The filter above is a candidate test, not a disclosure: an id the
+    // snapshot holds that has since been superseded, retired, moved to a
+    // disabled category or hidden by a focus is never offered to
+    // `fitToBudget`, so no `Spill` was written and nothing anywhere said the
+    // reader had lost it. The only account was `hooks/post-compact.ts`'s
+    // "snapshot N id(s), M re-delivered" — a count, in the audit log, carrying
+    // no ids and no reason, and not where anyone looks mid-task.
+    //
+    // **The reasons are `carriedDropReason`'s, called rather than restated.**
+    // The cross-session carry is the other half of this mechanism and it
+    // already names the same five cases for the same five causes; a second
+    // vocabulary here would be two spellings of one sentence on two surfaces,
+    // which is this project's most expensive recurring defect. A reword there
+    // moves both, which is the point.
+    //
+    // **The channel is this tier's own `spilled`, and no new field.** The
+    // budget half of the restore tier's drops already arrives that way, so the
+    // injected block, `--json` and the audit projection read one list rather
+    // than a list plus a summary object nobody's renderer knows about. It is a
+    // reason on an existing record, exactly as the carry's displacement reason
+    // is (`buildIndex`) — no sixth budget, no second convention.
+    //
+    // THREE EXCLUSIONS, and each is the difference between a disclosure and a
+    // false claim:
+    //
+    //  - **`arrived`** is read AFTER this tier's entries are pushed, so it
+    //    covers both an id this tier admitted and one an earlier tier already
+    //    delivered (`alreadyChosen` — a snapshot id that is also `always`
+    //    arrives on `pinned`). Those items are in `full`. A spill record would
+    //    tell the reader they were dropped while they are on the screen.
+    //  - **`overBudget`** is what `fitToBudget` just recorded. Those ids are
+    //    disclosed already, with the number that decided it; naming them again
+    //    here would report one loss twice and overwrite "how much it cost" with
+    //    "why it was never a candidate", which is not what happened.
+    //  - **The `seen` gate is a REASON, not an exclusion.** An id `fresh`
+    //    removed was delivered in full earlier in this session, which is
+    //    `carriedDropReason`'s first branch word for word — and saying it
+    //    matters most here, because a compaction REBUILDS the window: the
+    //    delivery that excuses the dedupe may be the very text that was just
+    //    cleared. Disclosing it costs a line; swallowing it is the failure this
+    //    task exists to end.
+    //
+    // Sorted by id for `buildIndex`'s reason: the snapshot's order is an
+    // artefact of capture, and a disclosure that reorders itself between two
+    // runs of the same snapshot cannot be diffed by a reader.
+    const arrived = new Set(entries.map((e) => e.item.id));
+    const overBudget = new Set(result.spilled.map((s) => s.id));
+    const byId = new Map(merged.map((i) => [i.id, i]));
+    const freshIds = new Set(fresh.map((i) => i.id));
+    const deliveredEarlier = new Set(
+      injectable.filter((i) => !freshIds.has(i.id)).map((i) => i.id),
+    );
+    for (const id of [...restoreIds].sort(compareStrings)) {
+      if (arrived.has(id) || overBudget.has(id)) continue;
+      spilled.push({
+        id,
+        tier: 'restored',
+        reason: carriedDropReason(id, byId.get(id), config, deliveredEarlier),
+        // Never a candidate, never priced, and no budget would change it — see
+        // `Spill.neverOffered`. It is the flag that keeps every consumer off
+        // the reason string.
+        neverOffered: true,
+      });
+    }
   }
 
   const target = jitTarget(ctx);

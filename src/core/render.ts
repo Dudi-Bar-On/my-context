@@ -119,21 +119,58 @@ function renderIndex(selection: Selection): string {
  * Spill entries are per-tier: the same item id can appear once per tier that
  * dropped it (e.g. 'pinned' AND 'index'). Group by id here so the disclosure
  * reports each lost item once, listing every tier that excluded it.
+ *
+ * `neverOffered` is true for a group ONLY when every record under that id says
+ * so — see `Spill.neverOffered`. A group that mixes the two is a candidate that
+ * really did lose to a budget somewhere, and the budget clause is where it
+ * belongs; the mixed case is not expected to occur (an id a budget priced was
+ * offered to that budget), and this is the reading that stays correct if it
+ * ever does.
  */
-function groupSpillsById(spilled: Spill[]): { id: string; tiers: string[]; reasons: string[] }[] {
-  const byId = new Map<string, { id: string; tiers: string[]; reasons: string[] }>();
+function groupSpillsById(
+  spilled: Spill[],
+): { id: string; tiers: string[]; reasons: string[]; neverOffered: boolean }[] {
+  const byId = new Map<
+    string, { id: string; tiers: string[]; reasons: string[]; neverOffered: boolean }
+  >();
   for (const s of spilled) {
     const existing = byId.get(s.id);
     if (existing) {
       existing.tiers.push(s.tier);
       existing.reasons.push(s.reason);
+      existing.neverOffered &&= s.neverOffered === true;
     } else {
-      byId.set(s.id, { id: s.id, tiers: [s.tier], reasons: [s.reason] });
+      byId.set(s.id, {
+        id: s.id, tiers: [s.tier], reasons: [s.reason], neverOffered: s.neverOffered === true,
+      });
     }
   }
   return [...byId.values()];
 }
 
+/**
+ * **Two omissions, two sentences, and the second one is
+ * `TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where`.**
+ *
+ * The first clause is unchanged and says what it always said: N items were
+ * priced, did not fit, and a bigger budget would have taken them. The second
+ * names the snapshot ids the restore tier could not bring back and WHY, in
+ * `select`'s own words — `renderCarried`'s `${id} (${reason})` shape, because
+ * the carry tier is the other half of the same mechanism and two vocabularies
+ * for one fact is the defect this project pays for most often.
+ *
+ * **They are kept apart because "for budget" would be a false reason.** A
+ * superseded item, an item on a disabled category, one hidden by the focus and
+ * one the corpus no longer has were never offered to any budget; filing them
+ * under the budget headline would tell a reader to raise a number that cannot
+ * bring them back, and would inflate the one count used to judge that number.
+ * The two are told apart by `Spill.neverOffered`, a flag the selector sets where
+ * the decision is taken — never by matching the reason string here.
+ *
+ * Where nothing was `neverOffered` the output is byte-identical to what this
+ * function produced before the clause existed, which is what keeps the change
+ * invisible to every session that did not compact.
+ */
 function renderSpill(selection: Selection): string {
   // Entries whose ONLY tier is 'index' were never full-text candidates —
   // they are already disclosed by the index's "+N more" line, so listing
@@ -143,14 +180,26 @@ function renderSpill(selection: Selection): string {
     .filter((g) => !(g.tiers.length === 1 && g.tiers[0] === 'index'));
   if (grouped.length === 0) return '';
 
-  const items = grouped
-    .map((g) => (g.tiers.length > 1 ? `${g.id} (${g.tiers.join(', ')})` : g.id))
-    .join(', ');
+  const lost = grouped.filter((g) => !g.neverOffered);
+  const unavailable = grouped.filter((g) => g.neverOffered);
 
-  return (
-    `_${grouped.length} item(s) omitted from full text for budget: ${items}. ` +
-    `Fetch with mycontext show <id>._`
-  );
+  const parts: string[] = [];
+  if (lost.length > 0) {
+    const items = lost
+      .map((g) => (g.tiers.length > 1 ? `${g.id} (${g.tiers.join(', ')})` : g.id))
+      .join(', ');
+    parts.push(`${lost.length} item(s) omitted from full text for budget: ${items}.`);
+  }
+  if (unavailable.length > 0) {
+    // The reasons are joined rather than picked from: an id disclosed by two
+    // tiers has two answers, and choosing one would be this renderer deciding
+    // which of the selector's reasons matters.
+    const named = unavailable.map((g) => `${g.id} (${g.reasons.join('; ')})`).join(', ');
+    parts.push(`${unavailable.length} id(s) from the compaction snapshot got no full text: ${named}.`);
+  }
+  parts.push('Fetch with mycontext show <id>.');
+
+  return `_${parts.join(' ')}_`;
 }
 
 /**
