@@ -193,7 +193,9 @@ function plan(box: Sandbox, source: string) {
   return planImport(readArtefact(source), against(box));
 }
 
-function options(source: string, over: { overwriteApproved?: boolean } = {}) {
+function options(
+  source: string, over: { overwriteApproved?: boolean; keepsPartialWrites?: boolean } = {},
+) {
   return {
     name: PACK_NAME, source, origin: source, now: FIXED_NOW, overwriteApproved: false, ...over,
   };
@@ -271,6 +273,52 @@ test('the refused pack leaves the workspace byte-identical — config.json inclu
   assert.equal(box.ctx.store.all().length, 0);
   assert.equal(box.ctx.store.get(RULE_ID), null);
   assert.equal(box.ctx.store.get(LESSON_ID), null);
+});
+
+test('an item of a category nothing declares is refused by the PLAN too, in the creator\'s words', () => {
+  // The same class as the extra field above and knowable the same way — from
+  // the artefact and the catalogue, with no corpus and no write. It is
+  // re-voiced through `enumError`, the helper `resolveCategory` (core/mutate.ts)
+  // itself uses, so a reader gets one sentence for one rule wherever it fires.
+  const box = workspace();
+  const source = artefact({
+    items: [
+      item({ id: RULE_ID, type: 'rule', title: 'Never log a token', body: 'Never log a token.' }),
+      item({ id: 'THREAT-token-replay', type: 'threat_model', title: 'Token replay' }),
+    ],
+  });
+
+  const before = snapshotTree(box.root);
+  const message = messageOf(() => applyImport(box.ctx, plan(box, source), options(source)));
+
+  assert.match(message, /"THREAT-token-replay" —/, message);
+  assert.match(message, /You passed "threat_model"/, message);
+  assert.match(message, /nothing was imported and nothing was written/, message);
+  assert.deepEqual(snapshotTree(box.root), before, 'the workspace tree moved');
+  assert.equal(box.ctx.store.get(RULE_ID), null, 'the item ahead of it was created');
+});
+
+test('an item of a DISABLED category is refused by the PLAN, and not by the create loop', () => {
+  const box = workspace({
+    profile: 'standard',
+    categories: { lesson: { enabled: false } },
+    budgets: {},
+  });
+  const source = artefact({
+    items: [item({
+      id: LESSON_ID, type: 'lesson', title: 'Retry with backoff', body: 'Retry with backoff.',
+    })],
+    // The pack may only set `enabled: true`, so it cannot re-enable what this
+    // workspace switched off — the merge leaves the category disabled.
+    categories: { rule: { enabled: true, prefix: 'RULE', scopePolicy: 'global' } },
+  });
+
+  const before = snapshotTree(box.root);
+  const message = messageOf(() => applyImport(box.ctx, plan(box, source), options(source)));
+
+  assert.match(message, new RegExp(`"${LESSON_ID}" —`), message);
+  assert.match(message, /category "lesson" is disabled in this project/, message);
+  assert.deepEqual(snapshotTree(box.root), before, 'the workspace tree moved');
 });
 
 test('an APPROVED overwrite carrying an undeclared extra field refuses before the config write', () => {
@@ -368,6 +416,33 @@ test('the config left behind is whole — the merged document, never a partial f
   // And no temp file was left beside it.
   const stray = readdirSync(box.root).filter((n) => n.startsWith(`${CONFIG_NAME}.`));
   assert.deepEqual(stray, [], `a temp config was left behind: ${stray.join(', ')}`);
+});
+
+test('a caller that DISCARDS what landed is not given a route into it, and is still told', () => {
+  // `init --pack` is that caller: it removes the tree it built. The two halves
+  // of the disclosure are not equal — what was written and what was not is the
+  // invariant and is printed either way; the route out is a convenience that
+  // is only true where the corpus survives, and a record filed into a tree
+  // about to be removed is a write nobody can reach.
+  const box = workspace();
+  const source = unscopedArtefact();
+
+  const message = messageOf(() => applyImport(box.ctx, plan(box, source), options(source, {
+    keepsPartialWrites: false,
+  })));
+
+  assert.match(message, /WRITTEN: config\.json/, message);
+  assert.match(message, new RegExp(`created as drafts \\("${LESSON_ID}"\\)`), message);
+  assert.match(
+    message,
+    new RegExp(`NOT WRITTEN: 2 item\\(s\\) the pack carries \\("PLAY-run-the-drill" and "${RULE_ID}"\\)`),
+    message,
+  );
+  assert.match(message, /scopePolicy/, message);
+  assert.doesNotMatch(message, /WHERE TO GO/, message);
+  assert.doesNotMatch(message, /WAS changed/, message);
+  assert.doesNotMatch(message, /import record/, message);
+  assert.deepEqual(readImportRecords(box.root), []);
 });
 
 test('the half-applied pack is filed, so pack list names it and promote can reach the drafts', () => {

@@ -409,6 +409,18 @@ function applyPack(cwd: string, planned: PlannedPack, out: Emit): AppliedPack {
     const outcome = applyImport(ctx, planned.plan, {
       name: planned.name, source: planned.source, origin: planned.origin,
       now: Date.now(), overwriteApproved: false,
+      // **`keepsPartialWrites: false`, and this is the one surface that says
+      // so.** A failure part-way through `applyImport` leaves a changed
+      // `config.json` and a prefix of the pack on disk, and `applyImport`'s
+      // disclosure normally ends by pointing at them: `pack list` names the
+      // pack, `review promote --all --pack` reaches the drafts. Here that
+      // route is false by the time it is read — `cmdInit`'s catch removes the
+      // whole tree two lines later — and it would be printed directly above
+      // this command's own accurate "nothing was created". So the disclosure
+      // is told which kind of caller this is, and prints what was written and
+      // what was not (which is true on every surface) without the route
+      // (which is not).
+      keepsPartialWrites: false,
     });
     return { name: planned.name, outcome, errors };
   } finally {

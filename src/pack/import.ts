@@ -38,6 +38,11 @@
  * will actually run under), so the common failure is a refusal that names the
  * item and the field before a single byte moves.
  *
+ * All three are knowable from the artefact and the catalogue alone, which is
+ * the test for whether a rule belongs here: it is answerable without the corpus
+ * and without a write. The category refusals are re-voiced in `resolveCategory`
+ * (core/mutate.ts)'s own words rather than in new ones — see `categoryRefusal`.
+ *
  * It cannot be complete, and is not pretended to be: `createItem` holds rules
  * that depend on the corpus as it is at the moment of the write, and mirroring
  * all of them here would be a second copy of the creator. What it covers is the
@@ -100,6 +105,7 @@ import {
   type CreateInput, type MutationContext, type UpdateInput,
 } from '../core/mutate.ts';
 import { retryOnTransientFsError } from '../core/rebuild.ts';
+import { enumError } from '../core/teach.ts';
 import { unknownExtraFieldError } from '../core/trust.ts';
 import type { Item } from '../core/types.ts';
 import { bucketise, type Buckets } from './collide.ts';
@@ -232,6 +238,28 @@ export interface ImportOptions {
    * the day somebody changed the default.
    */
   overwriteApproved: boolean;
+  /**
+   * Whether the caller KEEPS what a failed import managed to write. Default
+   * true, which is what `mycontext pack import` is.
+   *
+   * It exists because the partial-write disclosure ends with a route out —
+   * `pack list` names the pack, `review promote --all --pack <name>` reaches
+   * the drafts that landed — and that route is only real where the workspace
+   * survives. `init --pack` is the surface where it is not: `cmdInit`
+   * (cli/index.ts) removes the whole tree it had just created, so the two
+   * commands would name a corpus that is no longer on disk, printed one line
+   * above init's own accurate "nothing was created". So the caller says which
+   * it is, and `refusePartial` prints the route only where there is one.
+   *
+   * **Optional, unlike `overwriteApproved`, and the asymmetry is deliberate.**
+   * Omitting that one would let a call site overwrite a corpus by accident;
+   * omitting this one costs a caller that discards a route sentence that is
+   * merely unhelpful, and the default is the answer that is true of every
+   * surface but one. What is NOT conditional on it is the disclosure itself:
+   * what was written and what was not is printed either way, because that is
+   * the invariant and the route is only a convenience on top of it.
+   */
+  keepsPartialWrites?: boolean;
 }
 
 /** What one import did. The four id lists partition `plan.allIds`. */
@@ -349,6 +377,58 @@ function bare(message: string): string {
   return message.replace(/^my_context:\s*/, '');
 }
 
+/** One item's refusal as a line of a `refuseAll`: the id, then the reason. */
+function refusalFor(id: string, reason: string): string {
+  return `my_context: ${JSON.stringify(id)} — ${bare(reason)}`;
+}
+
+/**
+ * Whether this workspace can create an item of `type` at all, worded exactly as
+ * `resolveCategory` (`core/mutate.ts` · `function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {` · ~339)
+ * words it — the same `enumError` helper for the unknown case, and the disabled
+ * sentence character for character.
+ *
+ * Reproduced rather than called because `resolveCategory` is private to the
+ * creator, and re-voiced rather than re-invented because `init --pack` pins the
+ * "You passed …" wording and a second phrasing for one refusal is the defect
+ * `STD-error-message-conventions` exists about. The two must stay in step;
+ * `test/cli/init-pack.test.ts` is what notices if they do not.
+ *
+ * `null` when the category is fine — the shape every check in this file uses.
+ */
+function categoryRefusal(merged: Config, type: string): string | null {
+  if (!Object.hasOwn(merged.categories, type)) {
+    const enabled = Object.values(merged.categories).filter((c) => c.enabled).map((c) => c.name);
+    return enumError('type', type, enabled, 'categories');
+  }
+  if (!merged.categories[type].enabled) {
+    return `my_context: category "${type}" is disabled in this project, so no new `
+      + `${type} items are accepted. Enable it in .my_context/config.json under `
+      + `categories.${type}.enabled, or pick another type — see mycontext_help("categories").`;
+  }
+  return null;
+}
+
+/**
+ * Whether the `extra` an item arrived carrying belongs to the category it will
+ * be written under — `unknownExtraFieldError` (core/trust.ts), asked of the
+ * MERGED catalogue.
+ *
+ * A type the catalogue does not declare answers `null` here and is the previous
+ * function's question, not this one's: on the create path `categoryRefusal` has
+ * already refused it, and on the overwrite path it is deliberately allowed
+ * through, because that is `updateItem`'s own shape
+ * (`core/mutate.ts` · `  if (input.extra !== undefined && Object.hasOwn(ctx.config.categories, item.type)) {` · ~1483)
+ * — an item whose category was removed after capture is still updatable, and
+ * refusing it here would refuse a write that would have gone through.
+ */
+function ownershipRefusal(
+  merged: Config, type: string, extra: Record<string, string>, surface: 'capture' | 'edit',
+): string | null {
+  if (!Object.hasOwn(merged.categories, type)) return null;
+  return unknownExtraFieldError(merged, merged.categories[type], extra, surface);
+}
+
 /**
  * Every arriving item this workspace could not create, asked BEFORE anything
  * is written.
@@ -358,23 +438,17 @@ function bare(message: string): string {
  * items belong to is asked about the category it brought with it, and not about
  * one this workspace has never heard of.
  *
- * **An item whose type the merged config does not declare is left to
- * `createItem`.** Not an oversight: `resolveCategory` (core/mutate.ts) names
- * the closest valid category and lists the enabled ones, which is a better
- * refusal than anything this function could compose, and `init --pack` already
- * pins that wording. It fails after the config write, so it is the disclosure
- * below that carries it rather than this pre-flight — and a disabled category
- * is the same case for the same reason. What is asked here is the question that
- * has no second surface and no better message: does this item's own category
- * declare the frontmatter it arrived carrying.
+ * Both questions, in `createItem`'s own order — the category first, because the
+ * ownership question cannot be asked without one, and because that is the order
+ * the creator asks them in. Every offending item is reported, not the first:
+ * a pack fixed one refusal at a time is a pack imported one failure at a time.
  */
 function preflightCreates(source: string, buckets: Buckets, merged: Config): void {
   const reasons: string[] = [];
   for (const item of buckets.new) {
-    if (!Object.hasOwn(merged.categories, item.type)) continue;
-    const ownership = unknownExtraFieldError(merged, merged.categories[item.type], item.extra);
-    if (ownership === null) continue;
-    reasons.push(`my_context: ${JSON.stringify(item.id)} — ${bare(ownership)}`);
+    const refusal = categoryRefusal(merged, item.type)
+      ?? ownershipRefusal(merged, item.type, item.extra, 'capture');
+    if (refusal !== null) reasons.push(refusalFor(item.id, refusal));
   }
   if (reasons.length === 0) return;
   refuseAll(
@@ -396,11 +470,10 @@ function preflightCreates(source: string, buckets: Buckets, merged: Config): voi
  * at the top of it — still before the config write, so "nothing was written"
  * stays true.
  *
- * The category is the LOCAL item's, and a type the config no longer declares is
- * skipped, because both of those are `updateItem`'s own shape
- * (`core/mutate.ts` · `  if (input.extra !== undefined && Object.hasOwn(ctx.config.categories, item.type)) {` · ~1483);
- * asking a different question here would refuse writes that would have gone
- * through.
+ * `categoryRefusal` is deliberately NOT asked: an overwrite goes through
+ * `updateItem`, which resolves no category at all, so a type this catalogue has
+ * stopped declaring is a write that still lands. The category consulted is the
+ * LOCAL item's, for the same reason — it is the one `updateItem` reads.
  */
 function preflightOverwrites(plan: ImportPlan, overwriteApproved: boolean): void {
   if (!overwriteApproved) return;
@@ -408,13 +481,8 @@ function preflightOverwrites(plan: ImportPlan, overwriteApproved: boolean): void
   const reasons: string[] = [];
   for (const entry of plan.buckets.changed) {
     if (!entry.overwritable) continue;
-    const type = entry.existing.type;
-    if (!Object.hasOwn(merged.categories, type)) continue;
-    const ownership = unknownExtraFieldError(
-      merged, merged.categories[type], entry.incoming.extra, 'edit',
-    );
-    if (ownership === null) continue;
-    reasons.push(`my_context: ${JSON.stringify(entry.incoming.id)} — ${bare(ownership)}`);
+    const refusal = ownershipRefusal(merged, entry.existing.type, entry.incoming.extra, 'edit');
+    if (refusal !== null) reasons.push(refusalFor(entry.incoming.id, refusal));
   }
   if (reasons.length === 0) return;
   refuseAll(
@@ -710,8 +778,13 @@ function refusePartial(
 ): never {
   const imported = [...done.created, ...plan.buckets.identical.map((i) => i.id)];
   const members = [...imported, ...done.overwritten];
+  // A caller that discards what landed is not offered a record of it, and is
+  // not told one exists: the record would be written inside the tree it is
+  // about to remove — pointless, and on Windows one more open handle in the
+  // way of the `rmSync` that has to succeed for its own message to be true.
+  const keeps = options.keepsPartialWrites !== false;
   let filed = done.recordWritten;
-  if (!filed) {
+  if (keeps && !filed) {
     try {
       writeImportRecord(ctx.root, {
         protocol: IMPORT_RECORD_PROTOCOL,
@@ -745,20 +818,30 @@ function refusePartial(
       + 'pack list` will not name this pack and `review promote --all --pack` cannot reach the '
       + 'drafts above. They are in the corpus under the ids named here and can be promoted one '
       + 'at a time.';
+  // The headline says what is true on the surface that is printing it. A caller
+  // that discards what landed prints its own account of the disk one line
+  // below, and "this workspace WAS changed" above "nothing was created" is two
+  // sentences a reader has to reconcile for us.
+  const headline = keeps
+    ? `my_context: this import of ${JSON.stringify(options.name)} stopped part-way, and this `
+      + 'workspace WAS changed — it is not the case that nothing happened.'
+    : `my_context: this import of ${JSON.stringify(options.name)} stopped part-way, after it had `
+      + 'already written. What it had written by then is listed below, so the account of what is '
+      + 'on disk now can be read against it.';
 
   throw new Error([
-    `my_context: this import of ${JSON.stringify(options.name)} stopped part-way, and this `
-    + 'workspace WAS changed — it is not the case that nothing happened.',
+    headline,
     `my_context: WRITTEN: config.json now holds the merged configuration${plan.config.merged.length > 0
       ? ` (it declares ${nameIds(plan.config.merged)})` : ''}; `
     + `${done.created.length} of ${plan.buckets.new.length} new item(s) were created as drafts `
     + `(${idsOrNone(done.created)}); ${done.overwritten.length} overwrite(s) completed `
     + `(${idsOrNone(done.overwritten)}); the pack's history was `
     + `${done.historyWritten ? 'filed' : 'NOT filed'}; its unreadable rows were `
-    + `${done.quarantineWritten ? 'quarantined' : 'NOT quarantined'}; the import record was `
-    + `${filed ? 'filed' : 'NOT filed'}.`,
+    + `${done.quarantineWritten ? 'quarantined' : 'NOT quarantined'}`
+    + `${keeps ? `; the import record was ${filed ? 'filed' : 'NOT filed'}` : ''}.`,
     `my_context: NOT WRITTEN: ${unwritten.length} item(s) the pack carries (${idsOrNone(unwritten)}).`,
-    route,
+    // The route out, only where there is one to offer.
+    ...(keeps ? [route] : []),
     `my_context: WHAT REFUSED: ${reason}`,
   ].join('\n'), { cause });
 }

@@ -329,12 +329,33 @@ test('a full export is refused with the shared ruling-C sentence, not the closed
   assert.equal(existsSync(rootOf(cwd)), false);
 });
 
-test('a failure AFTER the directory exists leaves no half-built workspace, and says why', () => {
-  // The one failure that cannot be refused by the pure half: an item whose
-  // category nothing declares reaches `createItem`, which resolves the type
-  // out of the config and refuses it. `planImport` does not type-check items
-  // against the config, so this fails mid-apply — after `items/`,
-  // `config.json` and `.gitignore` are all on disk.
+// @basis TASK-a-pack-import-can-throw-after-overwriting-config-and, INV-nothing-is-dropped-silently
+/**
+ * An item whose category nothing declares is refused BEFORE the directory
+ * exists — and this test used to pin the opposite.
+ *
+ * It was written when `planImport` did not type-check items against the config,
+ * so this artefact reached `createItem` from inside the apply loop and failed
+ * mid-apply, after `items/`, `config.json` and `.gitignore` were all on disk.
+ * Its comment said so in as many words: *"the one failure that cannot be
+ * refused by the pure half"*. That sentence described a defect
+ * (`TASK-a-pack-import-can-throw-after-overwriting-config-and`) rather than a
+ * property, and task 4.8 closed it: an item's type and its `extra` are both
+ * knowable from the artefact and the catalogue alone, with no corpus and no
+ * write, so `preflightCreates` (src/pack/import.ts) asks both in the pure half.
+ *
+ * **The wording assertion stays, and stays load-bearing.** The pre-flight
+ * re-voices `resolveCategory`'s refusal through the same `enumError` helper
+ * rather than composing a second sentence for one rule, so "You passed
+ * <type>" is still what a person reads — and this line is what notices if the
+ * two ever drift apart. What moved is WHEN it is printed, and that is what the
+ * two assertions below it now pin: nothing on disk, and none of the
+ * partial-write disclosure, which is the sentence a late failure prints and an
+ * early one must not.
+ *
+ * The late path has its own test, immediately below.
+ */
+test('an item of an undeclared category is refused before the directory is created', () => {
   const cwd = empty();
   const undeclared = artefact({
     items: [item({ id: 'THREAT-token-replay', type: 'threat_model', title: 'Token replay' })],
@@ -351,13 +372,87 @@ test('a failure AFTER the directory exists leaves no half-built workspace, and s
     + 'whole outcome, and "initialized" is not printed for a corpus that is not there',
   );
   assert.equal(out.includes('initialized'), false);
-  // The failure is `createItem`'s own category refusal, which is only
-  // reachable from `applyImport` — i.e. AFTER the three writes. Matching it
-  // is what keeps this test about the late path rather than passing on any
-  // refusal at all.
   assert.match(flat(out), /You passed "threat_model"/);
-  // ...and the second line, which is the one a half-built workspace could not
-  // say for itself.
+  // The refusal names the item it is about, which `createItem`'s own sentence
+  // never did — it knew the type and not which file carried it.
+  assert.match(flat(out), /"THREAT-token-replay" —/);
+  // ...and it is the PLAN's refusal, not the apply's: nothing was written, so
+  // none of the partial-write disclosure appears.
+  assert.match(flat(out), /nothing was imported and nothing was written/);
+  assert.doesNotMatch(flat(out), /WAS changed/);
+  assert.doesNotMatch(flat(out), /WRITTEN: config\.json/);
+});
+
+// @basis TASK-a-pack-import-can-throw-after-overwriting-config-and, INV-nothing-is-dropped-silently
+/**
+ * A failure `planImport` genuinely cannot pre-flight, and the one sentence
+ * `init --pack` must NOT print.
+ *
+ * `applyImport`'s partial-write disclosure ends with a route out — `pack list`
+ * names the pack, `review promote --all --pack` reaches the drafts that landed
+ * — because on `mycontext pack import` that is true: the workspace was there
+ * before and whatever landed is in it afterwards. On THIS surface it is false.
+ * `cmdInit` removes the whole tree it had just created, so both commands would
+ * name a corpus that is no longer on disk, printed one line above init's own
+ * accurate "nothing was created". Two sentences, one of them wrong, is the
+ * defect `INV-nothing-is-dropped-silently` is written against in the other
+ * direction; the caller therefore tells `applyImport` that it does not keep
+ * what landed, and the route is printed only where there is one.
+ *
+ * What the disclosure still says on both surfaces is what was written and what
+ * was not. That is the invariant, and it is not conditional on anything.
+ *
+ * The fixture is a pack DEFINING a category with `scopePolicy: "required"` and
+ * an item of it carrying no scope glob: `refusePackConfig` permits every part
+ * of that, and the refusal comes from `createItem` after the merged config has
+ * been written — which is what makes this the late path and not a second copy
+ * of the test above.
+ */
+test('a late failure prints what was written, and NOT a route into a workspace being removed', () => {
+  const cwd = empty();
+  const unscoped = artefact({
+    // File order is what the reader hands over, so `items/lesson/…` is created
+    // and `items/playbook/…` is the one that refuses — a genuine prefix, which
+    // is the state this disclosure exists to describe.
+    items: [
+      item({
+        id: LESSON_ID, type: 'lesson', title: 'Retry with backoff',
+        body: 'Retry with backoff.',
+      }),
+      item({
+        id: 'PLAY-run-the-drill', type: 'playbook', title: 'Run the drill',
+        body: 'Run the drill quarterly.',
+      }),
+    ],
+    categories: {
+      ...PACK_CATEGORIES,
+      playbook: {
+        enabled: true, prefix: 'PLAY', tier: 'normative', scopePolicy: 'required',
+        description: 'A rehearsed response to a named incident',
+      },
+    },
+    history: [],
+  });
+
+  const { code, out } = run(['init', '--pack', unscoped], cwd);
+
+  assert.equal(code, 1, out);
+  assert.equal(existsSync(rootOf(cwd)), false, 'the tree init created must be removed');
+  assert.equal(out.includes('initialized'), false);
+  // It IS the late path: the refusal is `createItem`'s, reached only from
+  // `applyImport`, and the disclosure says the config was adopted.
+  assert.match(flat(out), /scopePolicy "required"/);
+  assert.match(flat(out), /WRITTEN: config\.json/);
+  // ...and it names what landed and what did not, on this surface too.
+  assert.match(flat(out), new RegExp(`1 of 2 new item\\(s\\) were created as drafts \\("${LESSON_ID}"\\)`));
+  assert.match(flat(out), /NOT WRITTEN: 1 item\(s\) the pack carries \("PLAY-run-the-drill"\)/);
+  // The route out is the sentence that would be false here, so it is absent —
+  // and init's own tail is the one sentence about what is on disk.
+  assert.doesNotMatch(flat(out), /WHERE TO GO/);
+  assert.doesNotMatch(flat(out), /pack list/);
+  assert.doesNotMatch(flat(out), /review promote --all --pack/);
+  // Nor the headline that would contradict the tail one line below it.
+  assert.doesNotMatch(flat(out), /WAS changed/);
   assert.match(flat(out), /nothing was created/i);
 });
 
