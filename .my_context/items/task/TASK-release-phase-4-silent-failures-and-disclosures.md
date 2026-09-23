@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:4"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 85e74577fd705655
+checksum: db08e3095cd29872
 plan: release
 seq: "4"
-state: todo
+state: doing
 ---
 
 # release phase 4 — silent failures and disclosures

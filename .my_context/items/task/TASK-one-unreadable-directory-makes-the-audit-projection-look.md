@@ -18,17 +18,17 @@ tags:
   - inferred
   - "plan:rulings"
   - "seq:80"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: c6248704a7a89cdf
+checksum: e18197a2b16b3e23
 plan: rulings
 seq: "80"
-state: todo
+state: done
 priority: "1"
 ---
 
