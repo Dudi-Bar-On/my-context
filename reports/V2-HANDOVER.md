@@ -1,3 +1,55 @@
+## ⏭ 2026-09-23 — RELEASE 2.0.0, PHASE 3 IN FLIGHT (dispatching session, compaction handover)
+
+1. **THE RELEASE RUNS FROM `docs/superpowers/plans/2026-09-22-v2-0-release.md`.** The durable log is
+   `reports/2026-09-22-release-checkpoints.md` (checkpoints 0, 1, 2 logged). The SDD ledger with every
+   ruling is `.superpowers/sdd/2026-09-22-v2-0-release/progress.md` (gitignored) — read it first. Board:
+   `mycontext ready --json --plan release`; `TASK-release-phase-3-the-defects` is `doing`; phases 1 and 2 are done.
+
+2. **PHASE 3 STATE.** Tasks 3.1–3.7, 3.10, 3.11 and release/20 are complete and reviewed. 3.9
+   (`TASK-two-browser-gates-are-red-before-any-lane-touches-them-and`,
+   `TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the`) is code-complete in commits
+   0e074059, 1ce89237, 3b8efec2 with reviews clean; both items stay `doing` until `npm run test:e2e`
+   exits 0 here and on Ubuntu. 3.8 (CSP, ruling E) has NOT started and runs ALONE after the gate is
+   green; then `TASK-no-content-security-policy-header-and-no-meta-on-a-local` (rulings/84) is superseded by the decision-E item.
+
+3. **IN FLIGHT AT COMPACTION:** the controller's own full gate (`npm run test:e2e`, log in the session
+   scratchpad `e2e-gate-controller.log`) and CI run on commit 31b8e5bd — **do not push until that run
+   completes; a push cancels it.** If the gate is green: append the baseline from the 3.9 report's
+   "Fix round 2" section (Playwright 1.62.1, Chromium 151.0.7922.34, Chrome 153.0.8010.36, 98 spec
+   files, 1406 tests, 0 red, 2026-09-23) to rulings/114's body with
+   `mycontext edit <id> --body "<old body + record>" --summary-unchanged --yes`, close ui-gates/1 and
+   rulings/114 (`--extra state=done`), commit, then dispatch 3.8.
+
+4. **THEN THE PHASE-3 EXIT:** `npm test` on the head (last: 9029 tests, 0 fail), both CI jobs green
+   through `npm test` (cut an attempt after the evidence steps if the Ubuntu browser suite drags, as
+   phase 1 did), close `TASK-release-phase-3-the-defects`, prepend checkpoint 3 to the log and report
+   it. The owner's next message after a checkpoint is the go for the next phase.
+
+5. **CHECKPOINT 3 MUST NAME:** two lane breaches (1.1 ran `git checkout --`; 3.10 ran `git stash`/`pop`;
+   both self-reported, nothing lost); the review pass created ten drafts from the dispatcher's own
+   prompts (discarded via `review discard --yes`; release/23 =
+   `TASK-mycontext-ready-counts-a-review-draft-as-open-work-so-the` filed); ideas awaiting the owner:
+   `review.enabled` during a release, no static check for `commands/lesson.md`'s flags, no mutual
+   exclusion in the review trigger path. Board: 137 open.
+
+6. **FILED THIS PHASE FOR LATER PHASES:** release/16 `TASK-sweep-every-timestamp-comparison-for-the-millisecond-tie` (4),
+   release/19 `TASK-the-audit-log-still-records-two-session-ids-that-never` (4), release/21
+   `TASK-thirteen-test-files-name-a-retired-item-as-what-they-rest-on` (8), release/22
+   `TASK-promoterevision-reuses-the-summary-unchanged-switch-and` (4), release/23 (4). Decisions filed:
+   `DEC-a-full-export-is-an-archive-to-copy-back-never-an-artefact`, `DEC-the-dispatch-gate-reads-an-item-id-as-a-known-prefix`,
+   `DEC-the-browser-suite-runs-headless-by-default-a-person-who`, `DEC-the-three-mockup-parity-browser-specs-are-retired-screen`,
+   `DEC-a-turn-that-is-both-a-table-and-a-lane-report-carries-both`.
+
+7. **STANDING RULINGS TO KEEP:** stage every commit from the lane's REPORTED file list, never "dirty
+   minus exclusions" (that swept another lane's file once); run every corpus write with stderr visible
+   and answer the contradiction gate with `--distinct <id>` (ten silent refusals once left "see ." in
+   four items); `mycontext edit` has no `--note` — append via `--body … --summary-unchanged`; one
+   Playwright lane at a time; run `npm test` on the head before the push that ends a wave.
+
+8. **FIRST THING NEXT SESSION:** read the ledger; `mycontext ready --json --plan release`; reset any
+   `doing` task whose lane is not alive back to `todo` — except ui-gates/1 and rulings/114, which wait
+   on the gate; read the gate log and `gh run list --branch release/2.0.0 --limit 1`; continue from item 3.
+
 ## ⏭ 2026-09-17 (fourth) — THE DIAGRAMS WERE WRONG 28 TIMES AND README IS THE SOURCE. THREE DOC ITEMS HELD.
 
 1. **THE DIAGRAM VERIFICATION FOUND 28 FALSE CLAIMS IN 171, AND ONE DIAGRAM THAT DOES NOT PARSE.**
