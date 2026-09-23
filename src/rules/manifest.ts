@@ -32,7 +32,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  ALGORITHM, MANIFEST_FILE, checksum, entryFiles, manifestPath, readManifest, verifyManifest,
+  ALGORITHM, MANIFEST_FILE, checksum, entryFiles, manifestPath, manifestUnreadableDetail,
+  readManifest, readManifestIfPresent, verifyManifest,
   type ChangelogRow, type Manifest, type ManifestRow, type Problem, type StoreMeta,
 } from './integrity.ts';
 import { parseEntry, type Tier } from './schema.ts';
@@ -43,8 +44,8 @@ import { parseEntry, type Tier } from './schema.ts';
  * the same thing in a different place.
  */
 export {
-  ALGORITHM, MANIFEST_FILE, checksum, entryFiles, manifestPath, readManifest, storeMeta,
-  verifyManifest,
+  ALGORITHM, MANIFEST_FILE, ManifestUnreadableError, checksum, entryFiles, manifestPath,
+  manifestUnreadableDetail, readManifest, readManifestIfPresent, storeMeta, verifyManifest,
   type ChangelogRow, type Damage, type Manifest, type ManifestRow, type Problem,
   type StoreMeta, type Verification,
 } from './integrity.ts';
@@ -84,10 +85,19 @@ export function writeManifest(dir: string, store?: StoreMeta): Manifest {
    * They are history: regenerating the manifest is a statement about what is on
    * disk now, and a regeneration that dropped the changelog would make every
    * repair of a damaged store also an erasure of how it got here.
+   *
+   * **And a manifest that cannot be READ stops this write rather than losing
+   * the history quietly** (`TASK-a-corrupt-manifest-makes-the-next-publish-
+   * erase-the-store`). The `catch { return undefined }` that used to sit here
+   * could not tell "there is no manifest yet" — the ordinary first call, on a
+   * store being sealed for the first time — from "there is one and it is junk",
+   * and answered "no history" for both. `readManifestIfPresent` returns `null`
+   * for the first and throws for the second, so the first still works and the
+   * second is now a refusal with a reason in it. A caller that HAS the history
+   * and means to rewrite it passes `store` explicitly, which is what
+   * `publishStore` does and what restoring from the package does not need.
    */
-  const kept = store ?? (((): StoreMeta | undefined => {
-    try { return readManifest(dir).store; } catch { return undefined; }
-  })());
+  const kept = store ?? readManifestIfPresent(dir)?.store;
   const manifest: Manifest = {
     version: VERSION,
     algorithm: ALGORITHM,
@@ -398,13 +408,49 @@ export interface PublishOptions {
  */
 export function planPublish(dir: string, options: PublishOptions = {}): PublishPlan {
   const budget = budgetReport(dir, options.budgetBytes);
-  let published: ManifestRow[] = [];
-  let fromVersion = 0;
+  /**
+   * The budget is a measurement of the files on disk and needs no manifest, so
+   * it is taken before the read below — a refused plan still carries a real
+   * `toMove`, and the reader is not left with two unknowns when only one thing
+   * is wrong.
+   */
+  const toMove = budget.product.entries.slice(0, 3);
+
+  /**
+   * **A manifest that is NOT THERE is the first publish. A manifest that IS
+   * there and cannot be read is the end of this one** —
+   * `TASK-a-corrupt-manifest-makes-the-next-publish-erase-the-store`.
+   *
+   * These were one `catch` until 2026-09-23, and it answered "then there is no
+   * manifest" for both. Measured on a copy of the shipped store: with
+   * `manifest.json` replaced by one byte of junk, `publishStore(dir, { confirm:
+   * true })` returned `ok: true`, reported all sixteen entries as `added`, took
+   * the store from version 5 back to version 1, and left a changelog of one row
+   * where five published versions had been. Nothing anywhere said so.
+   *
+   * So the refusal is FIRST — before the parse refusal and before the budget —
+   * and it is returned before `changes` is computed at all, because a diff
+   * against a manifest nobody could read is not a diff. `fromVersion` and
+   * `toVersion` are `0`: the version this publish would follow is in the file
+   * that could not be read, so the version it would cut is not a thing anybody
+   * knows, and printing `1` there would be the same guess in a smaller place.
+   */
+  let manifest: Manifest | null;
   try {
-    const manifest = readManifest(dir);
-    published = manifest.entries;
-    fromVersion = manifest.store?.version ?? 0;
-  } catch { /* no manifest: everything on disk is new */ }
+    manifest = readManifestIfPresent(dir);
+  } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+    return {
+      changes: [], budget, toMove, fromVersion: 0, toVersion: 0,
+      refusal: `publishing is refused: ${manifestUnreadableDetail(why)} Publishing now would diff `
+        + `against a manifest nothing read — every entry would read as new, and the store's `
+        + `changelog, which is the only record of what each published version moved, would be `
+        + `rewritten from that guess. Nothing has been written. Repair ${MANIFEST_FILE}, or put `
+        + `back the one that shipped with \`mycontext rules verify --restore\`, and publish then.`,
+    };
+  }
+  const published: ManifestRow[] = manifest?.entries ?? [];
+  const fromVersion = manifest?.store?.version ?? 0;
 
   const wasPublished = new Map(published.map((row) => [row.file, row]));
   const changes: PublishChange[] = [];
@@ -438,9 +484,9 @@ export function planPublish(dir: string, options: PublishOptions = {}): PublishP
    * twelve of them spill and one does so 482 times."*
    *
    * It names what to move, because a refusal that does not say what to do next
-   * is a refusal somebody works around.
+   * is a refusal somebody works around. `toMove` is computed at the top of this
+   * function, so the manifest refusal above carries it too.
    */
-  const toMove = budget.product.entries.slice(0, 3);
   /**
    * **The parse refusal (B12), checked before the budget refusal.**
    *
@@ -501,11 +547,23 @@ export function publishStore(
     };
   }
 
-  const previous = ((): StoreMeta => {
-    try {
-      return readManifest(dir).store ?? { version: 0, publishedAt: null, changelog: [] };
-    } catch { return { version: 0, publishedAt: null, changelog: [] }; }
-  })();
+  /**
+   * **The second read of the same file, and it no longer has a `catch` that
+   * invents a history** (`TASK-a-corrupt-manifest-makes-the-next-publish-erase-
+   * the-store`). `catch { version: 0, changelog: [] }` is what turned a
+   * corrupt manifest into a changelog of one row: the store's whole history
+   * was replaced by the default for "there has never been a publish".
+   *
+   * `null` — no manifest at all — still means exactly that, and is the honest
+   * answer for a store being published for the first time. Unreadable throws,
+   * and the throw is unreachable from here: `planPublish` read this same file a
+   * few lines up and refused if it could not. It is left able to throw rather
+   * than made to return a default, because if the file is corrupted in the gap
+   * between those two reads, stopping is right and writing a guessed changelog
+   * over it is not.
+   */
+  const previous: StoreMeta = readManifestIfPresent(dir)?.store
+    ?? { version: 0, publishedAt: null, changelog: [] };
   const at = new Date().toISOString();
   const row: ChangelogRow = {
     version: plan.toVersion,
