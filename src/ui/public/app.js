@@ -9188,7 +9188,7 @@ async function main() {
   // minute from here is the first one that could carry the session's size and
   // lane count. See `heartbeatPing` for why those two fields, alone on this
   // request, cannot wait for it.
-  // TEMPDISABLED void heartbeatPing();
+  void heartbeatPing();
 
   // **A nonce pasted into a LIVE page is redeemed, not routed.**
   //
