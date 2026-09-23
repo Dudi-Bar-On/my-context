@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { closeSync, openSync, readSync, rmSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
   auditDir, auditLogPath, auditSegments, parseAudit,
@@ -80,6 +80,17 @@ import { ensureLogDir } from './jsonl-log.ts';
  * own defect; the fix below does not stand on it. A NEW index NAME is created
  * by `CREATE INDEX IF NOT EXISTS` on the next `openProjection`, on every
  * projection there is, whether or not any file can be deleted.
+ *
+ * **THAT DEFECT IS CLOSED** (2026-09-23,
+ * `TASK-a-locked-projection-file-makes-discard-fail-silently-so-a`), and the
+ * paragraph above is kept because it is the reason the closing was needed, not
+ * because it still describes the code. `discardProjection` now returns the
+ * paths it could not remove, `openProjection` throws `ProjectionLockedError`
+ * while the old file still stands rather than reopening it, and
+ * `stampVersion` refuses to write this number over a different one. **A bump
+ * is therefore safe now**: the worst case is a refusal naming the file to
+ * close, not a projection that claims a layout it does not have. The number
+ * below is still 2 — this task changed what a bump DOES, not what it is.
  */
 const PROJECTION_VERSION = 2;
 
@@ -192,11 +203,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_item_id ON audit_item(item_id, role);
 -- nothing and said nothing, on every projection in existence, and a ten-fold
 -- read cost that still returns the right answer is invisible to every gate
 -- this project has. The obvious alternative — bump \`PROJECTION_VERSION\` and
--- let \`openProjection\` discard the old file — was tried and is recorded
--- against that constant as the thing NOT to do: \`discard()\` cannot delete a
--- file another process holds open, tolerates that by design, and the
--- projection comes back stamped with the new version and built to the old
--- schema. A new name needs no deletion and no version: the next
+-- let \`openProjection\` discard the old file — was tried at the time and is
+-- recorded against that constant: \`discard()\` could not delete a file
+-- another process held open, tolerated that by design, and the projection came
+-- back stamped with the new version and built to the old schema. That hole is
+-- since closed (\`ProjectionLockedError\`), so a bump is no longer the thing
+-- NOT to do — it refuses instead of lying. A new name still needs neither a
+-- deletion nor a version, which is why this stays as it is: the next
 -- \`openProjection\` on any projection, fresh or ten builds old, creates it
 -- (320 ms measured on this corpus) and drops its predecessor.
 CREATE INDEX IF NOT EXISTS idx_audit_item_role_tier ON audit_item(role, item_id, tier);
@@ -406,12 +419,53 @@ function begin(db: DatabaseSync): void {
   db.exec('BEGIN IMMEDIATE');
 }
 
-/** The version stamp `openProjectionReadOnlyChecked` reads back. */
+/**
+ * The version stamp `openProjectionReadOnlyChecked` reads back — and the one
+ * write in this module that **refuses** rather than overwrites.
+ *
+ * A row already there with a DIFFERENT number means this database was built
+ * by another build and was not discarded, which `openProjection` is supposed
+ * to have made impossible (`ProjectionLockedError`). Reaching here anyway is
+ * the exact motion the item names: *"the deletion fails without a word and the
+ * new version number is written onto the old structure"*. There is no
+ * migration in this module — nothing rewrites v1 tables into v2 ones — so an
+ * `ON CONFLICT DO UPDATE` over a foreign version is not an upgrade, it is a
+ * lie about the layout, and the next reader believes it without checking.
+ *
+ * So: absent (a projection this build just created) is stamped, equal is a
+ * no-op, and different throws. The belt to `openProjection`'s braces, on the
+ * single line where the damage is actually done.
+ */
 function stampVersion(db: DatabaseSync): void {
+  const standing = db.prepare(
+    `SELECT value FROM audit_meta WHERE key = 'version'`,
+  ).get() as { value: string } | undefined;
+  if (standing !== undefined && standing.value !== String(PROJECTION_VERSION)) {
+    throw new ProjectionVersionStampError(
+      `refusing to stamp schema version ${PROJECTION_VERSION} onto an audit projection built by `
+      + `version ${standing.value}: this build does not migrate a projection in place, so the `
+      + `stamp would name a layout that is not in the file. The projection has to be discarded `
+      + `and rebuilt from the log — which is what \`openProjection\` does, unless the file could `
+      + `not be deleted (\`ProjectionLockedError\`).`,
+    );
+  }
   db.prepare(
     `INSERT INTO audit_meta (key, value) VALUES ('version', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
   ).run(String(PROJECTION_VERSION));
+}
+
+/**
+ * A sync was asked to stamp this build's schema version onto a projection
+ * that declares a different one. Its own class for the same reason every
+ * other refusal in this module has one: told apart by CLASS, never by
+ * message.
+ */
+export class ProjectionVersionStampError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProjectionVersionStampError';
+  }
 }
 
 /**
@@ -798,47 +852,131 @@ export function keepProjectionCurrent(
   }
 }
 
+/** One path `discardProjection` was asked to remove and could not. */
+export interface DiscardFailure {
+  /** The path itself — the database, or one of its two WAL sidecars. */
+  file: string;
+  /** The errno code the platform gave: `EPERM`, `EBUSY`, `EACCES`, `ERR_FS_EISDIR`, … */
+  code: string | null;
+  /** The platform's own words, kept whole. */
+  message: string;
+}
+
+/**
+ * Removes the projection and its WAL sidecars, and **returns what it could
+ * not remove** rather than swallowing it.
+ *
+ * `maxRetries`, for the reason `test/helpers/tmp.ts` documents at length: on
+ * Windows the OS can hold a handle to a just-closed SQLite file for a few
+ * milliseconds, and a bare `rmSync` fails with EPERM. That race is worth
+ * riding out and is not what this reports; what it reports is the delete that
+ * is still refused after twenty tries, because on Windows that means ANOTHER
+ * PROCESS holds the file open and the projection this call meant to be rid of
+ * is still standing.
+ *
+ * **Why the return value, and what it cost to learn.** This used to be a bare
+ * `catch {}` with a comment saying a stubborn handle is not a reason to fail
+ * the read — true of the READ and false of everything else, because the one
+ * caller that cannot tolerate it is a version bump: `openProjection` discards
+ * a foreign projection, `fresh()` reopens the very file that was not deleted,
+ * and `syncProjection` then stamps `audit_meta.version` with the NEW number
+ * over the OLD tables. Reproduced live on 2026-09-23 with the owner's UI
+ * server holding a read handle: `audit_meta` said `3` while `sqlite_master`
+ * still described the v2 index. The version is the one thing a later reader
+ * trusts without checking, so a discard that fails in silence is
+ * `INV-nothing-is-dropped-silently` broken at the worst possible place. It is
+ * also why `PROJECTION_VERSION` could not be bumped before this: the caller
+ * below refusing while the old file stands is what makes a bump safe.
+ *
+ * Exported so the refusal can be tested for what it IS — a list of paths that
+ * survived — rather than through a message.
+ */
+export function discardProjection(file: string): DiscardFailure[] {
+  // **This process's own upkeep handle first.** `recordAudit` holds one
+  // write connection per projection for the life of the process (see
+  // `interface UpkeepHandle`), and on Windows an open handle pins the file:
+  // a discard that runs while it is still open removes nothing and `fresh()`
+  // reopens the very database this was called to be rid of. That is the same
+  // trap the closed-before-the-throw comment records, arriving from a
+  // different direction. A handle held by ANOTHER process is not reachable
+  // from here and never was — which is exactly why the failure is returned.
+  dropUpkeepHandle(file);
+  const failures: DiscardFailure[] = [];
+  for (const target of [file, `${file}-wal`, `${file}-shm`]) {
+    try {
+      rmSync(target, { force: true, maxRetries: 20, retryDelay: 25 });
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      failures.push({
+        file: target,
+        code: typeof code === 'string' ? code : null,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return failures;
+}
+
+/**
+ * The projection had to be thrown away and could not be: it is still on disk,
+ * and this build refuses to build over it or to stamp a version onto it.
+ *
+ * Its own class, for the reason `ProjectionAbsentError` and `NewerSchemaError`
+ * carry theirs: a caller tells "the projection is held by something else" from
+ * "the projection is damaged" by CLASS and never by matching a message. The
+ * two need different actions from a person — close a program, against delete a
+ * file — and only one of them is fixed by waiting.
+ */
+export class ProjectionLockedError extends Error {
+  readonly file: string;
+  readonly failures: DiscardFailure[];
+
+  constructor(file: string, failures: DiscardFailure[], why: string) {
+    const named = failures.length > 0
+      ? failures.map((f) => `${f.file} (${f.code ?? 'no code'}: ${f.message})`).join('; ')
+      : `${file} (the remove reported success and the file is still there)`;
+    super(
+      `the audit projection at ${file} ${why}, and could not be removed: ${named}. `
+      + `Nothing was written over it — it still declares the schema version it was built with, `
+      + `so no reader is told a layout is there that is not. On Windows a file another process `
+      + `holds open cannot be deleted; the holder is not visible from this process, and the `
+      + `usual one is a running \`mycontext ui\` server or an open SQLite viewer. Close `
+      + `whatever holds it, or delete ${file} by hand: the append-only log is untouched and is `
+      + `the authoritative record, so the projection rebuilds from it and nothing is lost.`,
+    );
+    this.name = 'ProjectionLockedError';
+    this.file = file;
+    this.failures = failures;
+  }
+}
+
 /**
  * Opens the projection, discarding and recreating it when it is unusable or
  * was written by a different schema version.
  *
  * Discarding is always safe and needs no ceremony: the database holds nothing
  * that is not in the JSONL. That is the point of the shape — the same
- * "delete it, it rebuilds" recovery the item index already has.
+ * "delete it, it rebuilds" recovery the item index already has. **What is not
+ * safe is a discard that did not happen**, and that is the one case this
+ * refuses on rather than proceeding through: see `discardProjection` and
+ * `ProjectionLockedError`.
  */
 export function openProjection(root: string): DatabaseSync {
   ensureLogDir(auditDir(root));
   const file = auditDbPath(root);
 
   /**
-   * Removes the projection and its WAL sidecars.
+   * Discard, and answer the only question that matters afterwards: **is the
+   * old projection still standing?**
    *
-   * `maxRetries`, for the reason `test/helpers/tmp.ts` documents at length: on
-   * Windows the OS can hold a handle to a just-closed SQLite file for a few
-   * milliseconds, and a bare `rmSync` fails with EPERM. Failing to delete a
-   * database we are about to replace is not worth propagating — the log is
-   * untouched either way — so a delete that loses the race leaves `fresh()`
-   * below to open whatever is there and report its own failure honestly.
+   * Decided on `existsSync` rather than on whether `rmSync` threw, because
+   * those are different facts and only one of them is the hazard. A `-wal`
+   * sidecar that lost the race while the database itself went is not a
+   * reason to refuse — the next `fresh()` builds a correct projection either
+   * way — whereas a database that survived its own deletion is exactly the
+   * state the version stamp must never be written into.
    */
-  const discard = (): void => {
-    // **This process's own upkeep handle first.** `recordAudit` holds one
-    // write connection per projection for the life of the process (see
-    // `interface UpkeepHandle`), and on Windows an open handle pins the file:
-    // a `discard()` that runs while it is still open silently removes nothing
-    // and `fresh()` reopens the very database this was called to be rid of.
-    // That is the same trap the closed-before-the-throw comment below records,
-    // arriving from a different direction. A handle held by ANOTHER process is
-    // not reachable from here and never was — `discard()` tolerates a failed
-    // remove and says so.
-    dropUpkeepHandle(file);
-    for (const target of [file, `${file}-wal`, `${file}-shm`]) {
-      try {
-        rmSync(target, { force: true, maxRetries: 20, retryDelay: 25 });
-      } catch {
-        // See above: a stubborn handle is not a reason to fail the read.
-      }
-    }
-  };
+  const discard = (): DiscardFailure[] => discardProjection(file);
 
   /**
    * The handle is CLOSED before the throw escapes, mirroring `Ledger.open` and
@@ -863,7 +1001,7 @@ export function openProjection(root: string): DatabaseSync {
     return created;
   };
 
-  let db: DatabaseSync;
+  let db: DatabaseSync | null = null;
   try {
     db = fresh();
     const version = db.prepare(
@@ -871,18 +1009,46 @@ export function openProjection(root: string): DatabaseSync {
     ).get() as { value: string } | undefined;
     // No row at all is a brand-new database, which is not a version mismatch.
     if (version !== undefined && version.value !== String(PROJECTION_VERSION)) {
+      // Closed BEFORE the discard, and the handle forgotten, for the reason
+      // `discardProjection` records: our own open handle pins the file on
+      // Windows just as another process's does.
       db.close();
-      discard();
+      db = null;
+      const failures = discard();
+      if (existsSync(file)) {
+        throw new ProjectionLockedError(
+          file, failures,
+          `was built by schema version ${version.value} and this build reads `
+          + `${PROJECTION_VERSION}`,
+        );
+      }
       db = fresh();
     }
     return db;
-  } catch {
+  } catch (err) {
+    // The handle is CLOSED before anything else, including on the version
+    // path above: a `discard()` that runs while this process still holds the
+    // file open removes nothing, and then blames another process for it.
+    if (db !== null) {
+      try { db.close(); } catch { /* already unusable */ }
+      db = null;
+    }
+    if (err instanceof ProjectionLockedError) throw err;
     // Corrupt, or a schema this build cannot read. Delete and recreate — the
     // log is untouched, so nothing is lost. A failure from `fresh()` HERE
     // propagates, because at that point the projection genuinely cannot be
     // produced, and `cli/commands/audit.ts` turns that into a disclosed
     // fallback to reading the JSONL directly rather than a stale answer.
-    discard();
+    const failures = discard();
+    if (existsSync(file)) {
+      // It could not be opened AND it could not be removed, so `fresh()` is
+      // about to fail on the same file for the same reason and say `unable to
+      // open database file` — which names neither the file nor the cause.
+      // Refused here instead, in the words a person can act on.
+      throw new ProjectionLockedError(
+        file, failures, `could not be opened (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
     return fresh();
   }
 }

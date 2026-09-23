@@ -301,6 +301,15 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
       readyTotal: ready.length,
       heldTotal: held.length,
       open: ready.length + held.length,
+      /**
+       * Proposals awaiting a person, counted and in neither list above.
+       *
+       * NOT narrowed by `--plan`, and it cannot be: a draft has no `plan` —
+       * it gains one at `mycontext review promote` — so attributing it to the
+       * plan in hand would be inventing the attribution, the same refusal the
+       * quiet questions carry two fields up.
+       */
+      drafts: report.drafts,
       truncated,
       limit,
       plan,
@@ -339,6 +348,26 @@ function cmdReady(ws: Workspace, args: string[], out: Emit): number {
      * point of the whole item: a decision waiting on a person must not depend
      * on the reader having chosen the detail level that happens to draw it.
      */
+    /**
+     * **The drafts, on every path, for the same reason the questions are.**
+     *
+     * `TASK-mycontext-ready-counts-a-review-draft-as-open-work-so-the`: ten of
+     * them were being counted as ready work and the board moved although
+     * nobody had filed anything. They are out of `ready`, out of `held` and
+     * out of `open` now — so they are said out loud here, because an exclusion
+     * the reader is not told about is the same silence in the other direction
+     * (`INV-nothing-is-dropped-silently`).
+     *
+     * Unnarrowed by `--plan` and stated as such: a draft carries no plan until
+     * a person promotes it, which is the act this line points at.
+     */
+    if (report.drafts > 0) {
+      blocks.push(`${report.drafts} draft(s) await review and are counted in none of the ` +
+        'numbers above. A draft is indexed and searchable but governs nothing, is never ' +
+        'injected, and is not work anyone can dispatch until a person promotes it — which is ' +
+        'also where it gains a `' + PLAN_FIELD + '` and a `' + SEQ_FIELD + '`, so it carries ' +
+        'no plan to narrow by. `mycontext review list` lists them.');
+    }
     if (blocking.length > 0) {
       blocks.push(`${blocking.length} open question(s) stand between this list and open work` +
         (plan === null ? '' : ` in plan "${plan}"`) +

@@ -47,7 +47,10 @@ import { existingSuccessorRefusal, SUPERSEDED_BY } from './relations.ts';
 // entry points, not only under `node --test`.
 import { stageRevision, type RevisionChanges } from './revision.ts';
 import { makeId } from './slug.ts';
-import { afterContent, basisMoves, summaryReaffirmed } from './summary-gate.ts';
+import {
+  afterContent, basisMoves, summaryDeliberatelyOmitted, summaryReaffirmed,
+  summaryStandsUnchanged,
+} from './summary-gate.ts';
 import {
   reaffirmSummary, reviseSummary,
   SUMMARY_OMITTED_NOTE, SUMMARY_REAFFIRMED_NOTE, SUMMARY_UNCHANGED_NOTE,
@@ -1914,7 +1917,25 @@ export function updateItem(
   // afterwards is the one it has. The retrieval still uses the NEW text — a
   // write that raises a candidate it has never ruled on is still refused,
   // whatever it says about its own meaning.
-  const meaningHeld = update.summaryUnchanged === true || summaryReaffirmed(item, update);
+  //
+  // **AND THE HATCH ONLY MEANS THIS ON AN ITEM THAT HAS A SUMMARY** —
+  // `TASK-promoterevision-reuses-the-summary-unchanged-switch-and`, fixed
+  // 2026-09-23. `summaryUnchanged` carries two assertions and `summary-gate.ts`
+  // owns the split: on an item with a sentence it says the sentence still
+  // stands, which is a claim about meaning; on an item with none it says the
+  // item is deliberately being left without one, which is a claim about the
+  // FIELD and says nothing whatever about the body. This line used to read the
+  // bare flag, so the second assertion was also silencing the gate — and
+  // `promoteRevision` passes the flag exactly to obtain the omission note, so
+  // every promoted revision of a summary-less governing item measured itself
+  // against the basis it was replacing. Every ruling about the old text went
+  // on settling pairs about the new one.
+  //
+  // The three sibling sites below — `reaffirmSummary`, the audit note and
+  // `carryVerdicts` — already carried this guard and now ask for it by name
+  // rather than re-spelling it, because a condition repeated at four sites is
+  // a condition that gets forgotten at one.
+  const meaningHeld = summaryStandsUnchanged(item, update) || summaryReaffirmed(item, update);
   const editDraft: ContradictionDraft = {
     id: item.id,
     type: item.type,
@@ -2080,7 +2101,7 @@ export function updateItem(
   // (`stampSummary(item, null)` sets `summaryOf` to null, which it already is),
   // so skipping it says the same thing more plainly: the whole effect of the
   // hatch on an unsummarised item is the audit note below.
-  else if (input.summaryUnchanged === true && item.summary !== null) reaffirmSummary(item);
+  else if (summaryStandsUnchanged(item, input)) reaffirmSummary(item);
 
   const moved = movedFields(before, item);
   // `bodyWritten` is what lets `persist` decide whether this item is still a
@@ -2128,8 +2149,8 @@ export function updateItem(
     // the assignments above on purpose: it is the state this write LEAVES, and
     // a call that both cleared the summary and passed the hatch cannot reach
     // here — `summaryUnchangedRefusal` refuses that pair at both surfaces.
-    ...(input.summaryUnchanged === true
-      ? { note: item.summary === null ? SUMMARY_OMITTED_NOTE : SUMMARY_UNCHANGED_NOTE }
+    ...(summaryDeliberatelyOmitted(item, input) ? { note: SUMMARY_OMITTED_NOTE }
+      : summaryStandsUnchanged(item, input) ? { note: SUMMARY_UNCHANGED_NOTE }
       : reaffirmed ? { note: SUMMARY_REAFFIRMED_NOTE } : {}),
   });
 
@@ -2159,7 +2180,7 @@ export function updateItem(
   // and both re-stamp `summary_of`. Every verdict about this item is keyed to
   // that stamp, so they are re-stamped with it — see `carryVerdicts` for why
   // that is the summary's own mechanism rather than a second, quieter ruling.
-  if ((input.summaryUnchanged === true && item.summary !== null) || reaffirmed) {
+  if (summaryStandsUnchanged(item, input) || reaffirmed) {
     carryVerdicts(ctx, item, contradictionBasisBefore);
   }
 

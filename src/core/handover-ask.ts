@@ -1710,9 +1710,15 @@ export interface RecordedAsk {
  * mint a new id, so this session's latch is a fresh `NO_LATCH` and the ask that
  * matters is under the previous session's name — a name nothing here knows. The
  * scan is over FILENAMES in `state/`, matched on `ASK_LATCH_SUFFIX`, and the
- * winner is the greatest `askedAt`. Ties are impossible in practice and are
- * broken by the first one read, which is arbitrary and is stated rather than
- * hidden.
+ * winner is the greatest `askedAt`, **with the FILENAME breaking a tie** —
+ * `TASK-sweep-every-timestamp-comparison-for-the-millisecond-tie`, 2026-09-23.
+ * `askedAt` is a millisecond-resolution clock reading and two latches written
+ * inside one tick are indistinguishable by it; `readdirSync` promises no
+ * order, so "the first one read" was not a rule, it was whatever the
+ * filesystem said that run. The name is the deterministic fact available here
+ * — the same tiebreak `newestSessionKey` (core/continuity.ts) takes over an
+ * mtime, for the same reason — so the same `state/` directory now answers the
+ * same way on every run and on every machine.
  *
  * **Never throws.** `readdirSync` on an absent or unreadable `state/` is the
  * ordinary case for a workspace that has never been asked, and it is a `null`
@@ -1735,6 +1741,7 @@ export function lastRecordedAsk(root: string, sessionId: string | null): Recorde
 
   let best: RecordedAsk | null = null;
   let bestMs = Number.NEGATIVE_INFINITY;
+  let bestName: string | null = null;
   for (const name of names) {
     if (!name.endsWith(ASK_LATCH_SUFFIX)) continue;
     const id = name.slice(0, -ASK_LATCH_SUFFIX.length);
@@ -1751,8 +1758,13 @@ export function lastRecordedAsk(root: string, sessionId: string | null): Recorde
     const ask = recordedAskIn(path.join(dir, name), id);
     if (ask === null) continue;
     const ms = Date.parse(ask.askedAt);
-    if (ms <= bestMs) continue;
+    if (ms < bestMs) continue;
+    // The tie, broken by the name rather than by `readdirSync`'s order. See
+    // the doc comment: the smallest name wins, so the answer is a function of
+    // the directory's CONTENTS and not of the order it was listed in.
+    if (ms === bestMs && bestName !== null && name >= bestName) continue;
     bestMs = ms;
+    bestName = name;
     best = ask;
   }
   return best;

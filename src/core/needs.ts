@@ -419,8 +419,20 @@ export interface ReadyReport {
   ready: ReadyRow[];
   /** Open work that is not ready, each row carrying the reason. */
   held: HeldRow[];
-  /** Work items considered — open ones only. */
+  /** Work items considered — open ones only. NEVER includes `drafts`. */
   open: number;
+  /**
+   * Work items at `status: draft` — proposals awaiting a person, counted and
+   * in neither list above.
+   *
+   * A count rather than rows, for the reason `questionReport` gives for
+   * counting the quiet questions: the surface that OWNS them is
+   * `mycontext review list`, and a second listing of the same population here
+   * is the two-lists-that-can-disagree failure. It is carried out of this
+   * function rather than recomputed by each caller so that every surface
+   * drawing a readiness report discloses the same number.
+   */
+  drafts: number;
 }
 
 /**
@@ -485,6 +497,7 @@ export function readyReport(items: Item[], config: Config): ReadyReport {
   const index = buildTaskIndex(items, config);
   const ready: ReadyRow[] = [];
   const held: HeldRow[] = [];
+  let drafts = 0;
 
   for (const item of workItems(items, config)) {
     const state = taskState(item);
@@ -503,10 +516,34 @@ export function readyReport(items: Item[], config: Config): ReadyReport {
     // asking every author to also move a state that cannot express the fact is
     // the held-by-convention failure this project keeps paying for.
     //
-    // `deprecated` only, deliberately. `draft` and `validated` are workable
-    // states of a live task; `superseded` is already gone above. Deprecated is
-    // the one that means "this is not to be done".
+    // `deprecated` here, and `draft` on the clause below — corrected
+    // 2026-09-23, because this comment used to claim `draft` was a workable
+    // state of a live task and it is not. `validated` is; `superseded` is
+    // already gone above. Deprecated means "this is not to be done" and draft
+    // means "nobody has agreed to do it yet".
     if (item.status === 'deprecated') continue;
+    // **A DRAFT IS A PROPOSAL, NOT WORK** —
+    // `TASK-mycontext-ready-counts-a-review-draft-as-open-work-so-the`.
+    // Measured 2026-09-22: the review pass wrote ten task drafts from a
+    // session's own prompts and `ready --json` answered `open: 146` against a
+    // board of 136, every one of the ten listed as READY with `plan: null`.
+    // Nothing had been filed. A draft is indexed, searchable and shown, and
+    // `select` never injects it precisely because its status is `draft`; it
+    // becomes dispatchable work when a person promotes it through
+    // `mycontext review promote`, which is also where it gains a `plan` and a
+    // `seq` to be addressed by. Counting it here let a machine's idea move the
+    // board, which is the one thing the review loop's own design forbids.
+    //
+    // **The sibling clause above was wrong about this and is now corrected**:
+    // it said `draft` and `validated` are workable states of a live task. That
+    // is true of `validated` and false of `draft`, and the difference is who
+    // has read the item. `questionReport` reached the same boundary first and
+    // spells it the same way — see its docblock on why drafts are excluded
+    // there.
+    //
+    // Counted, never dropped: `INV-nothing-is-dropped-silently`. The count
+    // leaves here as `ReadyReport.drafts` and every surface says it out loud.
+    if (item.status === 'draft') { drafts += 1; continue; }
     const reading = readNeeds(item, index);
     const row: ReadyRow = { item, reading };
 
@@ -520,7 +557,7 @@ export function readyReport(items: Item[], config: Config): ReadyReport {
 
   ready.sort(compareRows);
   held.sort(compareRows);
-  return { ready, held, open: ready.length + held.length };
+  return { ready, held, open: ready.length + held.length, drafts };
 }
 
 /* -------------------------------------------------------------------------- *

@@ -1,10 +1,12 @@
 // @basis TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
-// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the,
+// TASK-a-locked-projection-file-makes-discard-fail-silently-so-a
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync } from 'node:sqlite';
 import {
-  appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync,
+  appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -13,8 +15,8 @@ import {
   recordAudit, type AuditFilter,
 } from '../../src/core/audit.ts';
 import {
-  auditDbPath, openProjection, projectionState, queryProjection, sessions, syncProjection,
-  topItems,
+  ProjectionLockedError, auditDbPath, closeProjectionUpkeep, discardProjection, openProjection,
+  projectionState, queryProjection, sessions, syncProjection, topItems,
 } from '../../src/core/audit-db.ts';
 import { appendJsonlLine } from '../../src/core/jsonl-log.ts';
 import { runCli } from '../../src/cli/index.ts';
@@ -419,6 +421,175 @@ test('a projection built before tier joined the index key is upgraded in place',
         + 'so a rebuilt projection would be empty here');
     } finally { again.close(); }
   } finally {
+    b.dispose();
+  }
+});
+
+// --- a projection that cannot be discarded -----------------------------------
+//
+// `TASK-a-locked-projection-file-makes-discard-fail-silently-so-a`. The whole
+// discard-and-rebuild contract above rests on the delete actually happening.
+// On Windows it does not when another process holds the file — and the
+// version stamp is what a later reader trusts, so a discard that fails
+// silently is how `audit_meta.version` comes to name a schema that is not
+// there. These three tests make the failure speak.
+
+/**
+ * A path that cannot be removed, in every environment and with no privilege:
+ * a NON-EMPTY DIRECTORY where the database belongs. `rmSync` without
+ * `recursive` refuses a directory outright (`ERR_FS_EISDIR`), which is the
+ * same `catch` a Windows sharing violation reaches, and needs no elevated
+ * token, no `icacls` and no second process — so this branch is exercised on
+ * the Linux leg of CI too, where the real hazard cannot be staged at all.
+ */
+function undeletable(file: string): void {
+  mkdirSync(file, { recursive: true });
+  writeFileSync(path.join(file, 'child'), 'keeps the directory non-empty\n', 'utf8');
+}
+
+test('a discard that removed nothing says so, naming the file it could not remove', () => {
+  const b = box();
+  try {
+    const file = auditDbPath(b.root);
+    mkdirSync(path.dirname(file), { recursive: true });
+    undeletable(file);
+
+    const failures = discardProjection(file);
+    assert.equal(failures.length, 1, `exactly the one path that survived: ${JSON.stringify(failures)}`);
+    assert.equal(failures[0]?.file, file, 'the FILE is named — a reader has to know what to close');
+    assert.ok(
+      (failures[0]?.message ?? '').length > 0,
+      'and the reason the platform gave is carried, not discarded',
+    );
+    assert.equal(existsSync(file), true, 'the premise: the projection is still standing');
+  } finally { b.dispose(); }
+});
+
+test('a projection that could not be discarded refuses, rather than rebuilding over it', () => {
+  const b = box();
+  try {
+    seed(b.root);
+    closeProjectionUpkeep();
+    const file = auditDbPath(b.root);
+    for (const target of [file, `${file}-wal`, `${file}-shm`]) {
+      rmSync(target, { force: true, maxRetries: 20, retryDelay: 25 });
+    }
+    undeletable(file);
+
+    assert.throws(
+      () => openProjection(b.root),
+      (err: unknown) => {
+        assert.ok(err instanceof ProjectionLockedError,
+          `the refusal carries its own class, so a caller never matches a message: ${String(err)}`);
+        assert.ok(err.message.includes(file), `the refusal names the file: ${err.message}`);
+        assert.match(err.message, /could not be removed/,
+          'and says what failed — not "unable to open database file", which blames the wrong thing');
+        return true;
+      },
+    );
+  } finally { b.dispose(); }
+});
+
+/**
+ * **The reader's surface.** `mycontext audit` already falls back to the log
+ * when the projection cannot be synced; what this asserts is that the note it
+ * prints now names the undeletable file, because "delete it, it rebuilds" is
+ * the documented recovery and it is the one thing that just failed.
+ */
+test('mycontext audit answers from the log and names the projection it could not remove', () => {
+  const s = sandbox();
+  try {
+    seed(s.root);
+    closeProjectionUpkeep();
+    const file = auditDbPath(s.root);
+    for (const target of [file, `${file}-wal`, `${file}-shm`]) {
+      rmSync(target, { force: true, maxRetries: 20, retryDelay: 25 });
+    }
+    undeletable(file);
+
+    let out = '';
+    const code = runCli(['audit'], s.cwd, (line) => { out += `${line}\n`; });
+    assert.equal(code, 0, 'the log is authoritative, so the read still succeeds');
+    assert.match(out, /6 audit record\(s\)/, 'and is COMPLETE — every seeded record');
+    assert.match(out, /could not be brought up to date/);
+    assert.ok(out.includes(file), `the note names the file a person has to deal with:\n${out}`);
+    assert.match(out, /could not be removed/);
+  } finally { s.dispose(); }
+});
+
+/**
+ * **The defect exactly as it was reproduced live**, and the only staging of it
+ * that is real: a second SQLite connection on the file, which is what the
+ * owner's UI server holds. SQLite's win32 VFS opens without
+ * `FILE_SHARE_DELETE`, so the `rmSync` in `discardProjection` raises `EPERM`
+ * while the database stays perfectly readable — the one shape where the old
+ * layout survives a discard AND still answers the version query.
+ *
+ * POSIX cannot stage it: `unlink` succeeds through any number of open
+ * handles, and denying it means denying write on the directory, which stops
+ * `fresh()` from creating the WAL sidecars and lands in a different branch
+ * altogether. The version-stamp half of this item is therefore asserted here
+ * and the discard-reports-its-failure half is asserted by the three tests
+ * above, which run everywhere.
+ */
+test('a version mismatch under a held file refuses, and never stamps the new version over the old schema', {
+  skip: process.platform !== 'win32'
+    ? 'Windows-only: a file that survives its own unlink is a win32 sharing-mode failure mode'
+    : false,
+}, (t) => {
+  const b = box();
+  const file = auditDbPath(b.root);
+  let holder: DatabaseSync | null = null;
+  try {
+    seed(b.root);
+    const db = openProjection(b.root);
+    syncProjection(b.root, db);
+    // Exactly what a projection written by an EARLIER build carries: this
+    // build's tables, stamped with a version this build does not accept.
+    db.prepare(`UPDATE audit_meta SET value = '1' WHERE key = 'version'`).run();
+    db.close();
+    // `recordAudit` holds one write connection per process for the life of the
+    // process, and `discardProjection` drops it on purpose. Dropped here too,
+    // so the ONLY holder left is the one this test plants — otherwise the
+    // assertion would rest on our own handle and prove nothing about another
+    // process.
+    closeProjectionUpkeep();
+
+    holder = new DatabaseSync(file);
+    holder.exec('PRAGMA busy_timeout = 3000;');
+    holder.prepare('SELECT COUNT(*) AS n FROM audit').get();
+
+    // PROVE THE HOLD BITES before anything rests on it — the idiom
+    // `test/core/rebuild-unwalkable-dir.test.ts` established for a denial that
+    // an elevated token or an intercepting filesystem might not honour.
+    let pinned = false;
+    try { rmSync(file, { force: true }); } catch { pinned = true; }
+    if (!pinned) {
+      t.skip('an open SQLite connection does not pin the file in this environment');
+      return;
+    }
+
+    assert.throws(
+      () => openProjection(b.root),
+      (err: unknown) => {
+        assert.ok(err instanceof ProjectionLockedError, `refused by class: ${String(err)}`);
+        assert.ok(err.message.includes(file), `naming the file: ${err.message}`);
+        assert.match(err.message, /could not be removed/);
+        assert.match(err.message, /version/,
+          'and saying that the version is the thing at stake, not just a delete');
+        return true;
+      },
+    );
+
+    assert.equal(
+      (holder.prepare(`SELECT value FROM audit_meta WHERE key = 'version'`)
+        .get() as { value: string }).value,
+      '1',
+      'THE DEFECT: the old projection must still declare the old version. A stamp landing here '
+      + 'is `audit_meta` claiming a layout `sqlite_master` does not have.',
+    );
+  } finally {
+    try { holder?.close(); } catch { /* the box is a throwaway */ }
     b.dispose();
   }
 });

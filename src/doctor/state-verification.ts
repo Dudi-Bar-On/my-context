@@ -788,9 +788,40 @@ export const VERIFIED_ON_AUDITED_FIELD = `${EXTRA_AUDITED_FIELD}.${VERIFIED_ON_F
  * record — and that is still what is compared. Only the line itself stopped
  * being a date somebody typed.
  */
-export function verifiedOnAdoptedAt(records: AuditRecord[]): string | null {
-  let earliest: string | null = null;
-  for (const record of records) {
+/**
+ * A record's place in the log: its own clock reading AND its position in
+ * `readAudit`'s oldest-first sequence.
+ *
+ * **The position is here because the clock reading is not enough** —
+ * `TASK-sweep-every-timestamp-comparison-for-the-millisecond-tie`. `at` is
+ * `Date.toISOString()`, one-millisecond resolution, and a burst of writes can
+ * land several records inside one millisecond (measured: CI run 35715432299,
+ * six of them). Two such records are ordered by where they SIT in the log and
+ * by nothing else, and that order is a fact the log guarantees — `readAudit`
+ * delivers oldest-first across every segment, and within a segment that is
+ * insertion order. It is the same remedy `contextEpochStart`
+ * (`core/context-share.ts`) reached for one layer over, where the projection
+ * offers `seq`; the raw-JSONL path has no `seq` column, and the index into
+ * the sequence is the same fact by a different name.
+ */
+export interface AuditPosition {
+  at: string;
+  /** Index into the oldest-first `records` array this was read from. */
+  index: number;
+}
+
+/** `a` strictly before `b` — by the clock, and by the log's order on a tie. */
+function earlierThan(a: AuditPosition, b: AuditPosition): boolean {
+  return a.at < b.at || (a.at === b.at && a.index < b.index);
+}
+
+/**
+ * `verifiedOnAdoptedAt` with the record's position kept, for the one caller
+ * that compares it against another record of the same log.
+ */
+export function verifiedOnAdoptedPosition(records: AuditRecord[]): AuditPosition | null {
+  let earliest: AuditPosition | null = null;
+  for (const [index, record] of records.entries()) {
     if (record.kind !== 'mutation') continue;
     if (!Array.isArray(record.fields)) continue;
     if (!record.fields.includes(VERIFIED_ON_AUDITED_FIELD)) continue;
@@ -798,10 +829,17 @@ export function verifiedOnAdoptedAt(records: AuditRecord[]): string | null {
     // is already the earliest — the comparison is kept anyway because that
     // ordering is a contract of another module, and a derivation that quietly
     // depends on it is the kind of thing that breaks when a segment is
-    // restored out of order.
-    if (earliest === null || record.at < earliest) earliest = record.at;
+    // restored out of order. `earlierThan` is STRICT, so a tie leaves the
+    // first-read record standing, which is the lower index either way.
+    if (earliest === null || earlierThan({ at: record.at, index }, earliest)) {
+      earliest = { at: record.at, index };
+    }
   }
   return earliest;
+}
+
+export function verifiedOnAdoptedAt(records: AuditRecord[]): string | null {
+  return verifiedOnAdoptedPosition(records)?.at ?? null;
 }
 
 /** `mycontext edit <id> --extra verified_on=<date>`, after checking the work. */
@@ -923,13 +961,18 @@ export function checkTaskUnverified(
   // matching record for each id — see the docblock on
   // `verifiedOnAdoptedAt` for what a task that goes
   // `done` → `todo` → `done` does to this timestamp.
-  const stateTransitionAt = new Map<string, string>();
-  for (const record of records) {
+  //
+  // The POSITION is kept beside the timestamp, not instead of it — see
+  // `AuditPosition`. The cutoff below compares this record against another
+  // record of the SAME log, and two writes in one synchronous burst share a
+  // millisecond often enough to have been measured.
+  const stateTransitionAt = new Map<string, AuditPosition>();
+  for (const [index, record] of records.entries()) {
     if (record.kind !== 'mutation') continue;
     const id = record.itemId;
     if (typeof id !== 'string' || id === '') continue;
     if (Array.isArray(record.fields) && record.fields.includes(STATE_AUDITED_FIELD)) {
-      stateTransitionAt.set(id, record.at);
+      stateTransitionAt.set(id, { at: record.at, index });
     }
   }
 
@@ -938,7 +981,9 @@ export function checkTaskUnverified(
   // the constant this replaced. `null` means the log never witnessed a
   // `verified_on` write, so nothing is grandfathered; the adoption gate above
   // has already established that the field IS in use here.
-  const adoptedAt = verifiedOnAdoptedAt(records);
+  const adopted = verifiedOnAdoptedPosition(records);
+  /** The instant alone, for the disclosure's wording. `null` reads as before. */
+  const adoptedAt = adopted === null ? null : adopted.at;
 
   const findings: Finding[] = [];
   let noTransition = 0;
@@ -946,9 +991,17 @@ export function checkTaskUnverified(
   for (const item of closed) {
     if (taskVerifiedOn(item) !== '') continue;
 
-    const transitionAt = stateTransitionAt.get(item.id);
-    if (transitionAt === undefined) { noTransition++; continue; }
-    if (adoptedAt !== null && transitionAt < adoptedAt) { grandfathered++; continue; }
+    const transition = stateTransitionAt.get(item.id);
+    if (transition === undefined) { noTransition++; continue; }
+    // **Not `transition.at < adopted.at`.** Both are readings of one clock,
+    // taken from one log, and a tie is not hypothetical — `earlierThan` falls
+    // through to the log's own order, so a task closed in the same millisecond
+    // the convention was adopted is judged by which write actually came first.
+    // Under the bare timestamp comparison it was always judged as "after", and
+    // the warn that produced can only be cleared by an acknowledgement nobody
+    // owes. `TASK-sweep-every-timestamp-comparison-for-the-millisecond-tie`.
+    if (adopted !== null && earlierThan(transition, adopted)) { grandfathered++; continue; }
+    const transitionAt = transition.at;
 
     findings.push({
       level: 'warn', code: 'task_unverified', item: item.id,

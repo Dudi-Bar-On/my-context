@@ -312,6 +312,56 @@ export function summaryRequired(item: Item, patch: UpdateInput): boolean {
   return basisMoves(item, patch);
 }
 
+/* -------------------------------------------------------------------------- *
+ * THE HATCH SAYS TWO DIFFERENT THINGS, AND THIS MODULE OWNS WHICH
+ *
+ * `summaryUnchanged` is one flag carrying two assertions, split by whether the
+ * item has a summary at all. That split is stated in `summaryUnchangedRefusal`
+ * below and was, until 2026-09-23, re-spelled inline as
+ * `input.summaryUnchanged === true && item.summary !== null` at each of the
+ * places in `mutate.ts` that act on it — three of which carried the guard and
+ * one of which did not
+ * (`TASK-promoterevision-reuses-the-summary-unchanged-switch-and`).
+ *
+ * A condition that has to be remembered at four call sites is a condition that
+ * will be forgotten at one, and it was: the site that decides what the
+ * contradiction gate MEASURES. So the two readings are named here, next to the
+ * refusal that already owns their difference, and `mutate.ts` asks rather than
+ * re-derives.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * **The hatch on an item that HAS a summary: "that sentence still stands".**
+ *
+ * This is the only reading that is a claim about MEANING, and therefore the
+ * only one that may re-stamp `summary_of`, carry a verdict onto a new basis,
+ * or let the contradiction gate measure a write against the basis the item
+ * HAD. `summaryReaffirmed` is the same assertion spelled with the sentence
+ * instead of the flag, and callers pair the two.
+ */
+export function summaryStandsUnchanged(item: Item, patch: UpdateInput): boolean {
+  return patch.summaryUnchanged === true && item.summary !== null;
+}
+
+/**
+ * **The hatch on an item that has NO summary: "it is being left without one,
+ * deliberately".**
+ *
+ * An assertion with nothing on disk to write — its whole effect is the audit
+ * note `summary-omitted`, the identical assertion `--summary-omitted` makes at
+ * capture. It says NOTHING about whether the item's meaning moved, and reading
+ * it as though it did is the defect this pair of predicates was extracted to
+ * end: the body under it may have been rewritten wholesale, and every ruling
+ * keyed to the old text must lapse exactly as it would for any other rewrite.
+ *
+ * This is also the reading `promoteRevision` (revision.ts) reaches for: a
+ * promoted revision carries no flag of its own, and a promotion that leaves a
+ * summary-less item summary-less is precisely the fact this records.
+ */
+export function summaryDeliberatelyOmitted(item: Item, patch: UpdateInput): boolean {
+  return patch.summaryUnchanged === true && item.summary === null;
+}
+
 /**
  * **Whether this capture must carry a summary — and it always must, unless the
  * caller says in words that it should not.**
