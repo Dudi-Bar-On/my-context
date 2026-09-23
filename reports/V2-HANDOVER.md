@@ -50,6 +50,28 @@
    `doing` task whose lane is not alive back to `todo` — except ui-gates/1 and rulings/114, which wait
    on the gate; read the gate log and `gh run list --branch release/2.0.0 --limit 1`; continue from item 3.
 
+
+**Addendum, 2026-09-23 ~04:00Z (after the block above):**
+
+9. **THE CONTROLLER'S OWN GATE ON 3b8efec2 CAME BACK RED** — phase 1: 1325 passed / 73 failed / 16 files at
+   4 workers; the serial pass cleared 13 files; still red: `e2e/app-layout.spec.ts:343` and every
+   `e2e/chip-hue-authority.spec.ts` test, all with `preview never settled (25 samples, 484 elements, 0
+   reads in flight)` from `e2e/settle.ts` (the preview DOM keeps mutating with nothing in flight; green in
+   round 2's gate hours earlier), and `e2e/print-product.spec.ts:141` (the forced-open coverage box lays
+   out empty). Log: session scratchpad `e2e-gate-controller.log`.
+
+10. **ROUND 3 OF 5 IS LIVE** (a fresh implementer; find it with ListAgents): measure the mutation with a
+    MutationObserver, fix the cause (product / snapshot leak / settle heuristic), single-spec ×2, ONE full
+    gate, `npm test` once; it appends "Fix round 3" to the 3.9 report. When it returns: commit from its
+    REPORTED file list, scoped re-review, then item 3 of the block above (baseline into rulings/114,
+    close ui-gates/1 + rulings/114, dispatch 3.8).
+
+11. **CI ON 31b8e5bd:** Windows fully green; Ubuntu green through `npm test` and `test:perf`, browser suite
+    running — its verdict on the same three files is the fresh-runner evidence; a watch is pending. The
+    handover commit 8c658cdf is unpushed on purpose until that run completes (a push cancels it); push it
+    with the next commit. `DEC-the-three-mockup-parity-browser-specs-are-retired-screen` (ruling B) is
+    filed and pushed (31b8e5bd).
+
 ## ⏭ 2026-09-17 (fourth) — THE DIAGRAMS WERE WRONG 28 TIMES AND README IS THE SOURCE. THREE DOC ITEMS HELD.
 
 1. **THE DIAGRAM VERIFICATION FOUND 28 FALSE CLAIMS IN 171, AND ONE DIAGRAM THAT DOES NOT PARSE.**
