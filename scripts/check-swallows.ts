@@ -32,19 +32,29 @@
  *      Unconditional: there is no argument to find, because the two characters
  *      it would take to write one were not typed. 195 sites in this tree
  *      already pay that cost.
- *   2. `mute-handler`  — `.catch(() => {})`, `=> null`, `=> undefined`,
- *      `=> void 0` — a rejection handler whose body is empty — WITH no comment
- *      attached to it, to the statement it belongs to, or to the function that
- *      contains it. `ui/public/app.js`'s heartbeat and `ui/public/doc.js`'s
- *      roster are both mute handlers with the argument in the docblock above,
- *      and both are correct; `attachedArgument` below is how a reader finds
- *      that argument and therefore how this gate does.
- *   3. `unread-result` — a call to one of the six producers in `PRODUCERS`,
- *      made as a STATEMENT, so the `{ written, error }` / `boolean` it returns
- *      is discarded. This tier fails CLOSED and takes no argument, because the
- *      item says so in as many words: *"It must fail CLOSED on an unrecognised
- *      call site, per `rulings/85`."* A comment saying the flag is dropped on
- *      purpose is not accepted here; binding it and disclosing is.
+ *   2. `mute-handler`  — a rejection handler that does nothing, in every
+ *      spelling this gate can resolve: `.catch(() => {})`, `=> null`,
+ *      `=> undefined`, `=> void 0`, `.catch(function () {})`, the second
+ *      argument of `.then(useIt, …)`, and `.catch(noop)` where THIS FILE
+ *      declares `noop` as an empty function — WITH no comment attached to it,
+ *      to the statement it belongs to, or to the function that contains it.
+ *      `ui/public/app.js`'s heartbeat and `ui/public/doc.js`'s roster are both
+ *      mute handlers with the argument in the docblock above, and both are
+ *      correct; `attachedArgument` below is how a reader finds that argument
+ *      and therefore how this gate does.
+ *   3. `unread-result` — a call to one of the six producers in `PRODUCERS`
+ *      whose returned `{ written, error }` / `boolean` goes nowhere. It fails
+ *      CLOSED and takes no comment as an argument, because the item says so in
+ *      as many words: *"It must fail CLOSED on an unrecognised call site, per
+ *      `rulings/85`."* Four spellings of the same discard, because reading it
+ *      as "called as a statement" alone let the other three through:
+ *        · a bare statement — `recordAudit(root, input);`, `void bumpCounter(…)`
+ *        · bound to `_`, or to a name never read again in the enclosing block
+ *        · computed in expression position by a statement that keeps nothing —
+ *          `ok && f()`, `ok ? f() : 0`, `case 1: f();`
+ *      A NAME IS NOT ENOUGH: the call counts only when the file imports it from
+ *      the producer's module or IS that module, so an unrelated local
+ *      `writeState` is not reported as somebody else's defect.
  *
  * ── WHAT IT CANNOT SEE, WHICH IS MORE THAN WHAT IT CAN ─────────────────────
  *
@@ -77,6 +87,24 @@
  *     `return readStagingDir(root).staging;` — textually a READ, and it throws
  *     the `skipped` reasons away. Chaining is bound; losing what you bound is
  *     the next gate, not this one.
+ *   - **THE ARGUMENT IS COUNTED, NOT READ.** `attachedArgument` accepts ANY
+ *     comment in the swallow's statement or in the block above it or above its
+ *     function. It is wide on purpose — this codebase writes the argument above
+ *     the statement, and a narrower walk would redden `app.js`'s heartbeat,
+ *     which is correct code — and wide is a cost: an unrelated remark two lines
+ *     up licenses a real mute handler. This gate can tell nothing-was-said from
+ *     something-was-said. It cannot tell either from something-RELEVANT-was-said.
+ *   - **A bound result that is still unread**, past the two cases above: pushed
+ *     into an array, passed as an argument, read only on a branch that cannot
+ *     run. A scope-accurate answer needs a real binder; this has a lexer.
+ *   - **An aliased or re-exported producer**, and a `noop` imported rather than
+ *     declared here. Name resolution stops at a direct named import.
+ *   - **ASI.** A call at the head of a line after a line that ended without a
+ *     semicolon is a statement, and this gate reads the character before it —
+ *     which is not a `;`.
+ *
+ * Every one of those is in `BLIND_SPOTS` and printed on every run. The list a
+ * reader trusts has to be the true one.
  *
  * ── THE POPULATION, AND WHY NOTHING IS EXCLUDED BY HAND ────────────────────
  *
@@ -138,21 +166,51 @@ export const SKIP_VENDOR =
 export const SKIP_NOT_SOURCE =
   'not JavaScript or TypeScript — there is no `catch` and no rejection handler in it to read';
 
+export interface Producer {
+  /**
+   * The module that declares it, as a path suffix. A call counts only when the
+   * file IMPORTS the name from a path ending here, or IS that module — because
+   * `\bwriteState\s*\(` on its own flags any unrelated local helper of the same
+   * name, and a gate that reports someone else's function is a gate people
+   * learn to disbelieve.
+   */
+  module: string;
+  /** What the caller is holding when it drops the answer. */
+  lost: string;
+}
+
 /**
- * The six producers of report 3's P2 table, each with what a caller is holding
- * when it drops the answer. Named here so the gate does not have to re-derive
- * them, and so a reader of a red line learns what was lost rather than only
- * that something was.
+ * The six producers of report 3's P2 table. Named here so the gate does not
+ * have to re-derive them, and so a reader of a red line learns what was lost
+ * rather than only that something was.
  */
-export const PRODUCERS: ReadonlyMap<string, string> = new Map([
-  ['recordAudit', 'returns `AuditWriteResult` and never throws — `{ written, error }` is the only '
-    + 'way to learn the audit row is not on disk'],
-  ['recordDelivery', 'returns whether the delivery row was appended; its own docblock says '
-    + '"the caller discloses, this module does not"'],
-  ['bumpCounter', 'returns `CounterWrite` carrying `written`, "which is why `written` exists"'],
-  ['writeState', 'returns `false` so the upkeep rate can record a state it could not write'],
-  ['recordDecline', 'returns `DeclineWriteResult`; `declineDraft` deletes a draft on its silence'],
-  ['readStagingDir', 'returns `skipped` with a reason per file it could not read'],
+export const PRODUCERS: ReadonlyMap<string, Producer> = new Map([
+  ['recordAudit', {
+    module: 'core/audit.ts',
+    lost: 'returns `AuditWriteResult` and never throws — `{ written, error }` is the only way to '
+      + 'learn the audit row is not on disk',
+  }],
+  ['recordDelivery', {
+    module: 'rules/delivered.ts',
+    lost: 'returns whether the delivery row was appended; its own docblock says "the caller '
+      + 'discloses, this module does not"',
+  }],
+  ['bumpCounter', {
+    module: 'core/review-counter.ts',
+    lost: 'returns `CounterWrite` carrying `written`, "which is why `written` exists"',
+  }],
+  ['writeState', {
+    module: 'core/ui-server-upkeep.ts',
+    lost: 'returns `false` so the upkeep rate can record a state it could not write',
+  }],
+  ['recordDecline', {
+    module: 'review/declined.ts',
+    lost: 'returns `DeclineWriteResult`; `declineDraft` deletes a draft on its silence',
+  }],
+  ['readStagingDir', {
+    module: 'lesson/staging.ts',
+    lost: 'returns `skipped` with a reason per file it could not read',
+  }],
 ]);
 
 export interface Finding {
@@ -355,8 +413,8 @@ function attachedArgument(lexed: Lexed, from: number, to: number): boolean {
 
 // ── class 1: a catch that holds no statement and no comment ────────────────
 
-export function emptyCatches(file: string, src: string): Finding[] {
-  const lexed = lex(src);
+export function emptyCatches(file: string, src: string, pre?: Lexed): Finding[] {
+  const lexed = pre ?? lex(src);
   const { masked } = lexed;
   const findings: Finding[] = [];
   const re = /\bcatch\b/g;
@@ -392,33 +450,99 @@ export function emptyCatches(file: string, src: string): Finding[] {
 
 const MUTE_BODY = /^(undefined|null|void\s+0)$/;
 
-export function mutedHandlers(file: string, src: string): Finding[] {
-  const lexed = lex(src);
+/** The top-level commas of an argument list, so `.then(a, b)` can be split. */
+function topLevelCommas(masked: string, from: number, to: number): number[] {
+  const at: number[] = [];
+  let depth = 0;
+  for (let i = from; i < to; i += 1) {
+    const c = masked[i];
+    if (c === '(' || c === '[' || c === '{') depth += 1;
+    else if (c === ')' || c === ']' || c === '}') depth -= 1;
+    else if (c === ',' && depth === 0) at.push(i);
+  }
+  return at;
+}
+
+/**
+ * Is this identifier declared IN THIS FILE as a function that does nothing?
+ *
+ * `p.catch(noop)` is the same silence as `p.catch(() => {})` and reads as
+ * deliberate, which is worse. Resolution stops at the file boundary: a `noop`
+ * imported from elsewhere is a stated blind spot rather than a guess.
+ */
+function localNoop(masked: string, src: string, name: string): boolean {
+  const decl = new RegExp(
+    `\\b(?:const|let|var)\\s+${name}\\s*(?::[^=]*)?=\\s*(?:async\\s*)?`
+    + `(?:\\([^()]*\\)|[A-Za-z_$][\\w$]*)\\s*=>\\s*\\{|`
+    + `\\b(?:const|let|var)\\s+${name}\\s*(?::[^=]*)?=\\s*(?:async\\s+)?function\\b[^(]*\\([^()]*\\)\\s*\\{|`
+    + `\\bfunction\\s+${name}\\s*\\([^()]*\\)\\s*\\{`,
+  );
+  const m = decl.exec(masked);
+  if (m === null) return false;
+  const open = masked.indexOf('{', m.index + m[0].length - 1);
+  if (open === -1) return false;
+  const close = matchClose(masked, open, '{', '}');
+  return close !== -1 && src.slice(open + 1, close).trim() === '';
+}
+
+/**
+ * A handler argument that does nothing and says nothing, in every spelling this
+ * gate can resolve: an arrow with an empty block or a bare `undefined`/`null`/
+ * `void 0`, a `function () {}` expression, and an identifier this file declares
+ * as an empty function.
+ *
+ * Returns the offset just past the handler, or `-1` when it is not mute.
+ */
+function muteArgument(masked: string, src: string, from: number, to: number): number {
+  const text = masked.slice(from, to);
+  const lead = text.length - text.trimStart().length;
+  const arrow = /^(\s*(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>\s*)/.exec(text);
+  if (arrow !== null) {
+    const bodyStart = from + arrow[1].length;
+    const body = masked.slice(bodyStart, to).trim();
+    if (body.startsWith('{')) {
+      const open = masked.indexOf('{', bodyStart);
+      const close = matchClose(masked, open, '{', '}');
+      if (close === -1) return -1;
+      return src.slice(open + 1, close).trim() === '' ? close + 1 : -1;
+    }
+    return MUTE_BODY.test(body) ? to : -1;
+  }
+  // `function () {}` and `function named() {}` — the same silence, older spelling.
+  if (/^\s*(?:async\s+)?function\b/.test(text)) {
+    const open = masked.indexOf('{', from);
+    if (open === -1 || open > to) return -1;
+    const close = matchClose(masked, open, '{', '}');
+    if (close === -1 || close > to) return -1;
+    return src.slice(open + 1, close).trim() === '' ? close + 1 : -1;
+  }
+  // A bare identifier — mute only when this file declares it as an empty function.
+  const bare = /^\s*([A-Za-z_$][\w$]*)\s*$/.exec(text);
+  if (bare !== null && localNoop(masked, src, bare[1])) return from + lead + bare[1].length;
+  return -1;
+}
+
+export function mutedHandlers(file: string, src: string, pre?: Lexed): Finding[] {
+  const lexed = pre ?? lex(src);
   const { masked } = lexed;
   const findings: Finding[] = [];
-  const re = /\.catch\s*\(/g;
+  // `.then(onFulfilled, onRejected)` carries a rejection handler too, and it is
+  // the spelling that reads as "handled" hardest — the first argument does real
+  // work two lines above the one that does none.
+  const re = /\.(catch|then)\s*\(/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(masked)) !== null) {
     const open = masked.indexOf('(', m.index);
     const close = matchClose(masked, open, '(', ')');
     if (close === -1) continue;
-    const arg = masked.slice(open + 1, close);
-    const arrow = /^(\s*(?:\([^()]*\)|[A-Za-z_$][\w$]*)\s*=>\s*)/.exec(arg);
-    if (arrow === null) continue;
-    const bodyStart = open + 1 + arrow[1].length;
-    const body = masked.slice(bodyStart, close).trim();
-    let mute = false;
-    let end = close;
-    if (body.startsWith('{')) {
-      const braceOpen = masked.indexOf('{', bodyStart);
-      const braceClose = matchClose(masked, braceOpen, '{', '}');
-      if (braceClose === -1) continue;
-      mute = src.slice(braceOpen + 1, braceClose).trim() === '';
-      end = braceClose + 1;
-    } else {
-      mute = MUTE_BODY.test(body);
+    let from = open + 1;
+    if (m[1] === 'then') {
+      const commas = topLevelCommas(masked, open + 1, close);
+      if (commas.length === 0) continue;
+      from = commas[0] + 1;
     }
-    if (!mute) continue;
+    const end = muteArgument(masked, src, from, close);
+    if (end === -1) continue;
     if (attachedArgument(lexed, m.index, end)) continue;
     findings.push({
       file,
@@ -426,7 +550,7 @@ export function mutedHandlers(file: string, src: string): Finding[] {
       cls: CLASS_MUTE_HANDLER,
       producer: '',
       code: lineText(src, m.index),
-      why: 'a rejection handler with an empty body and no comment on it, on its statement or on '
+      why: 'a rejection handler that does nothing, with no comment on it, on its statement or on '
         + 'the function around it. The promise failed and no surface carries a word about it.',
     });
   }
@@ -437,51 +561,173 @@ export function mutedHandlers(file: string, src: string): Finding[] {
 
 const STATEMENT_HEAD = /(^|[;{}])\s*$/;
 const HEADER_KEYWORD = /\b(if|while|for|switch)\s*$/;
+/** `&&`, `||`, `??`, either arm of a `?:`, and `case X:` — all in expression position. */
+const EXPRESSION_SLOT = /(&&|\|\||\?\?|\?|:)\s*$/;
+/** A statement head that keeps the value by construction. */
+const KEEPS_VALUE = /^\s*(return|throw|yield|export|import)\b/;
 
-export function unreadResults(
-  file: string, src: string, opts: { everyCall?: boolean } = {},
-): Finding[] {
-  const { masked } = lex(src);
-  const findings: Finding[] = [];
-  for (const [name, lost] of PRODUCERS) {
+/** One classified call of a producer: where it is, and whether the answer survives. */
+export interface CallSite {
+  file: string;
+  line: number;
+  producer: string;
+  code: string;
+  /** Why the answer is gone, or `''` when this gate can see it being kept. */
+  dropped: string;
+}
+
+/**
+ * Whether `name` is the producer rather than an unrelated local of the same
+ * name: this file imports it from the producer's module, or IS that module.
+ *
+ * An alias (`import { recordAudit as rec }`) and a re-export are not resolved —
+ * both are named in the blind-spot list rather than guessed at.
+ */
+function resolvesToProducer(src: string, file: string, name: string, module: string): boolean {
+  if (file.endsWith(module)) return true;
+  // Read from the RAW source, not the masked copy: masking blanks the inside of
+  // every string, and the module specifier this has to read IS a string.
+  const imports = src.matchAll(/import\s+(type\s+)?\{([^}]*)\}\s*from\s*['"]([^'"]*)['"]/g);
+  for (const im of imports) {
+    if (im[1] !== undefined) continue;
+    if (!im[3].endsWith(module)) continue;
+    if (new RegExp(`(^|[,{\\s])${name}\\s*(,|$|\\s)`).test(im[2])) return true;
+  }
+  return false;
+}
+
+/** The innermost `{ … }` around `at`, as a half-open range. */
+function enclosingBlock(masked: string, at: number): { start: number; end: number } {
+  let depth = 0;
+  for (let i = at - 1; i >= 0; i -= 1) {
+    if (masked[i] === '}') depth += 1;
+    else if (masked[i] === '{') {
+      if (depth === 0) {
+        const end = matchClose(masked, i, '{', '}');
+        return { start: i + 1, end: end === -1 ? masked.length : end };
+      }
+      depth -= 1;
+    }
+  }
+  return { start: 0, end: masked.length };
+}
+
+/** Does `name` appear again between `from` and `to`? */
+function readAgain(masked: string, name: string, from: number, to: number): boolean {
+  return new RegExp(`\\b${name}\\b`).test(masked.slice(from, Math.max(from, to)));
+}
+
+/** A `:` at the top level of a parameter list — the mark of a typed signature. */
+function hasTopLevelColon(params: string): boolean {
+  let depth = 0;
+  for (const c of params) {
+    if (c === '(' || c === '[' || c === '{' || c === '<') depth += 1;
+    else if (c === ')' || c === ']' || c === '}' || c === '>') depth -= 1;
+    else if (c === ':' && depth === 0) return true;
+  }
+  return false;
+}
+
+/** Are all brackets opened in `text` also closed in it? */
+function selfContained(text: string): boolean {
+  let depth = 0;
+  for (const c of text) {
+    if (c === '(' || c === '[' || c === '{') depth += 1;
+    else if (c === ')' || c === ']' || c === '}') { depth -= 1; if (depth < 0) return false; }
+  }
+  return depth === 0;
+}
+
+/**
+ * Every call of a producer in this file, each one classified as kept or
+ * dropped. `unreadResults` is this filtered to the dropped ones; the whole list
+ * exists so a test can prove the tier still SEES the producers rather than
+ * passing by not looking.
+ */
+export function producerCallSites(file: string, src: string, pre?: Lexed): CallSite[] {
+  const { masked } = pre ?? lex(src);
+  const sites: CallSite[] = [];
+  for (const [name, producer] of PRODUCERS) {
+    if (!resolvesToProducer(src, file, name, producer.module)) continue;
     const re = new RegExp(`\\b${name}\\s*\\(`, 'g');
     let m: RegExpExecArray | null;
     while ((m = re.exec(masked)) !== null) {
       const open = masked.indexOf('(', m.index);
       const close = matchClose(masked, open, '(', ')');
       if (close === -1) continue;
-      // A declaration, not a call: a body or a return-type annotation follows.
+      // A declaration, not a call: a body follows, or a return type does AND the
+      // parameter list is a SIGNATURE — empty, or carrying a top-level `:`.
+      //
+      // That second half is not fussiness. `)` followed by `:` was read as a
+      // return-type annotation on its own, and it silently ate
+      // `ok ? recordAudit(root, input) : 0` — the ternary's colon looks exactly
+      // like a signature's, and that shape is one of the discards this tier was
+      // widened to catch.
       let after = close + 1;
       while (after < masked.length && /\s/.test(masked[after])) after += 1;
-      if (masked[after] === '{' || masked[after] === ':') continue;
-      let before = masked.slice(0, m.index);
-      if (/\b(function|class)\s*\*?\s*$/.test(before)) continue;
-      // `await` and `void` change nothing about whether the answer is kept.
-      before = before.replace(/\b(await|void)\s*$/, '');
-      const discarded = STATEMENT_HEAD.test(before)
+      const params = masked.slice(open + 1, close);
+      if (masked[after] === '{') continue;
+      if (masked[after] === ':' && (params.trim() === '' || hasTopLevelColon(params))) continue;
+      const raw = masked.slice(0, m.index);
+      if (/\b(function|class)\s*\*?\s*$/.test(raw)) continue;
+      // A method of the same name on some object. `\.` covers `?.` too, and must
+      // NOT be widened to `[.?]`: that ate `ok ? f() : 0` and `x ?? f()`, which
+      // are two of the expression slots this tier exists to catch.
+      if (/\.\s*$/.test(raw)) continue;
+      // `await` and `void` change nothing about whether the answer is kept —
+      // `void` least of all: it is the explicit spelling of throwing it away.
+      const before = raw.replace(/\b(await|void)\s*$/, '');
+      const stmt = masked.slice(statementStart(masked, m.index), m.index);
+      const topLevel = selfContained(stmt);
+
+      let dropped = '';
+      if (
+        STATEMENT_HEAD.test(before)
         || /\b(else|do|try)\s*$/.test(before)
-        || (/\)\s*$/.test(before) && headerCall(masked, before.trimEnd().length - 1));
-      if (opts.everyCall !== true && !discarded) continue;
-      if (opts.everyCall === true && !discarded) {
-        findings.push({
-          file, line: lineAt(src, m.index), cls: 'read', producer: name,
-          code: lineText(src, m.index), why: lost,
-        });
-        continue;
+        || (/\)\s*$/.test(before) && headerCall(masked, before.trimEnd().length - 1))
+      ) {
+        dropped = 'called as a statement, so the answer goes nowhere';
+      } else if (topLevel && !KEEPS_VALUE.test(stmt) && EXPRESSION_SLOT.test(stmt.trimEnd())) {
+        // `ok && f()`, `ok ? f() : 0`, `case 1: f()` — an expression statement
+        // whose value is computed and then dropped exactly as a statement's is.
+        dropped = 'in expression position inside a statement that keeps nothing — `&&`, `?:` or '
+          + '`case` discards the answer as surely as a bare call does';
+      } else {
+        const bind = /(?:^|[;{}])\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*(?:await\s+)?$/
+          .exec(stmt);
+        if (bind !== null) {
+          const bound = bind[1];
+          const block = enclosingBlock(masked, m.index);
+          if (bound.startsWith('_')) {
+            dropped = `bound to \`${bound}\`, which is this codebase's spelling of "I am not `
+              + 'reading this"';
+          } else if (!readAgain(masked, bound, close + 1, block.end)) {
+            dropped = `bound to \`${bound}\` and \`${bound}\` is never read again in the block — `
+              + 'a binding is not a reader';
+          }
+        }
       }
-      findings.push({
-        file,
-        line: lineAt(src, m.index),
-        cls: CLASS_UNREAD_RESULT,
-        producer: name,
-        code: lineText(src, m.index),
-        why: `\`${name}\` ${lost}. Called as a statement, that answer is dropped where nobody `
-          + 'can reach it. Bind it and disclose — the obligation is handed across this boundary '
-          + 'in prose, and this is the only thing that enforces the handoff.',
+      sites.push({
+        file, line: lineAt(src, m.index), producer: name, code: lineText(src, m.index), dropped,
       });
     }
   }
-  return findings.toSorted((a, b) => a.line - b.line);
+  return sites.toSorted((a, b) => a.line - b.line);
+}
+
+export function unreadResults(file: string, src: string, pre?: Lexed): Finding[] {
+  return producerCallSites(file, src, pre)
+    .filter((s) => s.dropped !== '')
+    .map((s) => ({
+      file: s.file,
+      line: s.line,
+      cls: CLASS_UNREAD_RESULT,
+      producer: s.producer,
+      code: s.code,
+      why: `\`${s.producer}\` ${PRODUCERS.get(s.producer)!.lost}. Here it is ${s.dropped}. Bind `
+        + 'it and disclose — the obligation is handed across this boundary in prose, and this is '
+        + 'the only thing that enforces the handoff.',
+    }));
 }
 
 /** Is the `)` at `at` the close of an `if`/`while`/`for` header? */
@@ -579,7 +825,14 @@ export function findingsIn(root: string, files: readonly string[]): Finding[] {
       });
       continue;
     }
-    found.push(...emptyCatches(file, src), ...mutedHandlers(file, src), ...unreadResults(file, src));
+    // Lexed ONCE per file and handed to all three classes. It was three times,
+    // which is three passes over every byte of 1,213 files for one answer.
+    const lexed = lex(src);
+    found.push(
+      ...emptyCatches(file, src, lexed),
+      ...mutedHandlers(file, src, lexed),
+      ...unreadResults(file, src, lexed),
+    );
   }
   return found;
 }
@@ -608,6 +861,21 @@ const BLIND_SPOTS = [
   + 'most of them correct',
   'a seventh producer: PRODUCERS holds the six report 3 named, and nothing notices a new one',
   '`listStaging`, which binds `readStagingDir(root).staging` and drops the reasons with it',
+  'THE ARGUMENT IS NOT READ, ONLY COUNTED. `attachedArgument` accepts ANY comment inside the '
+  + "swallow's statement or in the block above it or above its function — so an unrelated remark "
+  + 'two lines up licenses a real mute handler. It is wide on purpose (this codebase writes the '
+  + 'argument above the statement, not in the handler) and wide is a cost: the gate can tell '
+  + 'nothing-was-said from something-was-said, never something-relevant-was-said',
+  'a producer result that IS bound and still unread past the cheap cases: pushed into an array, '
+  + 'passed as an argument, bound to a name read only on a branch that cannot run. `_`, an '
+  + 'unused binding, `&&`/`?:` and `case` are caught; a scope-accurate answer needs a real '
+  + 'binder and this gate has a lexer',
+  'a producer reached under an alias (`import { recordAudit as rec }`), through a re-export, or '
+  + 'off an object — name resolution stops at a direct named import from the producer module',
+  'a no-op handler declared in another file: `p.catch(noop)` is caught when this file declares '
+  + '`noop` empty, and missed when it is imported',
+  'a call at the head of a line after a line with no semicolon — ASI makes it a statement and '
+  + 'this gate reads the character before it, which is not a `;`',
 ];
 
 function print(findings: readonly Finding[], heading: string): void {

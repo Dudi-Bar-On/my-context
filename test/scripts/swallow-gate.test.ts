@@ -45,7 +45,7 @@ import { removeTree } from '../helpers/tmp.ts';
 import {
   CLASS_EMPTY_CATCH, CLASS_MUTE_HANDLER, CLASS_UNREAD_RESULT, PRODUCERS,
   SKIP_NOT_SOURCE, SKIP_VENDOR, emptyCatches, mutedHandlers, partition,
-  shippedRoots, skipReason, sources, summarise, unreadResults,
+  producerCallSites, shippedRoots, skipReason, sources, summarise, unreadResults,
 } from '../../scripts/check-swallows.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -145,6 +145,27 @@ test('a rejection handler that argues — in it, after it, above it, or above it
   }
 });
 
+test('the older and quieter spellings of a mute handler are findings too', () => {
+  const src = [
+    'const noop = () => {};',
+    'ping().catch(noop);',
+    'ping().catch(function () {});',
+    'load().then(useIt, () => {});',
+    'load().then(useIt, noop);',
+  ].join('\n');
+  assert.deepEqual(mutedHandlers('src/f.ts', src).map((f) => f.line), [2, 3, 4, 5]);
+});
+
+test('a named handler this file does not declare empty is left alone', () => {
+  const src = [
+    'ping().catch(reportAndRethrow);',
+    'ping().then(useIt, warnLoudly);',
+    'const shout = () => { log("x"); };',
+    'ping().catch(shout);',
+  ].join('\n');
+  assert.deepEqual(mutedHandlers('src/g.ts', src), []);
+});
+
 test('a handler that does something is never a finding, whatever it returns', () => {
   const src = [
     'load().catch((e) => { warn(e); return null; });',
@@ -152,6 +173,32 @@ test('a handler that does something is never a finding, whatever it returns', ()
     'load().catch(reportAndRethrow);',
   ].join('\n');
   assert.deepEqual(mutedHandlers('src/e.ts', src), []);
+});
+
+/**
+ * **The positive control for the attachment walk, which is the only reason this
+ * class is more than a grep.** Two of the argued fixtures contain the literal
+ * text a naive matcher looks for. If the walk ever stops working, the gate
+ * reddens on `app.js`'s heartbeat and `doc.js`'s roster — both correct code —
+ * and gets switched off. So: prove the naive grep WOULD fire, and that this
+ * gate does not.
+ */
+test('the fixtures a naive grep would redden are exactly the ones the walk clears', () => {
+  const NAIVE = /\.catch\(\(\)\s*=>\s*\{\}\)/;
+  const trailing = 'ping().catch(() => {}); // fail open, and the hook says so on stderr';
+  const aboveFunction = [
+    '/**',
+    ' * Still `.catch(() => {})`: a heartbeat that cannot reach the server is',
+    " * `showExited()`'s business, raised by `api()` itself.",
+    ' */',
+    'function heartbeatPing() {',
+    '  return api("/api/ping").then(note).catch(() => {});',
+    '}',
+  ].join('\n');
+  for (const [what, src] of Object.entries({ trailing, aboveFunction })) {
+    assert.ok(NAIVE.test(src), `${what} is not a control — the naive grep does not match it`);
+    assert.deepEqual(mutedHandlers('src/n.ts', src), [], `${what} was read as silence`);
+  }
 });
 
 // ── class 3: the write result nobody binds ────────────────────────────────
@@ -162,27 +209,105 @@ test('the six producers report 3 names, and each one is carried with what it ret
     'bumpCounter', 'readStagingDir', 'recordAudit', 'recordDecline',
     'recordDelivery', 'writeState',
   ]);
-  for (const [name, why] of PRODUCERS) {
-    assert.ok(why.length > 0, `${name} is listed with no reason a caller must read it`);
+  for (const [name, producer] of PRODUCERS) {
+    assert.ok(producer.lost.length > 0, `${name} is listed with no reason a caller must read it`);
+    assert.ok(producer.module.endsWith('.ts'), `${name} is listed with no declaring module`);
   }
 });
 
+/**
+ * `\\bwriteState\\s*\\(` on its own flags any unrelated local of that name, and a
+ * gate that reports someone else's function is a gate people learn to
+ * disbelieve. Resolution is a direct named import from the producer's module,
+ * or being that module.
+ */
+test('an unrelated function of the same name is not the producer', () => {
+  const stranger = [
+    'function writeState(a, b) { return true; }',
+    'writeState(a, b);',
+  ].join('\n');
+  assert.deepEqual(unreadResults('src/other/widget.ts', stranger), []);
+  // The producer's OWN module needs no import.
+  assert.deepEqual(
+    unreadResults('src/core/ui-server-upkeep.ts', stranger).map((f) => f.line), [2],
+  );
+  // And so does a file that imports it from there.
+  const importer = [
+    "import { writeState } from '../core/ui-server-upkeep.ts';",
+    'writeState(a, b);',
+  ].join('\n');
+  assert.deepEqual(unreadResults('src/ui/x.ts', importer).map((f) => f.line), [2]);
+});
+
+const IMPORTS = [
+  "import { recordAudit } from '../core/audit.ts';",
+  "import { bumpCounter } from '../core/review-counter.ts';",
+  "import { writeState } from '../core/ui-server-upkeep.ts';",
+  "import { recordDelivery } from '../rules/delivered.ts';",
+].join('\n');
+/** Line 1 of the fixture body, once the four import lines are prepended. */
+const BODY = 5;
+
+function withImports(...lines: string[]): string {
+  return `${IMPORTS}\n${lines.join('\n')}`;
+}
+
 test('a producer call made as a statement is a finding; a bound one is not', () => {
-  const src = [
-    'recordAudit(root, { kind: "injection" });',              // 1 — finding
-    'const r = recordAudit(root, input);',
+  const found = unreadResults('src/f.ts', withImports(
+    'recordAudit(root, { kind: "injection" });',              // BODY + 0 — finding
+    'const r = recordAudit(root, input); use(r);',
     'return recordAudit(root, input);',
     'if (!recordAudit(root, input).written) warn();',
     'const { written } = await recordAudit(root, input);',
-    'void bumpCounter(root, id);',                            // 6 — finding
-    'if (ready) writeState(root, state);',                    // 7 — finding
-    'const ok = writeState(root, state) ? a : b;',
+    'void bumpCounter(root, id);',                            // BODY + 5 — finding
+    'if (ready) writeState(root, state);',                    // BODY + 6 — finding
+    'const ok = writeState(root, state) ? a : b; use(ok);',
     'disclose(recordDelivery(root, row));',
-  ].join('\n');
-  const found = unreadResults('src/f.ts', src);
-  assert.deepEqual(found.map((f) => f.line), [1, 6, 7]);
+  ));
+  assert.deepEqual(found.map((f) => f.line), [BODY, BODY + 5, BODY + 6]);
   assert.equal(found[0].cls, CLASS_UNREAD_RESULT);
   assert.equal(found[0].producer, 'recordAudit');
+});
+
+/**
+ * **The shapes that read as bound and are not.** `unread/6` asks this tier to
+ * fail CLOSED on an unrecognised call site; reading "dropped" as "called as a
+ * statement" let five spellings of the same discard through. These are the ones
+ * a lexer can answer honestly. The ones it cannot — a result pushed into an
+ * array, passed as an argument, or read only on a branch that cannot run — are
+ * in the printed blind-spot list instead of being guessed at.
+ */
+test('a binding nobody reads, and a value computed into nothing, are both dropped', () => {
+  const found = unreadResults('src/g.ts', withImports(
+    'function a() { const _ = recordAudit(root, input); }',
+    'function b() { const written = recordAudit(root, input); }',
+    'function c() { ok && recordAudit(root, input); }',
+    'function d() { ok ? recordAudit(root, input) : 0; }',
+    'function e() { switch (k) { case 1: recordAudit(root, input); } }',
+    'function f() { maybe ?? recordAudit(root, input); }',
+  ));
+  assert.deepEqual(
+    found.map((f) => f.line),
+    [BODY, BODY + 1, BODY + 2, BODY + 3, BODY + 4, BODY + 5],
+  );
+  assert.match(found[0].why, /_/, 'the `_` case must say why `_` is not a reader');
+  assert.match(found[1].why, /never read again/);
+});
+
+test('a binding that IS read later is not a finding', () => {
+  const found = unreadResults('src/h.ts', withImports(
+    'function a() {',
+    '  const answer = recordAudit(root, input);',
+    '  if (!answer.written) process.stderr.write(answer.error);',
+    '}',
+    'function b() {',
+    '  const ok = writeState(root, state);',
+    '  return ok ? 1 : 0;',
+    '}',
+    'function c() { return ok && recordDelivery(root, row); }',
+    'function d() { const r = bumpCounter(root, id); return r.written; }',
+  ));
+  assert.deepEqual(found, []);
 });
 
 test('a producer DECLARATION is not a call site', () => {
@@ -190,9 +315,22 @@ test('a producer DECLARATION is not a call site', () => {
     'export function recordAudit(root: string, input: AuditInput): AuditWriteResult {',
     '  return { written: true, error: null };',
     '}',
-    'function writeState(root: string, state: UpkeepState): boolean { return true; }',
   ].join('\n');
-  assert.deepEqual(unreadResults('src/g.ts', src), []);
+  assert.deepEqual(unreadResults('src/core/audit.ts', src), []);
+});
+
+/**
+ * The anti-vacuity seam for the tier as a whole: `producerCallSites` classifies
+ * EVERY call, read or dropped, so a test can prove the tier still sees the
+ * producers rather than passing because its matcher stopped matching.
+ */
+test('every producer call is classified, kept ones included', () => {
+  const sites = producerCallSites('src/i.ts', withImports(
+    'const r = recordAudit(root, input); use(r);',
+    'recordAudit(root, input);',
+  ));
+  assert.deepEqual(sites.map((s) => s.dropped === ''), [true, false]);
+  assert.deepEqual(sites.map((s) => s.producer), ['recordAudit', 'recordAudit']);
 });
 
 // ── the population: what is scanned, what is gated, what is skipped ───────
@@ -250,14 +388,15 @@ test('a planted swallow in shipped code exits 1 and prints file, line and class'
   const dir = fixture({
     'src/bare.ts': 'export function a() {\n  try { read(); } catch {}\n}\n',
     'src/mute.ts': 'export function b() {\n  return load().catch(() => {});\n}\n',
-    'src/unread.ts': 'export function c() {\n  recordAudit(root, input);\n}\n',
+    'src/unread.ts': "import { recordAudit } from './core/audit.ts';\n"
+      + 'export function c() {\n  recordAudit(root, input);\n}\n',
   });
   try {
     const { status, out } = run(dir);
     assert.equal(status, 1, out);
     assert.match(out, new RegExp(`src/bare\\.ts:2\\b`), out);
     assert.match(out, new RegExp(`src/mute\\.ts:2\\b`), out);
-    assert.match(out, new RegExp(`src/unread\\.ts:2\\b`), out);
+    assert.match(out, new RegExp(`src/unread\\.ts:3\\b`), out);
     for (const cls of [CLASS_EMPTY_CATCH, CLASS_MUTE_HANDLER, CLASS_UNREAD_RESULT]) {
       assert.match(out, new RegExp(cls), `${cls} was found and never named`);
     }
@@ -320,8 +459,8 @@ test('the unread tier can see every one of the six producers in this tree', () =
   const seen = new Set<string>();
   let sites = 0;
   for (const file of files) {
-    for (const f of unreadResults(file, read(file), { everyCall: true })) {
-      seen.add(f.producer);
+    for (const site of producerCallSites(file, read(file))) {
+      seen.add(site.producer);
       sites += 1;
     }
   }
