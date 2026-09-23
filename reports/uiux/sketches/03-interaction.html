@@ -531,7 +531,7 @@ function control(spec) {
 function matchGlob(file, patterns) {
   return patterns.split(',').map((s) => s.trim()).filter(Boolean).some((p) => {
     const rx = new RegExp('^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*\*/g, ' ').replace(/\*/g, '[^/]*').replace(/ /g, '.*')
+      .replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*')
       .replace(/\?/g, '[^/]') + '$');
     return rx.test(file);
   });
