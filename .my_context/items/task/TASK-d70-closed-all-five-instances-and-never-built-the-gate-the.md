@@ -16,17 +16,17 @@ tags:
   - silent-failure
   - "plan:unread"
   - "seq:6"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 502a835fd8c7a246
+checksum: 026890b3b0f38f9c
 plan: unread
 seq: "6"
-state: todo
+state: doing
 priority: "2"
 ---
 

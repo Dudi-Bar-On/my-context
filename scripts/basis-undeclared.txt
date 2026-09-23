@@ -225,7 +225,6 @@ test/core/real-home-guard-escape.test.ts
 test/core/real-home-guard.test.ts
 test/core/rebuild.test.ts
 test/core/reference.test.ts
-test/core/relation-inverses.test.ts
 test/core/render.test.ts
 test/core/revision-concurrency.test.ts
 test/core/revision-diff.test.ts
@@ -387,7 +386,6 @@ test/ui/capture-model.test.ts
 test/ui/capture-screen.test.ts
 test/ui/cli-help-reader.test.ts
 test/ui/cli-help.test.ts
-test/ui/code-skew.test.ts
 test/ui/command-actions.test.ts
 test/ui/command-check.test.ts
 test/ui/config-error-strip.test.ts
@@ -408,7 +406,6 @@ test/ui/execute-catalogue.test.ts
 test/ui/execute-effect.test.ts
 test/ui/execute-nonce.test.ts
 test/ui/execute-route.test.ts
-test/ui/faint-usage.test.ts
 test/ui/fonts.test.ts
 test/ui/git-info.test.ts
 test/ui/github-render.test.ts
