@@ -462,7 +462,7 @@ export function buildInjectionResult(cwd: string, options: InjectionOptions = {}
     // to claim, and the difference is the whole of Phase 1E. It said "items
     // loaded this way are not restored after a compaction". They usually
     // ARE: `buildRestoreSnapshot` unions its delivery records with
-    // `scanTranscriptIds`, and a manual load writes every id it delivered
+    // `scanTranscript`, and a manual load writes every id it delivered
     // into the transcript, so the transcript arm catches what the missing
     // record drops. Executed, not reasoned: a manual `load_context` followed
     // by PreCompact and SessionStart(compact) re-injected the loaded item in

@@ -98,7 +98,7 @@ export interface ContextShare {
 /**
  * The most bytes `rebuiltFromSummaryAt` below will ever read off one
  * transcript file, taken from the SAME bound `core/ledger.ts`'s own
- * `readTail` already uses for the identical reason (`scanTranscriptIds`,
+ * `readTail` already uses for the identical reason (`scanTranscript`,
  * `MAX_TRANSCRIPT_BYTES`): the file is append-only and can be large, the
  * signal this function wants is always in the most RECENT lines, and a
  * caller on Claude Code's per-message path cannot afford to read the whole
@@ -152,7 +152,7 @@ interface TranscriptSummaryLine {
  * asked for this function for the evidence that such a rebuild CAN happen
  * with no corresponding `pre-compact` row at all.
  *
- * **Read from the TAIL, bounded, exactly as `scanTranscriptIds` reads the
+ * **Read from the TAIL, bounded, exactly as `scanTranscript` reads the
  * same file for a different question** (`core/ledger.ts`). Scanned
  * BACKWARDS, returning the first (most recent) match, because a session that
  * has been resumed and rebuilt more than once in its life should be bounded
