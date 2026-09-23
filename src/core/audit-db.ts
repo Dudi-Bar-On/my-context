@@ -64,6 +64,22 @@ import { ensureLogDir } from './jsonl-log.ts';
  * index cannot answer the query at all. Tolerating v1 would turn the doctor
  * check that calls it from a disclosure into a `check_failed`. The version is
  * what makes "the read door accepted it" mean "the index is there".
+ *
+ * **NOT bumped for `idx_audit_item_role_tier`** (2026-09-23, B4 fix round 3,
+ * `TASK-two-browser-gates-are-red-before-any-lane-touches-them-and`), and the
+ * reason it was tried and abandoned is worth more than the index: **a bump was
+ * stamped, `discard()` silently failed, and the projection came back claiming
+ * the new version with the old schema.** Measured on this repository, live:
+ * the owner's UI server holds a read handle on `.audit/audit.db`, Windows
+ * therefore refuses the `rmSync` in `discard()`, `discard()` tolerates that by
+ * design (its own comment says so), `fresh()` reopens the very file it meant
+ * to replace, and `syncProjection` then stamps `audit_meta.version` with the
+ * NEW number over the OLD tables. `audit_meta` said `3` while
+ * `sqlite_master` still said `ON audit_item(role, item_id)` — the exact state
+ * the version exists to make impossible. Reported to the controller as its
+ * own defect; the fix below does not stand on it. A NEW index NAME is created
+ * by `CREATE INDEX IF NOT EXISTS` on the next `openProjection`, on every
+ * projection there is, whether or not any file can be deleted.
  */
 const PROJECTION_VERSION = 2;
 
@@ -140,7 +156,51 @@ CREATE INDEX IF NOT EXISTS idx_audit_item_id ON audit_item(item_id, role);
 -- ~8 ms, and it costs an index entry per \`audit_item\` row — 4.6 of them per
 -- audit record, against one for \`idx_audit_seq_at\` — which is 1.6 MiB on this
 -- corpus. Kept because \`role\` is the only way either caller ever asks.
-CREATE INDEX IF NOT EXISTS idx_audit_item_role ON audit_item(role, item_id);
+--
+-- (That paragraph is 2026-09-06 and it named this index \`idx_audit_item_role\`,
+-- which is what it was called until the change below renamed it. Every word of
+-- it still holds of \`idx_audit_item_role_tier\`: the leading column, the
+-- question it answers and the plan it buys are unchanged.)
+--
+-- **THE SAME KEY WITH \`tier\` ON THE END (2026-09-23, B4 fix round 3), and it
+-- is not a third question — it is the same question at the grain the third
+-- caller asks it at.** \`apiInjectionHistory\` (\`src/ui/preview-history.ts\`)
+-- groups by \`(item_id, role, tier)\`, and with a key of \`(role, item_id)\`
+-- every one of its matching rows had to leave the index for the WITHOUT ROWID
+-- table to read one more column, and then could not group in index order
+-- either. Measured on this repository's projection, 254,466
+-- \`injected\`+\`spilled\` rows, the endpoint's own statement:
+--
+--   | audit_item index          | audit join                | history query |
+--   | ------------------------- | ------------------------- | ------------- |
+--   | \`(role,item_id)\`          | rowid (planner's choice)  | 3,818 ms      |
+--   | \`(role,item_id)\`          | \`INDEXED BY idx_audit_seq_at\` | 1,444 ms |
+--   | \`(role,item_id,tier)\`     | rowid (planner's choice)  | 2,604 ms      |
+--   | \`(role,item_id,tier)\`     | \`INDEXED BY idx_audit_seq_at\` | **148 ms** |
+--
+-- Same 1,973 rows in all four, byte-identical. The plan drops
+-- \`USE TEMP B-TREE FOR GROUP BY\` outright: with \`role\` fixed the index is
+-- already in \`(item_id, tier)\` order, and \`seq\` rides along because a
+-- WITHOUT ROWID table appends its primary key to every index key. Cost,
+-- measured the same way the 1.6 MiB above was: 20.8 MiB against the 19.2 MiB
+-- the two-column key spends — **+1.6 MiB**, and only because the two-column
+-- key is DROPPED on the line below rather than left beside it.
+--
+-- **A NEW NAME, and the old one dropped, rather than the same name with a
+-- longer key.** \`CREATE INDEX IF NOT EXISTS\` is silent about an index that
+-- already exists under that name with a SHORTER key: it would have upgraded
+-- nothing and said nothing, on every projection in existence, and a ten-fold
+-- read cost that still returns the right answer is invisible to every gate
+-- this project has. The obvious alternative — bump \`PROJECTION_VERSION\` and
+-- let \`openProjection\` discard the old file — was tried and is recorded
+-- against that constant as the thing NOT to do: \`discard()\` cannot delete a
+-- file another process holds open, tolerates that by design, and the
+-- projection comes back stamped with the new version and built to the old
+-- schema. A new name needs no deletion and no version: the next
+-- \`openProjection\` on any projection, fresh or ten builds old, creates it
+-- (320 ms measured on this corpus) and drops its predecessor.
+CREATE INDEX IF NOT EXISTS idx_audit_item_role_tier ON audit_item(role, item_id, tier);
+DROP INDEX IF EXISTS idx_audit_item_role;
 
 -- How much of each segment this projection has consumed. Staleness is the
 -- comparison between this and the files on disk — see \`projectionState\`.

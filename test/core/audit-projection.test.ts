@@ -1,5 +1,8 @@
+// @basis TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import type { DatabaseSync } from 'node:sqlite';
 import {
   appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync,
 } from 'node:fs';
@@ -350,6 +353,72 @@ test('the predefined queries answer over the roles the log actually records', ()
     assert.equal(found.find((r) => r.label === 's2')?.count, 2);
   } finally {
     db.close();
+    b.dispose();
+  }
+});
+
+// --- the schema upgrades itself, without deleting anything -------------------
+
+/**
+ * **A projection built before `idx_audit_item_role_tier` existed gets it on the
+ * next open, in place, with its records untouched.** B4 fix round 3,
+ * 2026-09-23 (`TASK-two-browser-gates-are-red-before-any-lane-touches-them-and`,
+ * `TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the`).
+ *
+ * The index carries `tier` so `/api/injection-history` can answer from the
+ * index alone — 3,818 ms to 148 ms on this repository's own projection — and
+ * the whole reason it is a NEW NAME rather than a longer key under the old one
+ * is this test: `CREATE INDEX IF NOT EXISTS` is silent about an index that
+ * already exists with a shorter key, so the same name would have upgraded
+ * nothing on every projection in existence and said nothing about it.
+ *
+ * **The route NOT taken is why the row count is asserted.** Bumping
+ * `PROJECTION_VERSION` would have had `openProjection` discard the old file —
+ * and `discard()` cannot delete a file another process holds open, tolerates
+ * that by design, and leaves a projection stamped with the new version and
+ * built to the old schema. Measured live on this repository while that route
+ * was being tried: `audit_meta` said `3` and `sqlite_master` still said
+ * `ON audit_item(role, item_id)`. So this asserts an upgrade that needs no
+ * deletion: the same file, the same records, a different index.
+ */
+test('a projection built before tier joined the index key is upgraded in place', () => {
+  const b = box();
+  const db = openProjection(b.root);
+  try {
+    seed(b.root);
+    syncProjection(b.root, db);
+    const recorded = (handle: DatabaseSync): number =>
+      (handle.prepare('SELECT COUNT(*) AS n FROM audit').get() as { n: number }).n;
+    const before = recorded(db);
+    assert.ok(before > 0, 'the fixture must have records for "nothing was lost" to mean anything');
+
+    // Roll the schema back to exactly what a projection built before this
+    // change carries: the two-column key, under the old name.
+    db.exec('DROP INDEX idx_audit_item_role_tier');
+    db.exec('CREATE INDEX idx_audit_item_role ON audit_item(role, item_id)');
+    db.close();
+
+    const again = openProjection(b.root);
+    try {
+      const names = (again.prepare(
+        `SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'audit_item'
+         ORDER BY name`,
+      ).all() as { name: string }[]).map((r) => r.name);
+      assert.ok(names.includes('idx_audit_item_role_tier'),
+        `the open must create the covering index on an old projection: ${names.join(', ')}`);
+      assert.equal(names.includes('idx_audit_item_role'), false,
+        `and drop the key it replaces rather than keep both: ${names.join(', ')}`);
+      assert.equal(
+        (again.prepare(
+          `SELECT sql FROM sqlite_master WHERE name = 'idx_audit_item_role_tier'`,
+        ).get() as { sql: string }).sql.replace(/\s+/g, ' '),
+        'CREATE INDEX idx_audit_item_role_tier ON audit_item(role, item_id, tier)',
+      );
+      assert.equal(recorded(again), before,
+        'the file was UPGRADED, not discarded and rebuilt — no sync ran between the two opens, '
+        + 'so a rebuilt projection would be empty here');
+    } finally { again.close(); }
+  } finally {
     b.dispose();
   }
 });

@@ -70,7 +70,6 @@ e2e/preview-overlap.spec.ts
 e2e/preview-retime.spec.ts
 e2e/preview-spilled.spec.ts
 e2e/primitives.spec.ts
-e2e/print-product.spec.ts
 e2e/print.spec.ts
 e2e/ratio-legibility.spec.ts
 e2e/refusal-stale.spec.ts
@@ -164,7 +163,6 @@ test/core/audit-execution.test.ts
 test/core/audit-new-ops.test.ts
 test/core/audit-projection-current.test.ts
 test/core/audit-projection-readonly.test.ts
-test/core/audit-projection.test.ts
 test/core/audit-registered-hooks.test.ts
 test/core/audit-surfaces-derive.test.ts
 test/core/audit-tail.test.ts
@@ -440,7 +438,6 @@ test/ui/plan2-e2e.test.ts
 test/ui/plate-usage.test.ts
 test/ui/port-model.test.ts
 test/ui/port-screen.test.ts
-test/ui/preview-seen-history.test.ts
 test/ui/primitives.test.ts
 test/ui/proc-model.test.ts
 test/ui/proc-screen.test.ts

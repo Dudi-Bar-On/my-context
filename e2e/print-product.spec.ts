@@ -1,3 +1,7 @@
+// @basis TASK-repaint-task-10-the-print-register,
+// STD-a-screen-explains-itself-in-plain-words-and-depth-hides,
+// TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the
 /**
  * **The print register, on the PRODUCT — not the mockup.**
  *
@@ -36,6 +40,7 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { mintNonce, startUiChild, type UiHarness } from '../test/ui/helpers.ts';
+import { settleScreen } from './settle.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 const SCREENS = ['doctor', 'decay', 'status', 'coverage', 'learn'];
@@ -75,6 +80,95 @@ async function openScreen(page: import('@playwright/test').Page, screen: string)
   // fixture-sized run; a generous timeout here is honest about that rather
   // than a symptom masked.
   await expect(page.locator(`[data-p="${screen}"] h2`)).toBeVisible({ timeout: 45_000 });
+
+  /*
+   * **AND THEN IT WAITS FOR THE WHOLE SCREEN, NOT ONLY ITS FIRST HEADING** —
+   * B4 fix round 3, 2026-09-23 (`TASK-two-browser-gates-are-red-before-any-
+   * lane-touches-them-and`). The `h2` above is written by `screenHead()`
+   * SYNCHRONOUSLY, and Coverage then appends its sections as its reads land.
+   * Measured, from this file's own diagnostic line on the failing run:
+   *
+   *     [print coverage] {"count":1,"displays":["block"],"anyRendered":false,"allOpen":true}
+   *     [print coverage] {"count":4,...,"anyRendered":true,"allOpen":true}
+   *     [print coverage] {"count":5,...,"anyRendered":true,"allOpen":true}
+   *
+   * One disclosure, genuinely `open`, genuinely `display:block`, and laying
+   * out to nothing — because it was the FIRST of five and the screen was
+   * still drawing. That is the whole of the failure the gate reported as
+   * `the forced-open box must actually lay out and carry text`, and it is the
+   * same defect `e2e/marks-reach.spec.ts` records in its own words: *"wait for
+   * the CONTENT, not for the box."*
+   *
+   * `settleScreen` is the suite's one answer to "has this screen finished
+   * drawing" and it is used here rather than a second one — the holding chip
+   * gone, no `/api` read in flight, and the element count stopped moving. It
+   * REPORTS rather than asserts, so the failure is raised here, as itself:
+   * a slow machine must not be reported as a disclosure that draws no text
+   * (`LESSON-every-bound-on-waiting-must-fail-as-itself-or-a-slow-machine`).
+   */
+  const settled = await settleScreen(page, screen);
+  expect(
+    settled.settled,
+    `"${screen}" never finished drawing (${settled.attempts} samples, ${settled.count} elements, `
+    + `${settled.inFlight} /api reads still open), so nothing printed below was measured`,
+  ).toBe(true);
+}
+
+/**
+ * **Switch the emulated media and come back only once the PAGE has handled
+ * it** — B4 fix round 3, 2026-09-23
+ * (`TASK-two-browser-gates-are-red-before-any-lane-touches-them-and`).
+ *
+ * `page.emulateMedia()` resolves when the BROWSER has applied the emulation.
+ * The thing this file measures is what `lib/disclosure.js` does about it, and
+ * that runs in a `change` listener on `matchMedia('print')` — a page-side
+ * event, dispatched in the page's own task queue, not in the protocol call
+ * that caused it. So every `page.evaluate` that followed an `emulateMedia` was
+ * racing a listener, and usually won.
+ *
+ * **It is NOT what made this file red on 2026-09-23** — that was measured and
+ * it was `openScreen` above, reading a Coverage screen that had drawn one of
+ * its five disclosures. This wait was written first, against the same failure,
+ * and it did not fix it: the run with only this in place still failed, on both
+ * projects, and the diagnostic line it printed is what pointed at the real
+ * cause. It is kept because the race it closes is real and unbounded — a
+ * listener that has not run yet is a listener whose work is not on the page —
+ * and because the Ubuntu face of that failure (`a disclosure the reader had
+ * closed was left open after the print media ended`) sits on the restore edge
+ * of exactly this gap. Kept as a narrowing, recorded as not the diagnosis.
+ *
+ * **The probe listener is registered after `lib/disclosure.js`'s**, which is
+ * installed at module load, and listeners on one target fire in registration
+ * order — so the counter moving means that listener has already returned. This
+ * waits on the EVENT, not on the property the assertions below are about: a
+ * wait for "every disclosure is open" would make the assertion that every
+ * disclosure is open vacuous, which is the trade
+ * `LESSON-every-bound-on-waiting-must-fail-as-itself-or-a-slow-machine`
+ * exists to refuse. The bound fails as ITSELF for the same reason.
+ */
+interface MediaProbe { __mediaChanges?: number }
+
+async function setMedia(page: import('@playwright/test').Page,
+  media: 'screen' | 'print'): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as MediaProbe;
+    if (w.__mediaChanges !== undefined) return;
+    w.__mediaChanges = 0;
+    window.matchMedia('print').addEventListener('change', () => {
+      const seen = window as unknown as MediaProbe;
+      seen.__mediaChanges = (seen.__mediaChanges ?? 0) + 1;
+    });
+  });
+  const before = await page.evaluate(() => (window as unknown as MediaProbe).__mediaChanges ?? 0);
+  await page.emulateMedia({ media });
+  await page.waitForFunction(
+    (n) => ((window as unknown as MediaProbe).__mediaChanges ?? 0) > (n as number),
+    before,
+    { timeout: 10_000 },
+  ).catch(() => {
+    throw new Error(`the page never received the media change to "${media}": `
+      + 'nothing below was measured under the media it names');
+  });
 }
 
 test('each owned screen prints itself: chrome gone, register black-on-white, disclosures open',
@@ -84,7 +178,7 @@ test('each owned screen prints itself: chrome gone, register black-on-white, dis
 
     for (const screen of SCREENS) {
       await openScreen(page, screen);
-      await page.emulateMedia({ media: 'print' });
+      await setMedia(page, 'print');
 
       const sheet = await page.evaluate((s) => {
         const displayOf = (sel: string): string => {
@@ -134,7 +228,7 @@ test('each owned screen prints itself: chrome gone, register black-on-white, dis
           .not.toBe('none');
       }
 
-      await page.emulateMedia({ media: 'screen' });
+      await setMedia(page, 'screen');
     }
   });
 
@@ -155,7 +249,7 @@ test('coverage always carries at least one disclosure, and it prints open even w
     expect(closedOnScreen, 'a disclosure that already renders open cannot prove print forces it')
       .toBe(true);
 
-    await page.emulateMedia({ media: 'print' });
+    await setMedia(page, 'print');
     const printed = await page.evaluate(() => {
       const boxes = [...document.querySelectorAll<HTMLElement>('details.help > .helpbox')];
       const details = [...document.querySelectorAll<HTMLDetailsElement>('details.help')];
@@ -182,6 +276,10 @@ test('coverage always carries at least one disclosure, and it prints open even w
         allOpen: details.every((d) => d.open === true),
       };
     });
+    // Printed before the assertions so a reader of the gate log never has to
+    // make this fail to find out which of the four facts was the one missing.
+    // eslint-disable-next-line no-console
+    console.log(`[print coverage] ${JSON.stringify(printed)}`);
     expect(printed.count, 'coverage should carry at least one disclosure on this corpus')
       .toBeGreaterThan(0);
     for (const d of printed.displays) expect(d).not.toBe('none');
@@ -189,7 +287,7 @@ test('coverage always carries at least one disclosure, and it prints open even w
       .toBe(true);
     expect(printed.allOpen, 'every details.help must have its own `open` property set under print')
       .toBe(true);
-    await page.emulateMedia({ media: 'screen' });
+    await setMedia(page, 'screen');
     // Restored, not left open: a reader who printed with these closed gets
     // them back closed once the print is over — `lib/disclosure.js`'s own
     // stated behaviour, checked here rather than assumed.
@@ -215,14 +313,14 @@ test('a never-opened item pane does not print an empty template', async ({ page 
   expect(paneHiddenOnScreen, 'the pane must be absent from the DOM or already hidden pre-open')
     .not.toBe(false);
 
-  await page.emulateMedia({ media: 'print' });
+  await setMedia(page, 'print');
   const printedDisplay = await page.evaluate(() => {
     const pane = document.getElementById('pane');
     return pane === null ? '(absent)' : getComputedStyle(pane).display;
   });
   expect(printedDisplay, 'a pane nobody opened must not be forced onto the printout')
     .toBe('none');
-  await page.emulateMedia({ media: 'screen' });
+  await setMedia(page, 'screen');
 });
 
 test('an item pane the reader DID open still prints, open or not it stays gone otherwise', async ({ page }) => {
@@ -240,7 +338,7 @@ test('an item pane the reader DID open still prints, open or not it stays gone o
   await idButton.click();
   await expect(page.locator('#pane')).not.toHaveAttribute('hidden', '', { timeout: 10_000 });
 
-  await page.emulateMedia({ media: 'print' });
+  await setMedia(page, 'print');
   const opened = await page.evaluate(() => {
     const pane = document.getElementById('pane')!;
     return {
@@ -252,7 +350,7 @@ test('an item pane the reader DID open still prints, open or not it stays gone o
   expect(opened.display, 'the pane the reader opened must print').toBe('block');
   expect(opened.height, 'and must not print blank').toBeGreaterThan(20);
   expect(opened.text, 'and must carry its text onto the paper').toBeGreaterThan(20);
-  await page.emulateMedia({ media: 'screen' });
+  await setMedia(page, 'screen');
 });
 
 test('the print register also works in Hebrew', async ({ page }) => {
@@ -265,7 +363,7 @@ test('the print register also works in Hebrew', async ({ page }) => {
   await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
   await openScreen(page, 'coverage');
 
-  await page.emulateMedia({ media: 'print' });
+  await setMedia(page, 'print');
   const sheet = await page.evaluate(() => {
     const mine = document.querySelector<HTMLElement>('[data-p="coverage"]')!;
     return {
@@ -281,5 +379,5 @@ test('the print register also works in Hebrew', async ({ page }) => {
   expect(sheet.text, 'printed with no text in Hebrew').toBeGreaterThan(20);
   expect(sheet.bodyBg, 'must print on white in Hebrew too').toBe('rgb(255, 255, 255)');
   expect(sheet.rail, 'the rail is chrome in Hebrew too').toBe('none');
-  await page.emulateMedia({ media: 'screen' });
+  await setMedia(page, 'screen');
 });

@@ -756,9 +756,30 @@ for (const lang of ['en', 'he'] as const) {
      * enough to reach the edge at all; with it shut the panel is ~406 px and
      * this assertion would pass on the broken build.
      */
+    /*
+     * **AND THE HELP BEING OPEN IS A PRECONDITION, SAID AS ONE** — B4 fix
+     * round 3, 2026-09-23 (`TASK-two-browser-gates-are-red-before-any-lane-
+     * touches-them-and`). On Ubuntu CI, and only in the `he`/`chrome` variant
+     * of four, this test failed reporting a panel 162 px tall against the
+     * `> 200` guard below. 162 px is not a font metric: it is the panel with
+     * the help SHUT. A click that did not land, or a re-render that shut it,
+     * was being reported as "the panel is too short", which is a statement
+     * about the layout produced by a statement about an interaction. So the
+     * click is now followed by the retrying assertion that it took, and the
+     * state is re-asserted after the two actions that rebuild the panel —
+     * `mode()` and `find()` — because "the help stays open across a mode
+     * change" is a property this file already measures two tests up and is
+     * exactly the one this test is leaning on.
+     */
+    const helpBox = page.locator('.mcpanelhelp');
     await page.locator('.mcpanelhelp summary').click();
+    await expect(helpBox, 'the help did not open, so the panel below is the short one')
+      .toHaveAttribute('open', /.*/);
     await mode(page, 'logical');
     await find(page, 'byte AND question');
+    await expect(helpBox, 'the help was shut again by the mode change or the search, so the '
+      + 'panel measured below is not the tall one this test is about')
+      .toHaveAttribute('open', /.*/);
 
     /*
      * **AND IT IS DRAGGED DOWN FIRST, BECAUSE THE FIRST DRAFT OF THIS TEST
@@ -794,14 +815,32 @@ for (const lang of ['en', 'he'] as const) {
     const fits = await page.locator(SEARCH).evaluate((d) => {
       const box = d.getBoundingClientRect();
       return { top: Math.round(box.top), bottom: Math.round(box.bottom),
-        height: Math.round(box.height),
+        height: Math.round(box.height), content: d.scrollHeight,
         viewport: window.innerHeight, scrolls: d.scrollHeight > d.clientHeight };
     });
     console.log(`[fit ${lang}] ${JSON.stringify(fits)}`);
     expect(fits.top, 'the panel was not dragged down, so this cannot see the defect')
       .toBeGreaterThan(100);
-    expect(fits.height, 'the help did not make the panel tall enough for this to mean anything')
-      .toBeGreaterThan(200);
+    /*
+     * **THE ANTI-VACUITY GUARD IS THE PROPERTY, NOT A PIXEL COUNT** — B4 fix
+     * round 3, 2026-09-23. It used to read `fits.height > 200`, a number
+     * standing in for "this panel is tall enough that the bound below had
+     * something to do", and a number is the wrong instrument for that: panel
+     * height is font metrics times content, and the two browsers and two
+     * languages this file runs in do not agree on either.
+     *
+     * The property it MEANT is here instead, in the units the defect is in:
+     * laid out from where it actually sits, this panel's own content reaches
+     * PAST the bottom of the window. That is exactly the state
+     * `lib/panel.js`'s `max-block-size` exists for — with the bound deleted,
+     * `bottom` would be `top + content` and the next assertion fails. It
+     * cannot be satisfied by a short panel on any font, and it does not
+     * ask the help to be any particular number of pixels tall.
+     */
+    expect(fits.top + fits.content,
+      'laid out unbounded from where it sits, this panel would still have ended above the '
+      + 'bottom of the window — so the bound the next assertion is about was never under test')
+      .toBeGreaterThan(fits.viewport);
     expect(fits.bottom, 'the panel runs off the bottom of the screen and cannot be scrolled to')
       .toBeLessThanOrEqual(fits.viewport);
     expect(fits.scrolls,
