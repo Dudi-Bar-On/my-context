@@ -142,6 +142,35 @@ export interface HistoryRow {
  * rejection `topItems` records, and it is not theoretical here: this
  * projection carries **149** places where a later `seq` holds an earlier `at`,
  * because the log is written by concurrent hooks in separate processes.
+ *
+ * ── AND `disclosed` IS THE FOURTH ROLE THIS LIST DOES NOT WANT ────────────
+ *
+ * `audit_item.role` gained a fourth value in 2026-09
+ * (`TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where`):
+ * `disclosed`, an id the restore tier named as one it could NOT bring back —
+ * superseded, on a disabled or rationale category, hidden by the active focus,
+ * already delivered, or gone from the corpus. The `IN` list below was written
+ * before it existed, so leaving it alone would be an accident. It is a
+ * DECISION, and this is where it is recorded.
+ *
+ * Read what this list is FOR, at the top of the file: it answers *when did
+ * this item last really get delivered, and when did it last really spill*, for
+ * the rows the injection preview is drawing right now, and the client matches
+ * each answer to a preview row by `(item, role, tier)`. A disclosed id is in
+ * neither half of that question. It was never priced and never offered, so it
+ * is not in the selection the preview draws and there is no row for a
+ * timestamp to sit beside; and it did not lose to a budget, so the two labels
+ * the screen has — "last delivered" and "last spilled" — would both be false
+ * on it. Admitting it under a third role would need a label the screen does
+ * not have, and the nearest one it does have is the exact misreading the role
+ * split was made to end: a stale snapshot shown as a corpus under budget
+ * pressure.
+ *
+ * **It is not dropped, it is asked for elsewhere.** `mycontext audit --items
+ * --role disclosed` and `/api/ask/summary?report=items&role=disclosed` both
+ * answer for it by name, and `test/ui/audit-role-disclosed.test.ts` asserts
+ * the exclusion here and the reachability there in one file, so the pair
+ * cannot drift into `INV-nothing-is-dropped-silently`.
  */
 export const HISTORY_SQL = `
   SELECT i.item_id AS id, i.role AS role, i.tier AS tier, MAX(a.at) AS at

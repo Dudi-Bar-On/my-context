@@ -769,8 +769,21 @@ export const COMMAND_FLAGS: Record<string, FlagSpec> = {
  * vocabulary this table exists to remove.
  */
 
-/** How an item can appear in an audit record — what `audit --role` selects. */
-export const AUDIT_ROLES = ['subject', 'injected', 'spilled'];
+/**
+ * How an item can appear in an audit record — what `audit --role` selects.
+ *
+ * **`disclosed` is the fourth, and it arrived after the other three** (2026-09,
+ * `TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where`).
+ * `core/audit-db.ts` files a restore disclosure under its own role rather than
+ * under `spilled`, because an id the restore tier declined to offer — superseded,
+ * on a disabled or rationale category, hidden by the active focus, already
+ * delivered, or gone from the corpus — never lost to a budget and no budget
+ * would bring it back, so every spill counter that saw it read a stale snapshot
+ * as a corpus under pressure. Adding the word here is what makes the row the
+ * projection writes ASKABLE: until it was, `--role disclosed` was refused as a
+ * typo and the record was on disk with no surface able to name it.
+ */
+export const AUDIT_ROLES = ['subject', 'injected', 'spilled', 'disclosed'];
 
 /** What `export --format` writes: a directory tree, or one zip file. */
 export const ARTEFACT_FORMATS: ArtefactFormat[] = ['dir', 'zip'];
@@ -1033,7 +1046,8 @@ export const FLAG_DECLARATIONS: Record<string, FlagDeclarations> = {
     role: {
       values: AUDIT_ROLES,
       note: 'How the item appears in the record: the subject of the mutation, injected into a '
-        + 'session, or spilled from one for budget.',
+        + 'session, spilled from one for budget, or disclosed by the restore tier as an id it '
+        + 'could not offer at all - which no budget would have brought back.',
     },
     limit: LIMIT,
     items: { note: 'Report by ITEM rather than by record - what was touched, and how often.' },

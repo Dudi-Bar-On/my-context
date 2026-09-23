@@ -1,3 +1,4 @@
+// @basis TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen, TASK-security-ts-split-the-two-host-refusals-and-record-every
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -950,10 +951,16 @@ test('B4: the record is on disk by the time recordRefusal returns', () => {
 });
 
 /**
- * Field rule 8: the result is DISCARDED by the server, exactly as the hooks
- * discard theirs — which is only defensible because a failure is RETURNED
- * rather than thrown. A `recordRefusal` that threw would break the refusal
- * path of a security gate over log I/O.
+ * Field rule 8: the failure is RETURNED rather than thrown. A `recordRefusal`
+ * that threw would break the refusal path of a security gate over log I/O.
+ *
+ * This docblock used to add that the server then threw the answer away, "as
+ * the hooks do". Neither half is true any more —
+ * `TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen` reversed
+ * the hooks' practice and `server.ts`'s `refuse` followed — and what this test
+ * asserts was always the part underneath: returning rather than throwing is
+ * what makes reading the answer possible at all.
+ * `test/ui/refusal-audit-disclosure.test.ts` asserts the reading.
  */
 test('B4: an unwritable log returns the failure and never throws', () => {
   const b = box();

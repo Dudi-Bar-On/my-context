@@ -1752,12 +1752,32 @@ export function auditReadFailureNote(err: unknown): string {
  *  - Mutations (`persist` in mutate.ts, the settlements in revision.ts) put
  *    `auditFailureNote` into the message the human or agent reads, so a
  *    mutation missing from the log says so at the moment it happens.
- *  - Hooks discard it, because there is no one to tell — a hook's stdout is
- *    the model's context, and a warning about log I/O does not belong there.
- *    `doctor`'s `audit_log_size` check reads the same directory, so a log that
- *    has stopped being writable is still discoverable; what is NOT recoverable
- *    is the specific hook record that was lost. That is the disclosed cost of
- *    failing open, stated here and in both READMEs rather than papered over.
+ *  - Hooks say it on STDERR, in `hooks/io.ts`'s `unrecordedHookLine`, naming
+ *    which event's record was lost and what it costs a later count. This
+ *    paragraph used to say the opposite — that hooks dropped the result on the
+ *    ground that nobody was listening, and that the record lost with it was
+ *    the disclosed cost of failing open. `TASK-recordaudit-reports-whether-it-
+ *    wrote-and-fourteen-of-sixteen` measured what that sentence was paying
+ *    for: FOURTEEN OF SIXTEEN hook call sites discarding the answer, three of
+ *    them load-bearing in writing — the JIT injection record a seen-file
+ *    append rests its best-effort posture on, `recordDeny`, and
+ *    `subagent-start`'s `delivery=attempted` row. There IS someone to tell,
+ *    and it is not the model: a hook's STDOUT is the model's context, where a
+ *    warning about log I/O does not belong, while its STDERR is surfaced to
+ *    the person who can act. `INV-hooks-fail-open` is untouched — every one of
+ *    those hooks still exits 0.
+ *  - The WEB UI's two writes — the refusal record and the nonce mint — say it
+ *    on `onSessionStoreIssue`, the line `mycontext ui` prints for the person
+ *    running it. Same shared wording, a different stream, and deliberately not
+ *    the HTTP response: owner ruling A4 gives a refusal a status line and
+ *    nothing else, and the refused party is the one reader with no business
+ *    learning that this machine's audit directory stopped accepting writes.
+ *
+ * So there is no silent caller left, and `doctor`'s `audit_log_size` check —
+ * which reads the same directory — is now the SECOND way this is found rather
+ * than the only one. What is still not recoverable is the specific record that
+ * was lost; that remains the cost of failing open, and it is now stated at the
+ * moment it is paid instead of only in both READMEs.
  */
 export function recordAudit(root: string, input: AuditInput): AuditWriteResult {
   let rotatedTo: string | null = null;

@@ -114,6 +114,12 @@ import { registerWorkRoutes } from './read-model-work.ts';
 import { matchRoute, registerRoute, type ApiContext, type JsonResult } from './routes.ts';
 import { loadSessionDigests, recordSessionDigest } from '../core/ui-sessions.ts';
 import { claimUiServerRecord } from '../core/ui-server-probe.ts';
+// ONE wording for an unwritable audit log, and it lives where the sixteen hook
+// doors that say it live. `hooks/io.ts` imports `node:fs`'s `readFileSync` and
+// one erased type and nothing else, so this edge costs the no-writes graph
+// nothing — see `unrecordedAuditNotice` below for the two edits the CHANNEL
+// makes to the line and why they are edits rather than a second sentence.
+import { unrecordedHookLine } from '../hooks/io.ts';
 import {
   clearUiServerRecord, uiServerRecordPath, type UiServerRecord,
 } from '../core/ui-server-record.ts';
@@ -804,6 +810,31 @@ function sendRefusal(res: ServerResponse, status: number): void {
   res.end();
 }
 
+/**
+ * **The line this server says when one of its two audit writes did not land.**
+ *
+ * `hooks/io.ts`'s `unrecordedHookLine` is the project's ONE wording for an
+ * unwritable audit log, and it is reused rather than re-spelled for the reason
+ * `auditReadFailureNote` states about its own pair: *"Two callers, one wording:
+ * a report that phrased this for itself is how two commands end up disagreeing
+ * about what an unreadable log means."* Its docstring already counts a refusal
+ * among the sixteen doors it serves.
+ *
+ * Two edits, and both belong to the CHANNEL rather than to the sentence.
+ * `src/cli/commands/ui.ts` prints every notice as `mycontext ui: <message>`,
+ * so the line's own `my_context: ` stamp would be a second prefix on one line;
+ * and the handler takes a SENTENCE, while a hook writes a finished line to a
+ * stream, so the trailing newline belongs to the printer. Neither touches a
+ * word of what is said.
+ *
+ * **It is not a hook and it does not pretend to be one.** `hook` is a free
+ * string on that function, so the caller says which door lost the record —
+ * here, which of this server's two writes.
+ */
+function unrecordedAuditNotice(door: string, op: string, error: string, lost: string): string {
+  return unrecordedHookLine(door, op, error, lost).replace(/^my_context: /, '').trimEnd();
+}
+
 /** The FIRST value of a repeated header — the same value the gate judged. */
 const headerFirst = (v: string | string[] | undefined): string | null =>
   v === undefined ? null : Array.isArray(v) ? v[0] ?? null : v;
@@ -1143,10 +1174,17 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
    * `boundPort` is still `0` here only when `listen` never succeeded, and a
    * server that never bound wrote no record to take back.
    *
-   * The outcome is discarded, and that is the same judgement `recordAudit`'s
-   * result gets on the refusal path: there is no one to tell. A
-   * `names-another-server` here is the mechanism working — a replacement is
-   * already up and its record is the right one to leave alone.
+   * The outcome is discarded, and it no longer has the refusal path's audit
+   * write for company: that one now reads its result and discloses a failure
+   * on `onSessionStoreIssue` (see `refuse` below). The two are different
+   * cases, and the difference is why only one of them says anything. A
+   * `names-another-server` here is the MECHANISM WORKING — a replacement is
+   * already up and its record is the right one to leave alone — so there is no
+   * fault to disclose; and the one genuine failure, a record that could not be
+   * removed, is already covered by the upkeep hook's probe, which finds a
+   * record whose port answers nothing and replaces it. An audit record that
+   * was never appended has no such second chance, which is exactly why that
+   * one is spoken about and this one is not.
    */
   server.once('close', () => { clearUiServerRecord({ pid: process.pid, port: boundPort }); });
 
@@ -1164,10 +1202,28 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
    * cannot be answered and then lost; `recordAudit` is a synchronous append,
    * not a read-modify-write.
    *
-   * The `AuditWriteResult` is DISCARDED, exactly as the hooks discard theirs:
-   * there is no one to tell, and telling the refused party would be the echo
-   * ruling 11 removed. A log that has stopped being writable is discoverable
-   * through `doctor`'s `audit_log_size` check.
+   * **The `AuditWriteResult` is READ, and a failed write is disclosed.** It
+   * used to be dropped, on a comment that cited the hooks as its precedent and
+   * said nobody was listening — and since 199dfcc3 the hooks drop nothing
+   * (`TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen`).
+   * Every hook reads its result and writes `unrecordedHookLine`
+   * to stderr, because there IS someone to tell: the person whose stream the
+   * platform surfaces. This server's equivalent of that person is the one
+   * running `mycontext ui`, and its equivalent of that stream is
+   * `onSessionStoreIssue`.
+   *
+   * **The refused party is still told nothing, and that half of the old
+   * comment was right.** Ruling A4 gives a refusal a status line and nothing
+   * else, and `sendRefusal` has no parameter a body could be passed in — so
+   * there is no `disclosures` array to put this on even if it belonged there,
+   * and it does not: a stranger who was just refused is the one reader with no
+   * business learning that this machine's audit directory has stopped
+   * accepting writes. Two readers, one fault, and only the owner's terminal
+   * hears about it.
+   *
+   * `doctor`'s `audit_log_size` check still reads the same directory, so the
+   * condition remains discoverable later; what this line adds is that it is
+   * discoverable NOW, at the one moment the specific lost record existed.
    *
    * `url.pathname`, never `url.search`. Capping and the absent-versus-empty
    * distinction live in `recordRefusal` (§0.6), so every caller gets them.
@@ -1176,7 +1232,7 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
     req: IncomingMessage, url: URL, gate: { status: number; check: RefusalCheck },
     res: ServerResponse,
   ): void {
-    recordRefusal(corpusRoot, {
+    const recorded = recordRefusal(corpusRoot, {
       check: gate.check,
       status: gate.status as 401 | 403,
       method: req.method ?? 'GET',
@@ -1184,6 +1240,17 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
       host: headerFirst(req.headers.host),
       origin: headerFirst(req.headers.origin),
     });
+    if (!recorded.written) {
+      // The CHECK, never the submitted `Host` or `Origin`. Those are what
+      // ruling 11 took out of every message, and a disclosure that carried
+      // them would put attacker-supplied text into the owner's terminal by the
+      // one route the ruling did not think to close.
+      options.onSessionStoreIssue?.(unrecordedAuditNotice(
+        'web UI refusal', 'ui-refused', recorded.error ?? 'unknown',
+        `this ${gate.status} on ${url.pathname} (check: ${gate.check}) is the only trace that `
+        + 'request ever had, and it is gone',
+      ));
+    }
 
     // **A token cookie THIS server did not issue is expired here, or the page
     // is locked out for good.**
@@ -1439,7 +1506,15 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
       // Exactly ONE record per mint, whichever `ttlMs` was chosen: the choice
       // above happens before this call and does not branch it, so neither
       // variant of this route can be made to write twice.
-      recordNonceMint(corpusRoot, {
+      //
+      // **And the write's answer is READ**, exactly as `refuse` above reads
+      // its own and for the same reason: the paragraph two up says this write
+      // is "what makes that discoverable afterwards rather than merely true",
+      // and a discarded failure makes that sentence false with nothing saying
+      // so. Same channel, same shared wording. Found alongside the two sites
+      // `TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen`'s
+      // review named, and it is the same defect.
+      const minted = recordNonceMint(corpusRoot, {
         // Not re-read from the header: the gate already proved the submitted
         // Host is exactly this, and `wantHost` inside `validateApiRequest` is
         // the same string constructed the same way — recomputing it here would
@@ -1447,6 +1522,12 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
         host: `127.0.0.1:${boundPort}`,
         origin: headerFirst(req.headers.origin),
       });
+      if (!minted.written) {
+        options.onSessionStoreIssue?.(unrecordedAuditNotice(
+          'web UI nonce mint', 'nonce-minted', minted.error ?? 'unknown',
+          'a credential for this server came into existence and nothing recorded that it did',
+        ));
+      }
       // NOT idle.touch(). A mint is proof a caller may ASK for a credential,
       // not a use of the corpus — the same distinction that already keeps
       // `/api/handoff` off the idle path one branch up, one layer below where

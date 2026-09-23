@@ -453,12 +453,25 @@ const REFUSAL_STATUSES: readonly number[] = [401, 403];
  *
  * **Synchronous, and never throws.** `recordAudit` appends and returns
  * `{ written: false, error }` on failure, so this is called BEFORE the response
- * goes out (field rule 7) and a refusal cannot be answered and then lost. The
- * `AuditWriteResult` is returned for the same reason `recordAudit` returns it —
- * and the server DISCARDS it, exactly as the hooks discard theirs (field rule
- * 8): there is no one to tell, and telling the refused party would be the echo
- * ruling 11 removed. A log that has stopped being writable stays discoverable
- * through `doctor`'s `audit_log_size` check.
+ * goes out (field rule 7) and a refusal cannot be answered and then lost.
+ *
+ * **The `AuditWriteResult` is returned for the same reason `recordAudit`
+ * returns it, and the server now READS it** (field rule 8, rewritten
+ * 2026-09-23). It used to say the server discarded it *"exactly as the hooks
+ * discard theirs"*, and that precedent was reversed by
+ * `TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen`: since
+ * 199dfcc3 every hook reads its result and discloses a failed append on the
+ * channel whose reader can act. `server.ts`'s `refuse` does the same on
+ * `onSessionStoreIssue`, the line `mycontext ui` prints for the person running
+ * it, and the argument for that channel is there rather than restated here.
+ *
+ * **What has NOT changed is who is not told.** The refused party still gets a
+ * status line and nothing else — ruling A4, held structurally by `sendRefusal`
+ * having no body parameter — and telling them would be the echo ruling 11
+ * removed, now with a fact about this machine's disk attached to it. A log
+ * that has stopped being writable also stays discoverable later through
+ * `doctor`'s `audit_log_size` check; the disclosure is what makes it
+ * discoverable at the moment the specific lost record existed.
  */
 export function recordRefusal(root: string, refusal: RefusalDetail): AuditWriteResult {
   if (!REFUSAL_CHECKS.includes(refusal.check) || !REFUSAL_STATUSES.includes(refusal.status)) {
