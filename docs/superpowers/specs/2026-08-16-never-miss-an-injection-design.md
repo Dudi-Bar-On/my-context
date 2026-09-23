@@ -700,7 +700,7 @@ conditions the chosen options carry, which is what conditions are for.
    append inherits the same exposure and uses the same guard
    (`retryOnTransientFsError`, `src/core/rebuild.ts` · `if (!code || !TRANSIENT_RENAME_CODES.has(code) || attempt === attempts - 1) throw err;` · ~253),
    with its own attempt budget
-   (`src/core/seen-file.ts` · `}), SEEN_APPEND_ATTEMPTS);` · ~193).
+   (`src/core/seen-file.ts` · `}), SEEN_APPEND_ATTEMPTS);` · ~193). <!-- historical-citation: quotes seen-file.ts as it stood in 2026-08; the phase-4 perf fix (4e92f463, 2026-09-23) moved the jsonl helpers and made the append budget per delivery, not per line -->
 5. **Read-only open during WAL crash recovery** is now measured on Windows: the read-only
    connection itself performed full recovery through the crashed writer's leftover `-shm` in
    12.3 ms, and even with the directory write-denied it still succeeded while that `-shm`

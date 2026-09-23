@@ -259,7 +259,7 @@ rather than a preference.
 `src/core/focus.ts` binds `recordAudit`
 (`core/focus.ts` · `import { recordAudit, type AuditWriteResult } from './audit.ts';` · ~3) and calls
 it inside `setFocus` and `unsetFocus`; `src/core/seen-file.ts` binds `appendJsonlLine`
-(`core/seen-file.ts` · `appendJsonlLine, readJsonlFileState, type JsonlFileState, type JsonlLogSpec,` · ~5)
+(`core/seen-file.ts` · `appendJsonlLine, readJsonlFileState, type JsonlFileState, type JsonlLogSpec,` · ~5) <!-- historical-citation: quotes seen-file.ts as it stood in 2026-08; the phase-4 perf fix (4e92f463, 2026-09-23) moved the jsonl helpers and made the append budget per delivery, not per line -->
 and calls it inside `appendSeen`; and `src/core/audit.ts` calls `appendJsonlLine` itself
 (`core/audit.ts` · `appendJsonlLine(auditDir(root), file, record);` · ~1532). But
 `readFocus` (`core/focus.ts` · `export function readFocus(root: string): FocusState {` · ~389) and
