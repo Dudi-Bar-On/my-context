@@ -18,17 +18,17 @@ tags:
   - inconsistency
   - "plan:rulings"
   - "seq:88"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 59e0a4ff7e0762b3
+checksum: b26d5e7c3354c40b
 plan: rulings
 seq: "88"
-state: todo
+state: doing
 priority: "2"
 ---
 

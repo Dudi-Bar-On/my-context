@@ -17,17 +17,17 @@ tags:
   - store
   - "plan:release"
   - "seq:19"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-12
 valid_until: null
-checksum: 533495b477bb4b38
+checksum: fec810efd0571db5
 plan: release
 seq: "19"
-state: doing
+state: done
 ---
 
 # the audit log still records two session ids that never existed
