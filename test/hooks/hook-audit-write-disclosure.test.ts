@@ -48,7 +48,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
@@ -92,7 +92,7 @@ function root(cwd: string): string {
  */
 function breakAuditLog(cwd: string): void {
   const dir = auditDir(root(cwd));
-  if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+  removeTree(dir);
   writeFileSync(dir, 'not a directory', 'utf8');
 }
 
