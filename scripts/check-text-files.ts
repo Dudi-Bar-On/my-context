@@ -196,4 +196,4 @@ function main(): number {
   return 1;
 }
 
-if (isMainEntry(import.meta.filename, process.argv[1])) process.exit(main());
+if (isMainEntry(import.meta.filename, process.argv[1])) process.exitCode = main();

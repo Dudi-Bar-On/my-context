@@ -91,4 +91,4 @@ function main(): number {
   return 0;
 }
 
-process.exit(main());
+process.exitCode = main();

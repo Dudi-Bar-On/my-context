@@ -1593,5 +1593,5 @@ if (
   process.argv[1] !== undefined
   && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)
 ) {
-  process.exit(main());
+  process.exitCode = main();
 }
