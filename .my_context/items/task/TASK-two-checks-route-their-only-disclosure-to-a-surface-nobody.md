@@ -16,17 +16,17 @@ tags:
   - silent-failure
   - "plan:dxfindings"
   - "seq:6"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 21ca5f87890cde67
+checksum: e408fdb15651dd21
 plan: dxfindings
 seq: "6"
-state: doing
+state: done
 priority: "3"
 ---
 
