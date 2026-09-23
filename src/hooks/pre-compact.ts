@@ -13,7 +13,7 @@ import { configLoadFailure, resolveWorkspace } from '../core/workspace.ts';
 import { assertDoor } from '../rules/deliver.ts';
 import {
   configUnreadableLine, hookParseErrorLine, parseHookInput, payloadOf, readStdin,
-  type HookPayload,
+  unrecordedHookLine, type HookPayload,
 } from './io.ts';
 
 /**
@@ -317,7 +317,7 @@ export function buildRestoreSnapshot(
     // separately-recorded `compact-restore` at the next SessionStart, and
     // conflating the two would make `ledgerRows` replay a delivery that never
     // happened.
-    recordAudit(ws.projectRoot, {
+    const written = recordAudit(ws.projectRoot, {
       kind: 'hook',
       op: 'pre-compact',
       sessionId,
@@ -335,6 +335,22 @@ export function buildRestoreSnapshot(
         (seenState.error === null ? '' : '; seen file unreadable, transcript arm only')
         + reviewClause(review),
     });
+    // **The snapshot survived and its record did not**, which is the mirror of
+    // the branch above: there the FILE failed and the row carried the news;
+    // here the row is what failed, and the file it describes cannot say how
+    // its ids were arrived at — how many came from the seen file, how many
+    // from the transcript, whether the known-id filter ran. That breakdown is
+    // the answer to "what happened at this compaction" and it exists only in
+    // this row. Exit stays 0 and the snapshot is still returned:
+    // `INV-hooks-fail-open`, and a compaction must not be blocked over a log
+    // line.
+    if (!written.written) {
+      process.stderr.write(unrecordedHookLine(
+        'PreCompact', 'pre-compact', written.error ?? 'unknown',
+        `the restore snapshot for this compaction WAS written (${itemIds.length} id(s)) and ` +
+        'nothing recorded what it captured, so the log cannot say what this compaction held',
+      ));
+    }
 
     return { path: snapshotFile, itemIds };
   } catch {

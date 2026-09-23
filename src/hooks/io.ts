@@ -698,6 +698,56 @@ export function hookParseErrorLine(parseError: string | null): string {
 }
 
 /**
+ * **The line a hook writes when its audit record could not be appended.**
+ *
+ * `recordAudit` returns `{ written, error }` and never throws, and for a long
+ * time fourteen of the sixteen hook call sites discarded that answer
+ * (`TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen`).
+ * `core/audit.ts` used to justify the discard — *"Hooks discard it, because
+ * there is no one to tell"* — and that is the sentence this function exists
+ * to retire: there IS someone to tell, it is the person whose stderr Claude
+ * Code surfaces, and the three other lines in this file already tell them
+ * about losses of exactly this size.
+ *
+ * **Three of the fourteen were load-bearing in writing**, each because a
+ * neighbouring comment said so: the JIT injection record, on whose durability
+ * the seen-file append rests its best-effort posture; `recordDeny`, *"the one
+ * hook action that CHANGES what a tool call does"*; and `subagent-start`'s
+ * `delivery=attempted` row, the whole mechanism by which a killed lane
+ * becomes evidence rather than silence. When the append failed, all three
+ * guarantees were void and the prose still asserted them.
+ *
+ * **`lost` is per site and the rest is shared** — `configUnreadableLine`'s
+ * shape, for its reason. What an unwritable log costs is different at each of
+ * these sixteen doors (a refusal, a delivery, a compaction's captured ids, a
+ * lane's first breath), and a line that named all sixteen on every firing is
+ * a line nobody reads. What is shared is the fault, the `--op` a reader would
+ * have gone looking under, and the promise that nothing was blocked.
+ *
+ * **It ends by saying nothing was blocked**, exactly as `hookParseErrorLine`
+ * and `configUnreadableLine` do, because `INV-hooks-fail-open` is not
+ * weakened by any of this: a hook exits 0 with a disclosure, since a hook
+ * that failed over a log line would break the owner's session to report that
+ * a log line was missing.
+ *
+ * **Not `auditFailureNote`.** That one is the sentence a MUTATION appends to
+ * the message its human or agent is already reading; this is a standalone
+ * line on the channel a hook has, addressed to a reader who asked for nothing.
+ * Same fault, two readers, and merging them would put `mycontext audit`
+ * troubleshooting into the middle of a `create` confirmation.
+ */
+export function unrecordedHookLine(
+  hook: string, op: string, error: string, lost: string,
+): string {
+  return (
+    `my_context: the ${hook} audit record could not be written (${error}) — ${lost}. ` +
+    `\`mycontext audit --op ${op}\` is missing a row, so every count built from it is a ` +
+    'floor. Nothing was blocked and nothing else changed; `mycontext doctor` names the audit ' +
+    'directory and the fault.\n'
+  );
+}
+
+/**
  * The one line SessionStart writes when a PINNED item did not fit.
  *
  * **`always: true` MEANS ALWAYS**, so a pinned tier that delivers part of

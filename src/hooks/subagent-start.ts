@@ -11,7 +11,7 @@ import {
 } from '../core/workspace.ts';
 import {
   configUnreadableLine, hookBlockDecision, hookContext, hookParseErrorLine, ledgerKey,
-  parseHookInput, readStdinAsync, type HookInput,
+  parseHookInput, readStdinAsync, unrecordedHookLine, type HookInput,
 } from './io.ts';
 
 /**
@@ -271,7 +271,7 @@ export function buildSubagentStartOutput(input: HookInput, fallbackCwd: string):
     const projectRoot = findProjectRoot(cwd);
     if (!projectRoot) return '';
 
-    recordAudit(projectRoot, {
+    const attempted = recordAudit(projectRoot, {
       kind: 'injection',
       op: 'subagent-start',
       hook: 'SubagentStart',
@@ -286,6 +286,25 @@ export function buildSubagentStartOutput(input: HookInput, fallbackCwd: string):
       tokens: 0,
       note: `delivery=attempted agent=${agentId}`,
     });
+    // **THE LOAD-BEARING ONE, THIRD OF THREE.** The file header calls this row
+    // the whole mechanism: *"Writing it first turns a kill into evidence: one
+    // `subagent-start` row saying `delivery=attempted agent=<id>` and no
+    // matching `delivery=complete` for that agent."* An append that failed
+    // leaves a killed lane looking exactly like a lane that never started, and
+    // spends the cost of writing the row before the work for nothing.
+    //
+    // Disclosed HERE and immediately, before the selection runs, because the
+    // selection is the part that can be killed — a line written after it would
+    // share the fate of the row it is reporting on. The dispatch is not
+    // touched: `SubagentStart` blocks the lane it fires for, and refusing one
+    // over a log line is exactly what `INV-hooks-fail-open` forbids.
+    if (!attempted.written) {
+      process.stderr.write(unrecordedHookLine(
+        'SubagentStart', 'subagent-start', attempted.error ?? 'unknown',
+        `the delivery=attempted row for agent ${agentId} was NOT written, so if this lane is ` +
+        'killed there will be nothing to distinguish it from a lane that never started',
+      ));
+    }
 
     const injection = buildInjectionResult(cwd, {
       event: 'subagent',

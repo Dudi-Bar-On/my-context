@@ -18,7 +18,7 @@ import { configLoadFailure, findProjectRoot, resolveWorkspace } from '../core/wo
 import { assertDoor } from '../rules/deliver.ts';
 import {
   configUnreadableLine, hookParseErrorLine, ledgerKey, parseHookInput, preToolUseContext,
-  preToolUseDeny, readStdin, payloadOf, type HookPayload,
+  preToolUseDeny, readStdin, payloadOf, unrecordedHookLine, type HookPayload,
 } from './io.ts';
 import { capped, NOTE_MAX } from './observe.ts';
 
@@ -390,7 +390,7 @@ export function buildJitOutput(
         `(first: ${fallbackErrors[0].file})`,
       );
     }
-    recordAudit(ws.projectRoot, {
+    const written = recordAudit(ws.projectRoot, {
       kind: 'injection',
       op: 'jit',
       sessionId,
@@ -413,6 +413,28 @@ export function buildJitOutput(
       // dedupe failure rather than as two context windows.
       ...(noteParts.length === 0 ? {} : { note: noteParts.join('; ') }),
     });
+    // **THE LOAD-BEARING ONE.** The append below justifies its own best-effort
+    // posture on the grounds that "the audit record above already holds the
+    // delivery durably" — so when THIS write fails, that sentence is false and
+    // nothing said so
+    // (`TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen`).
+    // The items were rendered into the model's context and the only durable
+    // record that they were is gone; the seen file that remains is dedupe
+    // state, not evidence, and it is not read by anything that answers "what
+    // did this session see".
+    //
+    // Stderr and NOT the injected block, for the reason the catch below gives
+    // at length: this tier's output is paid for once per tool call, and the
+    // reader who can fix an unwritable directory is the person, not the model.
+    // The injection itself is untouched — losing the delivery to disclose its
+    // loss would be the worse trade.
+    if (!written.written) {
+      process.stderr.write(unrecordedHookLine(
+        'PreToolUse', 'jit', written.error ?? 'unknown',
+        `${selection.full.length} item(s) were injected for this tool call and nothing ` +
+        'recorded the delivery — the seen file below is dedupe state, not evidence',
+      ));
+    }
     // The dedupe record: an append to the per-session seen file — 0.55 ms
     // measured for the identical machinery (audit-latency.perf.ts) — never
     // SQLite. appendSeen never throws; a failed append is one future
@@ -473,7 +495,7 @@ function recordDeny(input: HookPayload<'PreToolUse'>, cwd: string, abs: string):
   if (!home) return;
   const denied = managedSplit(toPosix(abs)) ?? managedSplit(toPosix(canonicalize(abs)));
   // `recordAudit` never throws; a failure here cannot cost the deny.
-  recordAudit(home, {
+  const written = recordAudit(home, {
     kind: 'hook',
     op: 'deny',
     hook: 'PreToolUse',
@@ -481,6 +503,26 @@ function recordDeny(input: HookPayload<'PreToolUse'>, cwd: string, abs: string):
     ...(denied === null ? {} : { path: denied.rel }),
     note: `${input.tool_name ?? 'unknown tool'} refused`,
   });
+  // **THE LOAD-BEARING ONE, SECOND OF THREE.** This function's own header
+  // calls the deny "the one hook action that CHANGES what a tool call does, so
+  // it is the one that most needs to be in the log: an agent blocked from
+  // writing into `.my_context/` that then tells the user something else
+  // happened is exactly what an audit trail is for." That is the guarantee,
+  // and until it was read the write's failure could void it in silence.
+  //
+  // The deny still stands — the caller returns the envelope whatever happens
+  // here, which is what "a failure here cannot cost the deny" means and stays
+  // true. What this line adds is that the refusal is no longer BOTH unrecorded
+  // and unmentioned.
+  if (!written.written) {
+    process.stderr.write(unrecordedHookLine(
+      'PreToolUse', 'deny', written.error ?? 'unknown',
+      `a ${input.tool_name ?? 'tool'} call into ` +
+      `${denied === null ? 'the managed directory' : denied.rel} WAS refused and nothing ` +
+      'recorded the refusal — an agent that reports something else happened cannot be ' +
+      'checked against the log',
+    ));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -685,17 +727,30 @@ function agentDispatchVerdict(input: HookPayload<'PreToolUse'>, cwd: string): st
   if (reason !== '') {
     // `recordAudit` never throws; a failure here cannot turn an allowed
     // dispatch into a refused one.
-    recordAudit(ws.projectRoot, {
+    const waived = recordAudit(ws.projectRoot, {
       kind: 'hook',
       op: 'agent-item-waived',
       hook: 'PreToolUse',
       ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
       note: capped(reason, NOTE_MAX),
     });
+    // The escape hatch's whole price is that the reason is recorded — the deny
+    // message below says so in as many words, *"the dispatch proceeds with the
+    // reason recorded in the audit log"*. A waiver whose row was lost is a
+    // gate that let a dispatch through for free, and the dispatch still
+    // proceeds: turning a waiver into a refusal because a directory would not
+    // take a write is not a trade this gate may make.
+    if (!waived.written) {
+      process.stderr.write(unrecordedHookLine(
+        'PreToolUse', 'agent-item-waived', waived.error ?? 'unknown',
+        'this Agent dispatch was waived through on a `no-item:` reason and the reason was ' +
+        'NOT recorded, which is the whole price the escape hatch charges',
+      ));
+    }
     return '';
   }
 
-  recordAudit(ws.projectRoot, {
+  const refused = recordAudit(ws.projectRoot, {
     kind: 'hook',
     op: 'deny',
     hook: 'PreToolUse',
@@ -707,6 +762,16 @@ function agentDispatchVerdict(input: HookPayload<'PreToolUse'>, cwd: string): st
       NOTE_MAX,
     ),
   });
+  // `recordDeny`'s reason, at the gate's own door: this is the second place a
+  // hook CHANGES what a tool call does, and a refusal that is neither recorded
+  // nor mentioned is the silence this whole phase is about. The refusal below
+  // is returned either way.
+  if (!refused.written) {
+    process.stderr.write(unrecordedHookLine(
+      'PreToolUse', 'deny', refused.error ?? 'unknown',
+      'an Agent dispatch WAS refused by the dispatch gate and nothing recorded the refusal',
+    ));
+  }
   return preToolUseDeny(agentDenyMessage(candidates));
 }
 

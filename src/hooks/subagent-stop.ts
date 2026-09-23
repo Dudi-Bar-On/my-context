@@ -9,7 +9,8 @@ import {
   type Observation, type ObservationSpec,
 } from './observe.ts';
 import {
-  hookParseErrorLine, parseHookInput, payloadOf, readStdin, type HookPayload,
+  hookParseErrorLine, parseHookInput, payloadOf, readStdin, unrecordedHookLine,
+  type HookPayload,
 } from './io.ts';
 
 /**
@@ -340,8 +341,16 @@ export function recordAgentSteps(
     if (!root) return;
 
     const steps = transcriptSteps(transcriptPath, agentId);
+    // **Counted, not disclosed one by one.** This loop writes up to
+    // `MAX_STEP_ROWS` rows in one burst and they all fail for one reason — an
+    // unwritable log is unwritable for the whole run — so a line per step
+    // would bury its own disclosure under two hundred copies of itself. The
+    // first error is carried verbatim because it is the actionable half; the
+    // count is what says how much of the lane's history was lost.
+    let lost = 0;
+    let firstError = '';
     for (const step of steps) {
-      recordAudit(root, {
+      const written = recordAudit(root, {
         kind: 'hook',
         op: 'agent-step',
         hook: 'SubagentStop',
@@ -349,6 +358,17 @@ export function recordAgentSteps(
         ...(step.at === undefined ? {} : { at: step.at }),
         note: step.note,
       });
+      if (!written.written) {
+        lost += 1;
+        if (firstError === '') firstError = written.error ?? 'unknown';
+      }
+    }
+    if (lost > 0) {
+      process.stderr.write(unrecordedHookLine(
+        'SubagentStop', 'agent-step', firstError,
+        `${lost} of ${steps.length} step(s) read back from lane ${agentId}'s transcript were ` +
+        'not recorded, and the transcript this backfill read is not re-read afterwards',
+      ));
     }
   } catch {
     // INV-hooks-fail-open. A knowledge base that breaks a session is worse
