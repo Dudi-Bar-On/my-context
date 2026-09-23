@@ -72,6 +72,39 @@
     with the next commit. `DEC-the-three-mockup-parity-browser-specs-are-retired-screen` (ruling B) is
     filed and pushed (31b8e5bd).
 
+
+**Addendum 2, 2026-09-23 ~09:40Z (supersedes items 9–11 above):**
+
+12. **3.9 ROUND 3 GAVE THE FIRST GREEN GATE** on this machine (commit 5664e55c: `npm run test:e2e` exit 0,
+    51m25s; phase 1 1394 passed / 4 failed / 8 skipped, serial pass cleared all four as contention). The
+    cause of "preview never settled" was a product perf bug — `GET /api/injection-history` 5.1 s on this
+    corpus's 254,466 audit rows — now 148 ms with two indexes and RED-first tests. The round's scoped
+    re-review was dispatched and had NOT returned at compaction (find it with ListAgents; if it is gone,
+    dispatch a fresh re-review of `.superpowers/sdd/2026-09-22-v2-0-release/review-eebe4e29..5664e55c.diff`).
+
+13. **STILL OPEN FOR 3.9:** the Ubuntu job's browser suite on the current head (a run on fc4817b2 is watched;
+    the earlier run on 5664e55c was cancelled by a controller push — rule: scripts never push, the controller
+    pushes only when no needed run is in flight). rulings/114's body already carries this machine's baseline;
+    when Ubuntu is green, append its counts, then close ui-gates/1 and rulings/114 (`--extra state=done`).
+
+14. **LIVE AT COMPACTION (ListAgents):** 3.8 (CSP, ruling E; opus; the only Playwright lane; when it returns:
+    commit from its reported list, review, file DEC-E, `mycontext supersede
+    TASK-no-content-security-policy-header-and-no-meta-on-a-local --by <DEC-E> --yes`), and release/25
+    (`TASK-the-product-overwrote-the-repository-s-root-gitignore-with-a`, opus: the product wrote a lone `*`
+    into the ROOT `.gitignore` — fixed before phase 3 closes). If either lane is gone, re-dispatch from
+    `task-3.8-brief.md` / the item body with the same instructions (no git, one Playwright lane).
+
+15. **FILED FROM ROUND 3:** release/24 `TASK-a-locked-projection-file-makes-discard-fail-silently-so-a` (4),
+    release/25 (3, live), release/26 `TASK-the-browser-gate-reports-green-while-eight-tests-are-skipped` (6).
+    `harness/evidence/` was rewritten by some lane's run and restored from HEAD; if it is dirty again, find
+    who writes it before restoring.
+
+16. **THEN THE PHASE-3 EXIT (unchanged from item 4):** `npm test` on the head (last 9031 / 0 fail), both CI
+    jobs green through npm test AND the Ubuntu browser suite green, close `TASK-release-phase-3-the-defects`,
+    prepend checkpoint 3 to `reports/2026-09-22-release-checkpoints.md` (contents per item 5 plus: the first
+    green gate and its cause, release/24–26, the .gitignore incident, three controller push errors), report,
+    and wait for the owner's next message as the go for phase 4. Board: 140 open (137 + release/24–26).
+
 ## ⏭ 2026-09-17 (fourth) — THE DIAGRAMS WERE WRONG 28 TIMES AND README IS THE SOURCE. THREE DOC ITEMS HELD.
 
 1. **THE DIAGRAM VERIFICATION FOUND 28 FALSE CLAIMS IN 171, AND ONE DIAGRAM THAT DOES NOT PARSE.**
