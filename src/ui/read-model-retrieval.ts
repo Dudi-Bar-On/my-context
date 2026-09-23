@@ -355,25 +355,41 @@ const POINTER_CAP = 60;
  * same refusal `read-model-conversations.ts` makes one module over, and
  * `test/ui/server-e2e.test.ts` is what proves nothing is written.
  *
- * A name shorter than the index’s trigram run cannot be searched for at all;
- * `searchArchive` says so rather than answering "nothing found", and such a
- * name simply contributes no points here.
+ * A name shorter than the index’s trigram run cannot be searched for at all,
+ * and an index that was never built cannot answer about the archive at all.
+ * `searchArchive` says both rather than answering "nothing found" — and until
+ * 2026-09-23 **this function threw that answer away and kept only `.hits`**,
+ * which is what the sentence here used to claim was handled
+ * (`TASK-nine-sites-report-a-measured-zero-for-something-they-could`, the
+ * reviewer's finding against this caller). The claim is now true of the caller
+ * and not only of the callee: the refusal leaves here as `coverage`, and
+ * `composeMaterial` puts it in the body's own `query.matchable`/`query.note`
+ * pair — the shape this surface already carries, never a second field for one
+ * condition.
+ *
+ * `coverage` is `searchArchive`'s own sentence, carried verbatim and
+ * untranslated, and `null` when every name that came back empty came back
+ * empty about a complete index.
  */
 function pointersFor(
   index: ConversationIndex,
   files: TranscriptFiles,
   names: readonly string[],
   scope: { sessionId: string | null; from: string | null; to: string | null },
-): MaterialPointer[] {
-  if (names.length === 0) return [];
+): { pointers: MaterialPointer[]; coverage: string | null } {
+  if (names.length === 0) return { pointers: [], coverage: null };
   const seen = new Set<string>();
   const out: MaterialPointer[] = [];
+  // The first refusal, kept: every name here asks ONE index, so they all come
+  // back with the same sentence, and the first is the one a reader is served.
+  let coverage: string | null = null;
   for (const name of names) {
     if (out.length >= POINTER_CAP) break;
     const found = searchArchive(index, name, {
       sessionId: scope.sessionId ?? undefined,
       limit: POINTER_CAP,
     });
+    if (!found.searchable) coverage = coverage ?? found.note;
     for (const hit of found.hits) {
       if (out.length >= POINTER_CAP) break;
       // Two names matching one turn is one point, not two.
@@ -405,7 +421,37 @@ function pointersFor(
   // Chronological, because the mission asks for a chronological account and
   // a table in score order would be asking the subagent to sort it.
   out.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? '') || a.byteOffset - b.byteOffset);
-  return out;
+  return { pointers: out, coverage };
+}
+
+/**
+ * **The coverage refusal, put where this surface already says why an answer is
+ * not an answer** — `TASK-nine-sites-report-a-measured-zero-for-something-they-could`.
+ *
+ * `matchable` is left ALONE and only `note` is filled, which is the one
+ * decision in this repair worth stating. `matchable: false` is read by
+ * `apiRetrievalMission` (`request.query = null`) and then by `mission.ts`,
+ * which prints *"Nothing was matched on. Do not guess a subject: report that
+ * the passage named nothing the archive could be queried with, and stop."* —
+ * a sentence that is FALSE here: the passage named something perfectly
+ * matchable and the INDEX is what could not answer. Trading one wrong sentence
+ * for another is not a repair.
+ *
+ * **Asked only when nothing at all was found**, which is `apiConversationSearch`'s
+ * own rule (`answers.every((a) => !a.searchable)`) reused rather than
+ * re-decided: a mission that found material found it, and holding it back to
+ * discuss coverage would be the same class of drop pointed the other way.
+ *
+ * The passage's own refusal wins over this one where both could apply, because
+ * a passage that named nothing was never searched for at all.
+ */
+function withCoverage(
+  query: { names: string[]; terms: string[]; matchable: boolean; note: string | null },
+  found: { pointers: MaterialPointer[]; coverage: string | null },
+): { names: string[]; terms: string[]; matchable: boolean; note: string | null } {
+  if (found.pointers.length > 0 || found.coverage === null) return query;
+  if (query.note !== null) return query;
+  return { ...query, note: found.coverage };
 }
 
 /**
@@ -833,9 +879,9 @@ function composeMaterial(
     if (mode === 'list-subjects') {
       const pass = subjectsFor(index, repo, depth, scope);
       const raw = pointersFor(index, files, pass.terms.slice(0, SUBJECTS_SEARCHED), scope);
-      const filtered = withoutNoise(raw);
+      const filtered = withoutNoise(raw.pointers);
       return {
-        query: pass.terms.length === 0
+        query: withCoverage(pass.terms.length === 0
           ? {
             names: [], terms: [], matchable: false,
             note: pass.note
@@ -843,7 +889,7 @@ function composeMaterial(
               + 'mentions in the scope asked for, so there is no subject list to return. '
               + 'Widen the scope, or ask with a passage.',
           }
-          : { names: [], terms: pass.terms, matchable: true, note: null },
+          : { names: [], terms: pass.terms, matchable: true, note: null }, raw),
         pointers: filtered.pointers,
         noise: { ...filtered.report.removed, seen: filtered.report.seen },
         anchors: [],
@@ -875,9 +921,9 @@ function composeMaterial(
     // first because `pointersFor` fills up to `POINTER_CAP` in order, so the
     // better signal is never crowded out by the weaker one.
     const raw = pointersFor(index, files, [...query.names, ...query.terms], scope);
-    const filtered = withoutNoise(raw);
+    const filtered = withoutNoise(raw.pointers);
     return {
-      query,
+      query: withCoverage(query, raw),
       pointers: filtered.pointers,
       noise: { ...filtered.report.removed, seen: filtered.report.seen },
       anchors: [],

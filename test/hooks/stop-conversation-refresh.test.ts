@@ -1,7 +1,8 @@
 // @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has,
 // TASK-the-archive-is-opt-in-which-was-decided-and-never-built,
 // INV-nothing-is-dropped-silently,
-// REQ-every-anchor-capability-is-reachable-from-the-screen-and-a
+// REQ-every-anchor-capability-is-reachable-from-the-screen-and-a,
+// TASK-nine-sites-report-a-measured-zero-for-something-they-could
 /**
  * **`Stop` is what keeps the conversation index current, and this is where it
  * is decided that it may** — `plan:archive seq:14`.
@@ -711,7 +712,12 @@ test('the row says what the anchor pass marked, and says nothing on the ordinary
     bytesRead: 900, read: ['s1'], readFrom: [0], deferred: 0, stale: [], ms: 4,
   };
   const anchors: AutoAnchorReport = {
-    probed: 12, found: 2, marked: 0, dropped: 0, relabelled: 0, capped: false, ms: 9,
+    probed: 12, found: 2, marked: 0, dropped: 0, relabelled: 0, capped: false,
+    // `null` because this fixture's `probed: 12` is a MEASUREMENT — the probes
+    // ran over an index that covers the archive
+    // (`TASK-nine-sites-report-a-measured-zero-for-something-they-could`).
+    unsearchable: null,
+    ms: 9,
     // The three fields the first-run disclosure added on 2026-09-16
     // (`TASK-a-user-who-installs-mycontext-mid-project-has-conversations`).
     // Zeroed and empty here on purpose: this fixture is the ORDINARY turn,

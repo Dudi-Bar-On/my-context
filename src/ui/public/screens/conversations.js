@@ -2359,6 +2359,21 @@ function drawHits(ctx, host, body, term = null, onMarked = () => {}) {
   // floor moved from the query to the TERM, and it says so.
   host.append(...queryNotes(ctx, body));
 
+  // **AND WHICH SESSION WAS NOT SEARCHED AT ALL**, above both the hits and the
+  // zero, because it qualifies whichever of them follows.
+  // `TASK-nine-sites-report-a-measured-zero-for-something-they-could`: a
+  // `?name=` narrows to several sessions and the server runs one search each,
+  // so one can hold hits while another was read over an index that does not
+  // hold it. The top-level sentence cannot say WHICH — this can. Untranslated,
+  // like the two notes above it, because it is the server's own sentence and it
+  // names the command to type.
+  for (const row of body.unsearched ?? []) {
+    const note = el('p', 'small convarchunsearched');
+    const which = row.sessionName ?? row.sessionId ?? null;
+    note.textContent = which === null ? row.note : `${which} — ${row.note}`;
+    host.append(note);
+  }
+
   if (body.hits.length === 0) {
     const zero = el('span', 'chip unmeas glyphed');
     zero.dataset.g = '◌';
@@ -3460,6 +3475,20 @@ function mountRetrieval(ctx, host, seed = () => '', collapsed = false) {
         terms.append(...ctx.t('conv.recall.query.terms'), ' ');
         for (const term of body.query.terms) terms.append(mono(term), ' ');
         q.append(terms);
+      }
+      // **A QUERY THAT WAS MATCHABLE AND STILL COULD NOT BE ANSWERED.**
+      // `TASK-nine-sites-report-a-measured-zero-for-something-they-could`: the
+      // prose index the compose searches is filled by `mycontext conversation
+      // rebuild`, which no screen may run, so an empty material table under a
+      // perfectly good query is the ordinary state of a fresh workspace and
+      // read as *the archive holds nothing about this*. `note` was drawn only
+      // beside the refusal, and the server has no second field to put this in
+      // — the pair IS the convention. Untranslated, because it is the server's
+      // own sentence and it names the command to type.
+      if (body.query.note !== null && body.query.note !== undefined) {
+        const note = el('p', 'small convrecallnote');
+        note.append(body.query.note);
+        q.append(note);
       }
     }
     brief.append(q);

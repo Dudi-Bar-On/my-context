@@ -1941,6 +1941,30 @@ export interface ConversationSearchBody {
    */
   elsewhere: { kinds: string[]; matched: number } | null;
   /**
+   * **THE SESSIONS THIS ANSWER DID NOT SEARCH** — `[]`, never absent, when it
+   * searched all of them.
+   *
+   * `TASK-nine-sites-report-a-measured-zero-for-something-they-could`, and it
+   * is the MIXED case the top-level pair above cannot carry. One `?name=`
+   * narrows to several sessions and this route runs one search per session;
+   * with one of them answering over a prose index that does not hold it and
+   * another holding hits, `searchable` is `true` and `note` is `null` —
+   * correctly, because a hit is an answer — and the blind session's own
+   * refusal used to vanish in the merge. The screen then drew the hits of one
+   * session as the answer for both.
+   *
+   * So the refusal is reported PER SESSION beside the hits rather than instead
+   * of them. Each entry carries `searchArchiveTiered`'s own sentence for that
+   * session, and the name the reader narrowed with, because *which* session was
+   * not searched is the whole thing a top-level sentence cannot say.
+   * `sessionId` is `null` for an unscoped search, which is about the archive
+   * and not about any one session.
+   *
+   * Derived from the per-session answers this route already holds — never a
+   * second measurement, so it cannot disagree with `searchable` beside it.
+   */
+  unsearched: { sessionId: string | null; sessionName: string | null; note: string }[];
+  /**
    * **WHAT IS IN NO INDEX AT ALL**, named, on every answer.
    *
    * `tool_result` is 67.0% of this archive's characters and `thinking` is
@@ -2235,6 +2259,7 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       rebuild: REBUILD_COMMAND,
       index: { sources: 0, spans: 0, indexedAt: null },
       elsewhere: null,
+      unsearched: [],
       unindexed: [...UNINDEXED_BLOCKS],
       ...over,
     } as ConversationSearchBody,
@@ -2311,6 +2336,24 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       limit,
     }));
     const first = answers[0];
+    // ── AND WHICH OF THEM WAS NOT SEARCHED, PER SESSION ──────────────────
+    //
+    // `ConversationSearchBody.unsearched`' own docblock carries the reason.
+    // Read off the answers rather than measured again, and the names table is
+    // touched ONLY when there is something to name — this runs on every search.
+    const unsearched: ConversationSearchBody['unsearched'] = [];
+    if (answers.some((answer) => !answer.searchable && answer.note !== null)) {
+      const named = new Map(index.names().map((row) => [row.sessionId, row.name]));
+      answers.forEach((answer, i) => {
+        if (answer.searchable || answer.note === null) return;
+        const sessionId = sessions[i] ?? null;
+        unsearched.push({
+          sessionId,
+          sessionName: sessionId === null ? null : named.get(sessionId) ?? null,
+          note: answer.note,
+        });
+      });
+    }
     // **`every`, not `first`, and the reason is a second kind of refusal.**
     //
     // Until `TASK-nine-sites-report-a-measured-zero-for-something-they-could`
@@ -2333,7 +2376,7 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
     // something all of them share — the query, or the index.
     if (first !== undefined && answers.every((a) => !a.searchable)) {
       return empty({
-        searchable: false, note: first.note, excluded: first.excluded, index: shelf,
+        searchable: false, note: first.note, excluded: first.excluded, index: shelf, unsearched,
       });
     }
 
@@ -2466,6 +2509,7 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       // Summed over the sessions a NAME narrowed to, exactly as `tiers` is:
       // they are counts of spans in disjoint sessions, so they add.
       elsewhere: elsewhereTotal(answers),
+      unsearched,
       unindexed: [...UNINDEXED_BLOCKS],
     };
     return { status: 200, body };
