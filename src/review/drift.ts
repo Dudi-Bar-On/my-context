@@ -149,10 +149,19 @@ export function driftConfigAt(root: string): DriftConfig {
 /**
  * The anchor, reduced to what a comparison needs.
  *
- * `text` is the record the anchor points at, or `null` when the transcript is
- * no longer in the archive — `resolveAnchor` keeps those two states apart and
- * this keeps them apart too, because an anchor whose record has gone still has
- * a label the owner wrote and is still something to judge against.
+ * `text` is the record the anchor points at, or `null` when there is no record
+ * to read it from — `resolveAnchor` keeps that apart from the anchor itself
+ * being gone, and this keeps them apart too, because an anchor whose record has
+ * gone still has a label the owner wrote and is still something to judge
+ * against.
+ *
+ * **`unreadable` is why there is no record, when the reason is that nobody
+ * could read the transcript** (`swallow/11` m14). A `text: null` from a
+ * transcript that was read and a `text: null` from one that would not open used
+ * to be the same value here, inherited straight from `resolveAnchor`. The
+ * difference is what the verdict below rests on: with no record the comparison
+ * runs on the LABEL alone, which is less evidence than the sentences it
+ * produces sound like, and nothing said so.
  */
 export interface DriftAnchor {
   id: string;
@@ -160,6 +169,8 @@ export interface DriftAnchor {
   text: string | null;
   at: string;
   byteOffset: number;
+  /** `null` when the transcript was read. The reason when it could not be. */
+  unreadable: string | null;
 }
 
 /** A resolved anchor as this file compares against it. A pure projection. */
@@ -170,6 +181,7 @@ export function anchorSubject(resolved: ResolvedAnchor): DriftAnchor {
     text: resolved.text,
     at: resolved.anchor.at,
     byteOffset: resolved.anchor.byteOffset,
+    unreadable: resolved.unreadable,
   };
 }
 
@@ -338,13 +350,28 @@ export function noticeDrift(
     };
   }
 
+  /**
+   * **Every verdict that rests on the anchor's words says when it did not have
+   * them** — `swallow/11` m14.
+   *
+   * With the record unread the comparison runs on the LABEL alone. That is
+   * still worth making — the label is what the owner wrote — but it is a
+   * narrower comparison than the sentences below otherwise describe, and a
+   * reader deciding whether to believe *"still on it"* is entitled to know
+   * which of the two he is reading.
+   */
+  const rested = (because: string): string => (
+    anchor.unreadable === null ? because
+      : `${because} — and judged on the anchor's LABEL alone, because ${anchor.unreadable}`
+  );
+
   const anchorNames = namesOf(`${anchor.label}\n${anchor.text ?? ''}`, vocabulary);
   if (anchorNames.length === 0) {
     return {
       ...base, drifted: false,
-      because:
+      because: rested(
         `the anchor "${anchor.label}" carries no name to judge against — no item id, no file `
-        + 'path, no backticked name. Its ordinary words are not offered as one',
+        + 'path, no backticked name. Its ordinary words are not offered as one'),
     };
   }
 
@@ -363,18 +390,18 @@ export function noticeDrift(
   if (shared.length > 0) {
     return {
       ...base, drifted: false, anchorNames, stretchNames, shared,
-      because:
+      because: rested(
         `still on it — these ${plural(stretch.turns, 'turn')} name ${listed(shared)}, which the `
-        + `anchor "${anchor.label}" names too`,
+        + `anchor "${anchor.label}" names too`),
     };
   }
 
   return {
     ...base, drifted: true, anchorNames, stretchNames, shared,
-    because:
+    because: rested(
       `${plural(stretch.turns, 'turn')} since the anchor "${anchor.label}" and not one of its `
       + `names — ${listed(anchorNames)} — appears in them; the work has been on `
-      + `${listed(stretchNames)} instead`,
+      + `${listed(stretchNames)} instead`),
   };
 }
 

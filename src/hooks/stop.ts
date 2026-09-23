@@ -579,7 +579,7 @@ function askParagraph(
  */
 export function upkeepNote(upkeep: Upkeep | null): string {
   if (upkeep === null) return '';
-  return actClause(upkeep) + discardedWriteClause(upkeep);
+  return actClause(upkeep) + unreadableStateClause(upkeep) + discardedWriteClause(upkeep);
 }
 
 /** What the upkeep DID, or `''` — the clause `upkeepNote` has always written. */
@@ -637,6 +637,26 @@ function actClause(upkeep: Upkeep): string {
  * is recovered by counting the rows that carry it, which is what nothing could
  * do while the only record was a file count.
  */
+/**
+ * **A state file the upkeep could not read, said out loud once** —
+ * `swallow/11` m7, `INV-nothing-is-dropped-silently`.
+ *
+ * `discardedWriteClause` above is the precedent and this is deliberately its
+ * twin: same row, same reason, same file named in the sentence so the rate is
+ * recovered by counting rows. What differs is the direction — that one is a
+ * write that went nowhere, this one is a READ that came back with nothing and
+ * was acted on anyway.
+ *
+ * It matters more than it looks: `FRESH` is `stoodDown: false` with a zeroed
+ * failure count, so a workspace whose upkeep had stood down comes back through
+ * the cold path and spawns, and does it again on the next turn, for as long as
+ * the file stays unreadable. The reason travels from `readState`, which is the
+ * only place that knows which of the ways in this was.
+ */
+function unreadableStateClause(upkeep: Upkeep): string {
+  return upkeep.stateUnreadable === undefined ? '' : `; ${upkeep.stateUnreadable}`;
+}
+
 function discardedWriteClause(upkeep: Upkeep): string {
   if (upkeep.stateWriteDiscarded !== true) return '';
   return '; the UI server upkeep could not record its own state this turn — the write to '

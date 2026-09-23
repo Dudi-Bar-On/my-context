@@ -166,11 +166,33 @@ export function reviewTrigger(
 
     const counter = readCounter(root);
 
+    /**
+     * **THE NUMBERS BELOW MAY NOT BE THE SESSION'S, AND IF SO EVERY SENTENCE
+     * THIS TURN PRODUCES SAYS SO** — `swallow/11` m7,
+     * `INV-nothing-is-dropped-silently`.
+     *
+     * `readCounter` used to answer three measured zeros for a counter file it
+     * could not read, which walks straight through gate 4: an unreadable file
+     * hands the session a whole fresh ration, `resetCounter` then writes
+     * `fires: 1` over whatever was really there, and the row for the turn says
+     * *"0 of 25 tool call(s) since the last pass"* — a true statement about
+     * the numbers in hand and a silent one about where they came from.
+     *
+     * It rides `because` rather than a new field, exactly as `FROZEN` does:
+     * that sentence already travels into the audit row the hook was writing
+     * anyway, and it is the one place a quiet loop can be told from a broken
+     * one. Appended rather than substituted, because the gate's own answer is
+     * still the answer — what changes is what it rests on.
+     */
+    const said = (because: string): string => (
+      counter.unread === null ? because : `${because}; ${counter.unread}`
+    );
+
     // 4. The ration.
     if (counter.fires >= review.maxFiresPerSession) {
       return verdict(
         false,
-        `the session's ration of ${review.maxFiresPerSession} pass(es) is spent`,
+        said(`the session's ration of ${review.maxFiresPerSession} pass(es) is spent`),
         counter.calls, counter.fires,
       );
     }
@@ -203,16 +225,18 @@ export function reviewTrigger(
       if (!counterWritable(root, counter)) {
         return verdict(
           false,
-          `the review counter at ${reviewCounterPath(root)} cannot be written, so this count is ` +
-          `FROZEN at ${counter.calls} rather than low: tool calls are no longer being counted, ` +
-          `${review.everyNToolCalls} will never be reached, and no pass can become due in this ` +
-          'session until that file is writable again',
+          said(
+            `the review counter at ${reviewCounterPath(root)} cannot be written, so this count ` +
+            `is FROZEN at ${counter.calls} rather than low: tool calls are no longer being ` +
+            `counted, ${review.everyNToolCalls} will never be reached, and no pass can become ` +
+            'due in this session until that file is writable again',
+          ),
           counter.calls, counter.fires,
         );
       }
       return verdict(
         false,
-        `${counter.calls} of ${review.everyNToolCalls} tool call(s) since the last pass`,
+        said(`${counter.calls} of ${review.everyNToolCalls} tool call(s) since the last pass`),
         counter.calls, counter.fires,
       );
     }
@@ -221,7 +245,7 @@ export function reviewTrigger(
     if (transcript === undefined || transcript === '') {
       return verdict(
         false,
-        'the hook payload carried no transcript_path, so there is nothing to read',
+        said('the hook payload carried no transcript_path, so there is nothing to read'),
         counter.calls, counter.fires,
       );
     }
@@ -233,9 +257,9 @@ export function reviewTrigger(
     if (bytes <= since) {
       return verdict(
         false,
-        bytes === 0
+        said(bytes === 0
           ? 'the transcript could not be measured on disk, so there is nothing to read'
-          : `no new bytes since the last pass stopped at ${since}`,
+          : `no new bytes since the last pass stopped at ${since}`),
         counter.calls, counter.fires,
       );
     }
@@ -278,7 +302,7 @@ export function reviewTrigger(
 
     return {
       fire: true,
-      because:
+      because: said(
         `${counter.calls} tool call(s) since the last pass, ${bytes - since} new byte(s) to ` +
         `read${compacting ? ', and context is about to be compacted' : ''}` +
         // **`resetCounter`'s `written` read at the second place it was
@@ -293,6 +317,7 @@ export function reviewTrigger(
         (spent.written ? '' :
           `; the counter could not be written, so this fire was NOT deducted from the session's ` +
           `ration of ${review.maxFiresPerSession} and a pass will be due again on the next turn`),
+      ),
       calls: counter.calls,
       fires: spent.fires,
       spawned: outcome.spawned,

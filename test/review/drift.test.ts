@@ -1,5 +1,6 @@
 // @basis TASK-notice-the-drift-while-it-is-happening-quietly-and-off-by,
-// INV-nothing-is-dropped-silently
+// INV-nothing-is-dropped-silently,
+// TASK-twenty-one-one-line-swallows-where-the-docstring-asserts
 /**
  * **Noticing drift** — `plan:recall seq:3`, Task 13 of
  * `docs/superpowers/plans/2026-09-10-d42-conversation-retrieval.md`, and §14 of
@@ -69,6 +70,12 @@ const ANCHOR: DriftAnchor = {
     + 'passages. INV-nothing-is-dropped-silently.',
   at: '2026-09-11T01:00:00.000Z',
   byteOffset: 40960,
+  // The record was READ, which is what every verdict in this file rests on.
+  // `swallow/11` m14 made that a fact the type carries rather than an
+  // assumption: an anchor whose transcript could not be opened reaches the
+  // judgement with `text: null` and says so, and the sentences below would
+  // then name the narrower comparison they actually made.
+  unreadable: null,
 };
 
 /** The two names the anchor carries, normalised as `drift.ts` normalises them. */

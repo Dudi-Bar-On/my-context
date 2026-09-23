@@ -31,8 +31,10 @@
  * already walk the file once and keep an outline
  * (`ui/read-model-conversation-document.ts`).
  */
+import { closeSync, openSync, readSync } from 'node:fs';
 import {
   ConversationIndex, anchorIdBeside, anchorIdFor, type AnchorRow, iterateTranscript,
+  type TranscriptCursor,
 } from './conversation-index.ts';
 import { proseOf } from './conversation-search.ts';
 import { withAnchorWrite } from './anchor-file.ts';
@@ -164,6 +166,27 @@ export interface ResolvedAnchor {
   record: Record<string, unknown> | null;
   /** The record's words, or `null` when there is no record to read them from. */
   text: string | null;
+  /**
+   * **`null` when the transcript was READ; the reason when it could not be** —
+   * `swallow/11` m14, `INV-nothing-is-dropped-silently`.
+   *
+   * Three states used to share `record: null`. `iterateTranscript` answers an
+   * empty walk for a file that will not open, and says so in its own header —
+   * the right answer for a REBUILD, which would otherwise lose a whole archive
+   * to one bad file, and the wrong one for a question about ONE anchor,
+   * because the empty walk is shaped exactly like the walk that ran and found
+   * nothing at the byte.
+   *
+   * What that cost is a diagnosis: `mycontext conversation anchor` prints
+   * *"nothing starts at that byte … That is what a CHARACTER offset produces
+   * on this archive"*, which is true of the second state and sends the owner to
+   * check a number that was never wrong when it is said about the third.
+   *
+   * So `record: null` keeps meaning exactly what it is documented to mean —
+   * the transcript was read and nothing at that byte parses — and a transcript
+   * that could not be read names itself here instead.
+   */
+  unreadable: string | null;
 }
 
 /**
@@ -309,13 +332,96 @@ export function resolveAnchor(index: ConversationIndex, id: string): ResolvedAnc
     : index.getSubagent(anchor.agentId)?.file ?? null;
   if (file === null) return null;
 
+  // ── THE WALK, AND THE CURSOR THAT SAYS WHETHER IT RAN ─────────────────────
+  //
+  // `swallow/11` m14. `iterateTranscript` yields nothing both for a file it
+  // could not open and for an offset at or past the end of one it read
+  // perfectly well, and it throws neither — so the cursor is the only thing
+  // that can tell those apart, and it is asked rather than inferred from the
+  // absence of records alone. A file that never opened leaves it at
+  // `scannedBytes: 0` with `reachedEnd: false`, because the generator returns
+  // before its read loop; an offset past the end leaves `reachedEnd: true`,
+  // set by the read that answered zero.
+  const cursor: TranscriptCursor = { scannedBytes: 0, reachedEnd: false, unreadable: 0 };
+
   // The generator's `finally` closes the descriptor when the loop breaks, so
   // this reads one chunk however large the transcript is.
-  for (const record of iterateTranscript(file, { startByte: anchor.byteOffset })) {
-    if (record.record === null) return { anchor, file, record: null, text: null };
-    return { anchor, file, record: record.record, text: proseAt(record.record) };
+  //
+  // Wrapped, and the wrap is not belt-and-braces: `iterateTranscript`'s header
+  // says *"errors are states, never throws"*, and that holds for the OPEN and
+  // not for a `readSync` failing part-way, which `core/line-walk.ts` lets
+  // through. On the rebuild path that is somebody else's problem to survive;
+  // here it would reach a CLI command as a stack trace about a bookmark.
+  try {
+    for (const record of iterateTranscript(file, { startByte: anchor.byteOffset, cursor })) {
+      if (record.record === null) {
+        return { anchor, file, record: null, text: null, unreadable: null };
+      }
+      return {
+        anchor, file, record: record.record, text: proseAt(record.record), unreadable: null,
+      };
+    }
+  } catch (err) {
+    return {
+      anchor, file, record: null, text: null,
+      unreadable:
+        `${file} could not be read past byte ${anchor.byteOffset} ` +
+        `(${err instanceof Error ? err.message : String(err)}), so nothing here has established ` +
+        'anything about what that byte holds',
+    };
   }
-  return { anchor, file, record: null, text: null };
+
+  if (cursor.scannedBytes === 0 && !cursor.reachedEnd) {
+    return { anchor, file, record: null, text: null, unreadable: whyUnreadable(file) };
+  }
+  // Read to the end and nothing was there: the offset is at or past it. That is
+  // the second state, and it is the one `record: null` has always documented.
+  return { anchor, file, record: null, text: null, unreadable: null };
+}
+
+/**
+ * **Why a transcript would not open, asked once and only after the walk has
+ * already failed to read a byte of it.**
+ *
+ * `iterateTranscript` discards the errno with a bare `catch { return; }`, and
+ * it is right to: a rebuild that stopped on one bad file would lose the
+ * archive. But the reason is the whole of what a reader needs here — a lock, a
+ * file that has become a directory, and one that was deleted from under the
+ * row send the owner to three different places — so it is asked again rather
+ * than reported as "unknown".
+ *
+ * **The cost is one `openSync` on a path that has already failed**, never on a
+ * healthy resolve. And it can disagree with the walk, which is why the
+ * disagreement has its own sentence instead of being hidden: a transcript that
+ * was locked for the duration of the walk and free a millisecond later is a
+ * real state on this platform, and a reader told "it opens fine" with no
+ * explanation would be worse off than one told nothing.
+ */
+function whyUnreadable(file: string): string {
+  // **It OPENS and then READS a byte, and the second half is not belt-and-
+  // braces.** `openSync` on a DIRECTORY succeeds on Windows — measured here on
+  // 2026-09-23, and `96ab4288` recorded the same surprise about `statSync` —
+  // so a probe that stopped at the open would answer "it opens fine" for the
+  // commonest way a transcript becomes unreadable on the platform this is
+  // developed on. The walk that failed did a read; so does this.
+  let fd: number;
+  try {
+    fd = openSync(file, 'r');
+  } catch (err) {
+    return `${file} could not be opened (${err instanceof Error ? err.message : String(err)})`;
+  }
+  try {
+    readSync(fd, Buffer.alloc(1), 0, 1, 0);
+  } catch (err) {
+    return `${file} could not be read (${err instanceof Error ? err.message : String(err)})`;
+  } finally {
+    closeSync(fd);
+  }
+  return (
+    `${file} gave up not one byte to the read that went looking for this anchor, though it ` +
+    'reads now — it was locked, replaced or truncated while that read ran, and nothing here ' +
+    'has established anything about what the anchor points at'
+  );
 }
 
 /**
