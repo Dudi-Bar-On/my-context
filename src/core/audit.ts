@@ -1361,19 +1361,89 @@ export const AUDIT_REPORT_BYTES = 32 * 1024 * 1024;
 const SEGMENT_PATTERN = /^audit\.[0-9TZ]+-\d+\.jsonl$/;
 
 /**
+ * The audit log directory exists and would not list.
+ *
+ * It carries its own class for the reason `ProjectionAbsentError` and
+ * `LedgerUninitializedError` carry theirs: so a caller tells "there is no log
+ * here" from "there is a log here and this process cannot see it" by CLASS and
+ * never by matching a message. The two are opposite facts about a user's audit
+ * trail, and every caller of `auditSegments` that collapses them is a surface
+ * that reports an intact 45,440-record history as empty.
+ */
+export class AuditLogUnreadableError extends Error {
+  /** The directory that refused. */
+  readonly dir: string;
+  /** The `errno` code `readdirSync` answered — `EACCES`, `ENOTDIR`, `EPERM`, … but never `ENOENT`. */
+  readonly code: string;
+
+  constructor(message: string, dir: string, code: string, cause: unknown) {
+    super(message, { cause });
+    this.dir = dir;
+    this.code = code;
+  }
+}
+
+/**
  * Every segment of the log, oldest first, with the live `audit.jsonl` last.
  *
  * Rotated segments are named from a UTC timestamp with the punctuation
  * stripped, so a lexicographic sort of the names is a chronological sort of
  * the records — no file has to be opened to put the segments in order.
+ *
+ * **`ENOENT` is the only absence; every other refusal THROWS**
+ * (`TASK-one-unreadable-directory-makes-the-audit-projection-look`). This
+ * function used to answer `[]` to any `readdir` failure at all, and that one
+ * `catch` was the whole of the following chain, reproduced on a throwaway
+ * workspace of 500 records on 2026-09-23 before this was changed:
+ *
+ *   `auditSegments` → `[]` → `projectionState` sees every segment it knows
+ *   about as VANISHED and answers `diverged` → `syncProjection` acts on
+ *   divergence by `DELETE`ing the whole projection and re-projecting from the
+ *   empty list → `mycontext audit` reports 0 records for a workspace holding
+ *   500 (45,440 on the owner's), with nothing said anywhere.
+ *
+ * Nothing on disk was ever damaged in that run. The log was intact the whole
+ * time; only the listing was refused. That is exactly the shape
+ * `INV-nothing-is-dropped-silently` forbids — an unreadable input turned into
+ * a guessed value, and the guess ("there are no records") then acted on
+ * destructively.
+ *
+ * **An absent `.audit` stays an empty history**, and must: a workspace whose
+ * owner has never triggered a hook has no log directory, and `readAudit`,
+ * `auditSize` and `doctor` all answer "nothing recorded yet" from it. That is
+ * a true statement about a real, empty history. `ENOTDIR` is deliberately NOT
+ * absence, for the reason `readTranscriptDir` (`core/conversation-index.ts`)
+ * gives about the same decision: a path that is a file where a directory
+ * belongs is not an empty archive, it is a path that is wrong, and a reader
+ * told "no records" about it goes looking for the wrong thing.
+ *
+ * **Throwing is safe on the write path.** `recordAudit` reaches this only
+ * through `keepProjectionCurrent`, whose documented contract is that it never
+ * throws: a throw there returns `{ outcome: 'failed', error }`, which
+ * `recordAudit` already carries back to its caller as a projection failure. An
+ * append is never lost because the projection could not be brought up to date.
  */
 export function auditSegments(root: string): string[] {
   const dir = auditDir(root);
   let names: string[];
   try {
     names = readdirSync(dir);
-  } catch {
-    return [];
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code ?? 'unknown';
+    if (code === 'ENOENT') return [];
+    throw new AuditLogUnreadableError(
+      `my_context: the audit log directory ${dir} exists but could not be listed ` +
+      `(${code}: ${err instanceof Error ? err.message : String(err)}). No audit record has ` +
+      `been lost — the log files are still on disk, unread and unchanged — but this process ` +
+      `cannot see them, so nothing here can tell you how many records there are or what is in ` +
+      `them. Every answer derived from the log is refused rather than reported as empty, and ` +
+      `the query index at ${path.join(dir, 'audit.db')} is left exactly as it stands. Make that ` +
+      `directory readable again (check its permissions, and check that it is a directory and ` +
+      `not a file) and run the command again.`,
+      dir,
+      code,
+      err,
+    );
   }
   const rotated = names.filter((n) => SEGMENT_PATTERN.test(n)).sort();
   const out = rotated.map((n) => path.join(dir, n));
@@ -1610,6 +1680,42 @@ export function auditFailureNote(result: AuditWriteResult): string {
     );
   }
   return '';
+}
+
+/**
+ * The sentence a REPORT appends when it could not read the audit log, and its
+ * counts are therefore a floor rather than a measurement.
+ *
+ * `auditFailureNote` is the same idea pointed at the write path — spelled once
+ * so no surface invents a softer wording for it — and this is the read half,
+ * for the surfaces that aggregate the log rather than append to it
+ * (`mycontext status` and `mycontext decay` both top the ledger up from it
+ * before counting). Two callers, one wording: a report that phrased this for
+ * itself is how two commands end up disagreeing about what an unreadable log
+ * means, and this whole item exists because the condition was previously
+ * phrased nowhere at all.
+ *
+ * **The reason is carried VERBATIM, never re-worded.** For the condition this
+ * was built for, `err` is an `AuditLogUnreadableError` whose message is
+ * already the complete, actionable sentence — the one
+ * `TASK-one-unreadable-directory-makes-the-audit-projection-look` asked for,
+ * and the same one the UI's `fault` event carries. Appending it rather than
+ * summarising it is what keeps all three surfaces saying one thing.
+ *
+ * **It is not narrowed to that class.** Any reason the top-up failed leaves
+ * the counts exactly as short, and a report that disclosed one cause while
+ * swallowing the others would be this same defect with a smaller mouth.
+ *
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`: what the
+ * numbers below it are is the point of the sentence, not the stack trace.
+ */
+export function auditReadFailureNote(err: unknown): string {
+  return (
+    `NOTE: the audit log could not be read, so the usage ledger was NOT brought up to date ` +
+    `and every count below that derives from it is a FLOOR — as low as it can be, with no way ` +
+    `from here to say how much is missing. Nothing was deleted and nothing was written. ` +
+    `${err instanceof Error ? err.message : String(err)}`
+  );
 }
 
 /**

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { skippedKeyNotice } from '../../core/config.ts';
+import { auditReadFailureNote } from '../../core/audit.ts';
 import { computeDecay } from '../../core/decay.ts';
 import { Ledger, type Usage } from '../../core/ledger.ts';
 import { topUpLedger } from '../../core/ledger-replay.ts';
@@ -83,33 +84,58 @@ interface LedgerView {
   usage: Usage[];
   recentlyUsed: string[];
   sessionsRecorded: number;
+  /**
+   * Why the ledger could not be brought up to date from the audit log, or
+   * `null` when it was. Never `''` and never absent: a reader must be able to
+   * tell "checked, nothing wrong" from a build that does not report this.
+   *
+   * `auditReadFailureNote`'s sentence, composed at the point of failure rather
+   * than at the point of printing, so the `--json` field and the text line are
+   * the same string and cannot drift.
+   */
+  logUnreadable: string | null;
 }
 
 /** A report must never crash on a ledger Plan 2 has not populated yet. */
 function readLedger(root: string, dbPath: string): LedgerView {
   let ledger: Ledger | null = null;
+  let logUnreadable: string | null = null;
   try {
     ledger = Ledger.open(dbPath);
     // The ledger is a projection of the audit log (see ledger-replay.ts);
     // hooks stopped writing it directly, so aggregate readers catch it up
     // first. Best-effort: an unreadable log must not take down status — the
-    // answer is then computed from the projection as-is, which is the
-    // pre-existing behaviour. Know what that degradation looks like: an
-    // unreadable audit TREE is indistinguishable from an empty log
-    // (`auditSegments` swallows the readdir error), so this catch rarely
-    // even fires — the top-up quietly applies nothing and the report
-    // under-counts. NOTHING surfaces that today; no doctor check exists
-    // for audit-log readability (review I-2 corrected an earlier claim
-    // here that one did).
-    try { topUpLedger(root, ledger); } catch { /* aggregate from what is there */ }
+    // answer is then computed from the projection as-is.
+    //
+    // **And the degradation is now SAID, which is the whole of this catch's
+    // history.** It used to be bare, under a comment explaining that it barely
+    // ever fired because `auditSegments` swallowed the `readdir` error and
+    // handed back an empty list — so the top-up quietly applied nothing, the
+    // report under-counted, and nothing surfaced anywhere. That swallow was
+    // ended by `TASK-one-unreadable-directory-makes-the-audit-projection-look`
+    // (the same `readdir` failure was also making `syncProjection` DELETE the
+    // whole audit projection), which turned this into the opposite defect: a
+    // refusal raised at the source and then dropped here. Both halves are the
+    // one `INV-nothing-is-dropped-silently` violation, and the second is the
+    // more misleading, because by then something did know.
+    //
+    // Every reason is disclosed, not just that one: any failure to top up
+    // leaves the counts exactly as short, and a catch that reported one cause
+    // while swallowing the rest would be this defect with a smaller mouth.
+    try {
+      topUpLedger(root, ledger);
+    } catch (err) {
+      logUnreadable = auditReadFailureNote(err);
+    }
     const recent = ledger.recentSessions(DECAY_WINDOW);
     return {
       usage: ledger.allUsage(),
       recentlyUsed: ledger.itemsUsedIn(recent),
       sessionsRecorded: ledger.sessionCount(),
+      logUnreadable,
     };
   } catch {
-    return { usage: [], recentlyUsed: [], sessionsRecorded: 0 };
+    return { usage: [], recentlyUsed: [], sessionsRecorded: 0, logUnreadable };
   } finally {
     try { ledger?.close(); } catch { /* nothing to close */ }
   }
@@ -358,6 +384,15 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
           // `DecayReport.unrestricted`.
           unrestricted: decay.unrestricted.length,
           caveat: USAGE_CAVEAT,
+          // A FIELD of the document, beside the counts it qualifies, on this
+          // command's own standing rule for `loadErrors` and
+          // `stagedRulesSkipped`: `--json` exists to be piped, and a count
+          // that silently left records out is the same defect as a load error
+          // that did. `null` when the top-up succeeded, never absent, so a
+          // script can tell "nothing was left out" from "this build does not
+          // say" — the distinction `STD-a-measured-zero-is-drawn-and-named-an-
+          // unmeasured-thing-is` turns on.
+          logUnreadable: ledger.logUnreadable,
         },
         health: counts,
         // `health` is the FINDINGS tally and nothing else, which is not what
@@ -509,6 +544,16 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     }
 
     out('');
+    // **BEFORE the counts, and at every detail level.** Same placement and
+    // same reason as the skipped-staging-files block above: a number a reader
+    // has already read is a number they have already believed, and the one
+    // reading this refusal makes impossible is "no sessions recorded yet" over
+    // a log holding thousands. `--summary` may drop rows; it may not drop the
+    // fact that the row below is a floor.
+    if (ledger.logUnreadable !== null) {
+      say(out, ledger.logUnreadable);
+      out('');
+    }
     say(
       out,
       ledger.sessionsRecorded === 0

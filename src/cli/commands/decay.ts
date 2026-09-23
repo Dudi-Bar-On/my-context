@@ -1,3 +1,4 @@
+import { auditReadFailureNote } from '../../core/audit.ts';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { computeDecay, type DecayRow } from '../../core/decay.ts';
 
@@ -141,20 +142,38 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
   // `undefined` so the `finally` can tell "never opened" from "opened, needs
   // closing" without a second boolean.
   let ledger: Ledger | undefined;
+  /**
+   * Why the ledger could not be topped up from the audit log, or `null`.
+   * Declared outside the `try` so the report can carry it whichever branch it
+   * takes — including the "nothing to report" one, which is the shortest
+   * report this command has and the one an under-count is least visible in.
+   */
+  let logUnreadable: string | null = null;
   try {
     ledger = Ledger.open(ws.dbPath);
     // The ledger is a projection of the audit log (see ledger-replay.ts);
     // hooks stopped writing it directly, so aggregate readers catch it up
     // first. Best-effort: an unreadable log must not take down decay — the
-    // answer is then computed from the projection as-is, which is the
-    // pre-existing behaviour. Know what that degradation looks like: an
-    // unreadable audit TREE is indistinguishable from an empty log
-    // (`auditSegments` swallows the readdir error), so this catch rarely
-    // even fires — the top-up quietly applies nothing and the report
-    // under-counts. NOTHING surfaces that today; no doctor check exists
-    // for audit-log readability (review I-2 corrected an earlier claim
-    // here that one did).
-    try { topUpLedger(ws.projectRoot, ledger); } catch { /* aggregate from what is there */ }
+    // answer is then computed from the projection as-is.
+    //
+    // **And the degradation is now SAID.** This catch was bare, under a
+    // comment explaining that it barely ever fired because `auditSegments`
+    // swallowed the `readdir` error and handed back an empty list — so the
+    // top-up quietly applied nothing and this report under-counted, with
+    // nothing surfacing anywhere. `TASK-one-unreadable-directory-makes-the-
+    // audit-projection-look` ended that swallow, which would have left the
+    // opposite defect here: a refusal raised at the source and dropped at the
+    // report. `status` carries the identical catch and the identical sentence
+    // — `auditReadFailureNote` owns the wording so the two commands cannot
+    // come to disagree about what an unreadable log means.
+    //
+    // Every reason is disclosed, not only that one: whatever stopped the
+    // top-up leaves "cold" exactly as overstated.
+    try {
+      topUpLedger(ws.projectRoot, ledger);
+    } catch (err) {
+      logUnreadable = auditReadFailureNote(err);
+    }
     const recentSessions = ledger.recentSessions(window);
     const report = computeDecay({
       items: ctx.store.all(),
@@ -199,6 +218,11 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
         // config's `categories` map says nothing about has no tier, so no
         // decision about it was ever taken — see `DecayReport.unknownCategory`.
         unknownCategory: report.unknownCategory,
+        // The other thing this census could not measure, in the same document
+        // and on the same terms: `null` when the ledger was brought up to
+        // date, never absent, so a script ranking items by "cold" can tell a
+        // complete count from one taken over a log that would not open.
+        logUnreadable,
         loadErrors: errors.map((e) => ({ file: e.file, message: e.message })),
       });
       return 0;
@@ -208,6 +232,12 @@ function cmdDecay(ws: Workspace, args: string[], out: Emit): number {
     // whose category was renamed out from under them is the exact sentence this
     // disclosure exists to prevent, and it is the reading a person is most
     // likely to act on.
+    //
+    // An audit log that would not open sits here for the identical reason and
+    // one line above it, because it is the wider statement: it says the whole
+    // census was taken over a ledger that is short by an unknown amount, which
+    // qualifies every number below including the empty one.
+    if (logUnreadable !== null) for (const line of paragraph(logUnreadable)) out(line);
     for (const line of unknownCategoryLines(report.unknownCategory)) out(line);
 
     if (report.cold.length === 0 && report.warm.length === 0) {
