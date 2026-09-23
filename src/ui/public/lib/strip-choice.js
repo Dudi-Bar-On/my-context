@@ -175,6 +175,22 @@ export const STRIP_PICK = [
     key: 'review-queue', group: 'corpus', subject: I,
     label: 'strip.pick.reviewQueue', urgency: 'presence',
   },
+  // **THE FOURTH FACT IN THE CORPUS GROUP, AND IT ARRIVED WITHOUT A ROW.**
+  // `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code` added
+  // `#codestate` and its `data-f="code-state"` chip to the bar on 2026-09-23
+  // and stopped there, which is exactly the drift the header above says this
+  // table exists to make visible: a field the bar can print that the dialog
+  // cannot name is a field the reader cannot turn off.
+  //
+  // `'presence'`, not `null`: `fillCodeState` draws this chip ONLY while the
+  // server cannot walk its own sources, so it is loud whenever it is drawn at
+  // all — the same rule `review-queue` above is under. That also keeps it off
+  // the "can never return" list, which would otherwise be the dialog promising
+  // silence about the one state that must be able to interrupt.
+  {
+    key: 'code-state', group: 'corpus', subject: I,
+    label: 'strip.pick.codeState', urgency: 'presence',
+  },
   { key: 'cwd', group: 'where', subject: I, label: 'strip.grp.cwd', urgency: null },
   {
     key: 'corpusRoot', group: 'where', subject: I,

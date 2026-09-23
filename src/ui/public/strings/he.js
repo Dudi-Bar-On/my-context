@@ -1653,6 +1653,9 @@ export const strings = {
   'strip.pick.items': 'פריטים',
   'strip.pick.corpusDrift': 'סטייה',
   'strip.pick.configError': 'הגדרות',
+  // ראו את הטבלה האנגלית: שורת הבחירה של שבב "מצב הקוד אינו ידוע", שנוספה יחד
+  // עם השבב עצמו. שם קצר, כמו כל שורה אחרת כאן.
+  'strip.pick.codeState': 'מצב קוד השרת',
   'strip.pick.doctorNotices': 'הערות דוקטור',
   'strip.pick.reviewQueue': 'תור סקירה',
   'strip.pick.rateVerdict': 'פסק מגבלה',

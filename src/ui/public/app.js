@@ -704,8 +704,25 @@ function fillCodeState() {
   if (host === null) return;
   if (codeUnmeasuredAnswer === null || typeof codeUnmeasuredAnswer !== 'object') {
     host.replaceChildren();
+    // **AND IT COSTS THE BAR NOTHING WHILE IT SAYS NOTHING.** `.sgrp` is
+    // `display:flex; gap:var(--sp-2)`, and a flex item with no content still
+    // takes a gap on each side — so an empty host that renders zero pixels of
+    // ink spends 8px of the densest row this shell has. `e2e/strip.spec.ts`
+    // measured exactly that on 2026-09-23: at 2273px, the width the owner
+    // reads the bar at and the width that spec calls "room for every field at
+    // full length", `strip.corpusInStep`, `strip.doc` and `strip.queue` each
+    // came up a handful of pixels short the moment this element joined the
+    // corpus group. The comment where it is created argues correctly that it
+    // must carry no `min-inline-size`; the gap is the half that was missed.
+    //
+    // `hidden` rather than a CSS rule, because there is no rule for this class
+    // to hang off — `.configerr` is the precedent and has none either — and
+    // because the element then leaves flex layout entirely rather than being
+    // sized to zero and still separated from its neighbours.
+    host.hidden = true;
     return;
   }
+  host.hidden = false;
   const chip = document.createElement('span');
   chip.className = 'chip unmeas';
   chip.dataset.g = '◌';
@@ -4794,6 +4811,10 @@ function renderChrome() {
   const codeState = document.createElement('span');
   codeState.className = 'codestate';
   codeState.id = 'codestate';
+  // Hidden from the first paint, and `fillCodeState` owns it from there: an
+  // empty flex item still takes a `gap` on each side, and this row is measured
+  // full at the width the owner reads it at. See `fillCodeState`.
+  codeState.hidden = true;
   // ── AND WHAT THE CORPUS IS WAITING ON — owner ruling 2026-08-31.
   //
   // Two counts and two doors: doctor findings at error or warning level, and

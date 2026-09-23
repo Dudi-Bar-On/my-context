@@ -2449,6 +2449,12 @@ export const strings = {
   'strip.pick.items': 'items',
   'strip.pick.corpusDrift': 'drift',
   'strip.pick.configError': 'config',
+  // The unmeasured-code chip's row, added with the chip itself
+  // (`TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`): a
+  // field the bar can draw and the dialog could not name was a field a reader
+  // had no way to turn off. Short, like every other row here — the chip's own
+  // sentence is `strip.codeUnmeasured` and the dialog lists names, not states.
+  'strip.pick.codeState': 'server code state',
   'strip.pick.doctorNotices': 'doctor notices',
   'strip.pick.reviewQueue': 'review queue',
   'strip.pick.rateVerdict': 'limit verdict',
