@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:24"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-23
 valid_until: null
-checksum: 10b42acdb4483f24
+checksum: 6c0c6ea942dd2bcd
 plan: release
 seq: "24"
-state: todo
+state: doing
 ---
 
 # a locked projection file makes discard fail silently, so a schema bump stamps the new version over the old layout

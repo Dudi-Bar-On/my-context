@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:22"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: aea25ec00511c58b
+checksum: 8eba5b1842bc7711
 plan: release
 seq: "22"
-state: todo
+state: doing
 ---
 
 # promoteRevision reuses the summary-unchanged switch and thereby tells updateItem the meaning held, even when the item has no summary

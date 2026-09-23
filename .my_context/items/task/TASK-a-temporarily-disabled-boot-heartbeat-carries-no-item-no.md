@@ -16,17 +16,17 @@ tags:
   - heartbeat
   - "plan:swallow"
   - "seq:9"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 42d1d0bc56fba9d5
+checksum: 2554d230d0eb9855
 plan: swallow
 seq: "9"
-state: doing
+state: done
 priority: "3"
 ---
 

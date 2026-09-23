@@ -18,17 +18,17 @@ tags:
   - inferred
   - "plan:live"
   - "seq:28"
-  - "state:doing"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 5a4182d334d9b22c
+checksum: 2b30f0725da27cb9
 plan: live
 seq: "28"
-state: doing
+state: done
 priority: "3"
 ---
 

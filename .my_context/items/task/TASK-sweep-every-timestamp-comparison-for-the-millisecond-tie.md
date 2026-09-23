@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:16"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 1e0df686ada65991
+checksum: e2067cb22a4e9135
 plan: release
 seq: "16"
-state: todo
+state: doing
 ---
 
 # sweep every timestamp comparison for the millisecond tie that broke the watch window

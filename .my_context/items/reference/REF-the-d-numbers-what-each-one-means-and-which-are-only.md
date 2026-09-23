@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: true
 summary: The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; a version a program can read was added on 2026-09-16 so no progress report has to guess at the words.
-summary_of: 3819dc92db3ca144
+summary_of: 3673e02bab14fc76
 summary_was:
   - 2026-09-16 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; eleven more were added on 2026-09-13 from the consolidated review findings.
   - 2026-09-13 The short numbers used to talk about work in progress and what each one refers to, kept as a bare map so the same number never means two things; D52 widened on 2026-09-13 to the log that records what was delivered.
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-07
 valid_until: null
-checksum: fcb5402260b941cf
+checksum: 7e43f1ec2b997752
 ---
 
 # the D numbers: what each one means, and which are only proposed
@@ -408,7 +408,7 @@ D60    | open          | walk/142
 D61    | open          | walk/2
 D62    | open          | walk/134
 D63    | open          | screens/26, screens/27
-D64    | open          | rulings/69, rulings/85, rulings/86, rulings/87, rulings/88, rulings/89
+D64    | open          | rulings/69, rulings/85, rulings/86, rulings/87, rulings/88, DEC-the-in-sync-verdict-draws-no-chip-report-3-does-not-overturn
 D65    | open          | rulings/70
 D66    | open          | swallow/*
 D67    | held-by-owner | wcag/*

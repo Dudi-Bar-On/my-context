@@ -11,17 +11,17 @@ scope: []
 tags:
   - "plan:release"
   - "seq:23"
-  - "state:todo"
+  - "state:doing"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: 91077b1803320df6
+checksum: e09fa3ba0274e9d1
 plan: release
 seq: "23"
-state: todo
+state: doing
 ---
 
 # mycontext ready counts a review draft as open work, so the board moves when nobody filed anything

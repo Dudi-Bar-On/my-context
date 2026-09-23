@@ -15,7 +15,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-22
 valid_until: null
-checksum: dfb2af92fd8c88f8
+checksum: a70928f51718b454
 ---
 
 # the in-sync verdict draws no chip: report 3 does not overturn the 2026-08-31 ruling
@@ -24,3 +24,4 @@ Owner ruling, 2026-09-21, recorded in release phase 2 on 2026-09-22 (runbook 7.3
 
 ## Relations
 - relates_to [[TASK-the-in-sync-verdict-draws-no-chip-and-its-own-docblock-calls]]
+- supersedes [[TASK-the-in-sync-verdict-draws-no-chip-and-its-own-docblock-calls]]
