@@ -247,7 +247,6 @@ test/core/select-spill-band.test.ts
 test/core/session-names.test.ts
 test/core/slug.test.ts
 test/core/snapshot-provenance.test.ts
-test/core/snapshot.test.ts
 test/core/statusline-tee.test.ts
 test/core/steps-injection.test.ts
 test/core/steps.test.ts
@@ -317,7 +316,6 @@ test/hooks/post-compact-handover.test.ts
 test/hooks/post-compact.test.ts
 test/hooks/post-tool-use-failure.test.ts
 test/hooks/post-tool-use.test.ts
-test/hooks/pre-compact-occupancy.test.ts
 test/hooks/pre-compact.test.ts
 test/hooks/pre-tool-use-deny.test.ts
 test/hooks/pre-tool-use-jit.test.ts
@@ -445,8 +443,6 @@ test/ui/read-model-flags.test.ts
 test/ui/read-model-work-search.test.ts
 test/ui/read-model-work.test.ts
 test/ui/screen-literals.test.ts
-test/ui/security.test.ts
-test/ui/server-e2e.test.ts
 test/ui/server-record.test.ts
 test/ui/server.test.ts
 test/ui/session-continuity.test.ts
@@ -457,7 +453,6 @@ test/ui/strings-parity.test.ts
 test/ui/strip-parity.test.ts
 test/ui/styles-parity.test.ts
 test/ui/tutorial-doc.test.ts
-test/ui/tutorials-endpoint.test.ts
 test/ui/unsafe-ports.test.ts
 test/ui/viewmodel.test.ts
 test/ui/watch-e2e.test.ts
