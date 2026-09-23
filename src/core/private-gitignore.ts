@@ -73,6 +73,13 @@ export const PRIVATE_GITIGNORE_BODY = '*\n';
  * deliberately — a `.gitignore` one level up is a fact about the parent, and a
  * directory copied out takes its own with it.
  *
+ * **`state` is the one name here that is not dotted**, and therefore the one
+ * a repository could plausibly use for something of its own. It is admitted
+ * by name and then backstopped twice: refusal (3) turns away anything holding
+ * a `.git`, and refusal (4) turns away any `.gitignore` that carries rules. A
+ * person's `state/` directory is not damaged by this function; at worst an
+ * empty one gains a marker, and that is disclosed.
+ *
  * `.my_context` is deliberately ABSENT. The corpus root is a directory a
  * person commits; only what this product puts INSIDE it is private, and
  * `mycontext init` writes that root's own narrow `.gitignore` (three names,

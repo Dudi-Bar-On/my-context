@@ -63,13 +63,20 @@ function said(fn: () => void): string {
   return out;
 }
 
+/**
+ * The authority's sentence shape, and the store's — deliberately one regular
+ * expression rather than two, because the two implementations are meant to
+ * speak with one voice and a drift in either is a drift this catches.
+ */
+const REFUSAL = /refused to write a `\*` \.gitignore/;
+
 /** The two assertions every planted condition owes. */
 function untouchedAndDisclosed(r: Repo, heard: string): void {
   assert.equal(
     readFileSync(r.ignore, 'utf8'), REAL_RULES,
     'the repository root .gitignore must be byte-identical — this is the 2026-09-23 damage',
   );
-  assert.match(heard, /refused to write a `\*` \.gitignore/, 'the refusal must be said, not swallowed');
+  assert.match(heard, REFUSAL, 'the refusal must be said, not swallowed');
 }
 
 // ── CONDITION 1: the target directory IS the repository root ────────────────
@@ -136,6 +143,14 @@ test('a relative target is refused rather than resolved against the working dire
 test('a private directory name that is a link onto the repository root is refused', (t) => {
   const r = repo();
   try {
+    // **THE ROOT FILE IS EMPTIED FIRST, AND THAT IS THE WHOLE POINT OF THIS
+    // TEST.** With rules in it, refusal (4) — a `.gitignore` that carries
+    // rules is somebody's file — would turn this away on its own, and the
+    // test would pass without rule (3) existing at all. An EMPTY root file is
+    // exactly what refusal (4) lets through (it is the self-heal case), so
+    // the only thing left standing between this link and the repository root
+    // is `it holds a .git` — and the assertion below names it.
+    writeFileSync(r.ignore, '', 'utf8');
     const corpus = path.join(r.root, '.my_context');
     mkdirSync(corpus, { recursive: true });
     const linked = path.join(corpus, 'state');
@@ -145,10 +160,14 @@ test('a private directory name that is a link onto the repository root is refuse
       t.skip(`this process cannot create a directory link here: ${String(err)}`);
       return;
     }
-    // The NAME says `state`, so rule (2) admits it. Rule (3) — a directory
-    // holding a `.git` is never private state — is what stops it.
+    // The NAME says `state`, so rule (2) admits it.
     const heard = said(() => { assert.equal(writePrivateGitignore(linked).written, false); });
-    untouchedAndDisclosed(r, heard);
+    assert.match(heard, /holds a `\.git`/,
+      'the refusal must be the .git one; any other reason means rule (3) is not what stopped it');
+    assert.equal(
+      readFileSync(r.ignore, 'utf8'), '',
+      'the repository root .gitignore must be byte-identical — this is the 2026-09-23 damage',
+    );
   } finally { r.cleanup(); }
 });
 
@@ -245,7 +264,13 @@ test('a rule store directory is guarded too, by the one site that may not import
     const dir = path.join(root, '.rules');
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, '.gitignore'), '# somebody edited this\n!keep.jsonl\n', 'utf8');
-    recordDelivery(root, { key: 'k', door: 'subagent-start', kind: 'delivered', entries: 1 });
+    const heard = said(() => {
+      recordDelivery(root, { key: 'k', door: 'subagent-start', kind: 'delivered', entries: 1 });
+    });
+    // INV-nothing-is-dropped-silently: the store's refusal is SAID, in the
+    // authority's own sentence shape, not returned quietly.
+    assert.match(heard, REFUSAL);
+    assert.match(heard, /already carries rules/);
     assert.equal(
       readFileSync(path.join(dir, '.gitignore'), 'utf8'), '# somebody edited this\n!keep.jsonl\n',
       'the store rewrote a .gitignore that already carried rules',
@@ -253,6 +278,50 @@ test('a rule store directory is guarded too, by the one site that may not import
     // And the row it was called for is still written: a marker it must not
     // touch never costs the caller the record.
     assert.ok(readFileSync(path.join(dir, 'delivered.test.jsonl'), 'utf8').includes('"key":"k"'));
+  } finally { r.cleanup(); }
+});
+
+test('the store refuses a relative target and says so, rather than writing into the cwd', () => {
+  const r = repo();
+  const before = process.cwd();
+  try {
+    // `recordDelivery` joins `.rules` onto the root it is handed, so a root of
+    // '' leaves a RELATIVE directory that resolves against wherever the process
+    // happens to be — the shape that put a `*` in a repository root on
+    // 2026-09-23. The cwd is moved into a throwaway repository so that the
+    // thing being refused would land somewhere real if it were not refused.
+    process.chdir(r.root);
+    const heard = said(() => {
+      recordDelivery('', { key: 'rel', door: 'subagent-start', kind: 'delivered', entries: 1 });
+    });
+    assert.match(heard, REFUSAL);
+    assert.match(heard, /relative target/);
+    assert.equal(existsSync(path.join(r.root, '.rules', '.gitignore')), false);
+    assert.equal(readFileSync(r.ignore, 'utf8'), REAL_RULES);
+  } finally { process.chdir(before); r.cleanup(); }
+});
+
+test('the store refuses a .rules that is a link onto a repository root, by the .git rule', (t) => {
+  const r = repo();
+  try {
+    // The marker content is planted in the root file FIRST, so refusal (4)
+    // cannot be what turns this away: `*` is exactly what the writer would
+    // have written. Only `it holds a .git` is left, which is the refusal the
+    // store used to be missing.
+    writeFileSync(r.ignore, '*\n', 'utf8');
+    const root = path.join(r.root, '.my_context');
+    mkdirSync(root, { recursive: true });
+    try {
+      symlinkSync(r.root, path.join(root, '.rules'), 'junction');
+    } catch (err) {
+      t.skip(`this process cannot create a directory link here: ${String(err)}`);
+      return;
+    }
+    const heard = said(() => {
+      recordDelivery(root, { key: 'linked', door: 'subagent-start', kind: 'delivered', entries: 1 });
+    });
+    assert.match(heard, /holds a `\.git`/,
+      'the store rewrote a marker in a directory that is a repository root');
   } finally { r.cleanup(); }
 });
 
@@ -267,16 +336,34 @@ test('src/ holds exactly one writer of the `*` .gitignore line', async () => {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) { walk(full); continue; }
       if (!entry.name.endsWith('.ts')) continue;
-      const text = readFileSync(full, 'utf8');
-      for (const [i, line] of text.split('\n').entries()) {
-        // The literal write, not a comment quoting it: a leading `*` or `//`
-        // is this repository's own prose about the line.
-        const code = line.trimStart();
-        if (code.startsWith('*') || code.startsWith('//')) continue;
-        if (code.includes('writeFileSync(')
-          && (code.includes('.gitignore') || code.includes("'*\\n'"))) {
-          offenders.push(`${path.relative(path.join(src, '..'), full)}:${i + 1}`);
-        }
+      // **THE CALL IS NOT ALWAYS ON ONE LINE, AND THE FIRST VERSION OF THIS
+      // SCAN COULD NOT SEE ONE THAT WAS NOT.** `src/cli/index.ts` spells its
+      // write over four lines, so a same-line match found nothing there — its
+      // entry in `allowed` below was inert, and a stray writer spelled the
+      // same way would have passed this green. So the file is read as CODE
+      // TEXT with its comment lines blanked (keeping every line position, so
+      // the reported line number is still the real one), and each
+      // `writeFileSync(` is judged by the rest of its own statement.
+      const lines = readFileSync(full, 'utf8').split('\n');
+      const code = lines
+        // A leading `*`, `//` or `/*` is this repository's own prose about the
+        // line, and its prose quotes this exact call more than a dozen times.
+        .map((line) => (/^\s*(\*|\/\/|\/\*)/.test(line) ? '' : line))
+        .join('\n');
+      for (let at = code.indexOf('writeFileSync('); at !== -1; at = code.indexOf('writeFileSync(', at + 1)) {
+        // The statement, not a fixed window: it ends at the first `);`, and is
+        // capped so an unterminated one cannot swallow the file.
+        const end = code.indexOf(');', at);
+        const statement = code.slice(at, end === -1 ? at + 400 : Math.min(end + 2, at + 400));
+        // Three spellings, because the authority writes the body through a
+        // constant rather than a literal and would otherwise be the one writer
+        // this scan cannot see — which is the same inert-exception defect the
+        // multi-line repair above closes.
+        if (!statement.includes('.gitignore')
+          && !statement.includes("'*\\n'")
+          && !statement.includes('PRIVATE_GITIGNORE_BODY')) continue;
+        const line = code.slice(0, at).split('\n').length;
+        offenders.push(`${path.relative(path.join(src, '..'), full)}:${line}`);
       }
     }
   };
@@ -297,6 +384,19 @@ test('src/ holds exactly one writer of the `*` .gitignore line', async () => {
   const allowed = new Set([
     'src/core/private-gitignore.ts', 'src/cli/index.ts', 'src/rules/delivered.ts',
   ]);
+
+  // ANTI-VACUITY, and it is the finding this test was repaired for. Every
+  // exception below is inert unless the scan can actually SEE the site it
+  // excuses, and `src/cli/index.ts`'s write is the one spelled across four
+  // lines. Asserting that it is FOUND — before it is excused — is what proves
+  // the scan reads statements rather than lines, and what would go red if it
+  // ever went back to reading lines.
+  const found = new Set(offenders.map((o) => o.split(':')[0].replaceAll('\\', '/')));
+  for (const site of allowed) {
+    assert.ok(found.has(site),
+      `${site} is excused by this test and the scan cannot see it, so the exception is inert `
+      + 'and a stray writer spelled the same way would pass. Found: ' + [...found].join(', '));
+  }
   const strays = offenders.filter((o) => !allowed.has(o.split(':')[0].replaceAll('\\', '/')));
   assert.deepEqual(strays, [], `only ${[...allowed].join(' and ')} may write a .gitignore by hand`);
 });

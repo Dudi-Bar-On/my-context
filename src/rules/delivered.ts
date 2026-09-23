@@ -97,7 +97,7 @@
  * routed by a different rule from the writer would be the second answer this
  * module has spent its whole header refusing.
  */
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -214,25 +214,89 @@ export function deliveredFile(root: string): string {
 function ensureDir(root: string): string {
   const dir = path.join(root, DELIVERED_DIR);
   mkdirSync(dir, { recursive: true });
-  // **THE 2026-09-23 INCIDENT, ASKED LOCALLY.** `core/private-gitignore.ts`
-  // is the authority on this line for the other eleven sites: a repository's
-  // own root `.gitignore` was found truncated to `*`, so a writer now refuses
-  // a target that is not its own and a file that already carries rules.
-  // **The store may not import it.** D41 spec §7 — asserted by
-  // `test/rules/isolation.test.ts` — allows `src/rules/` exactly one edge
-  // into `src/core/`, the frontmatter parser, so the two questions are asked
-  // here instead of the policy being imported. Narrower than the authority
-  // on purpose: this directory's name is known, so nothing here has to
-  // generalise about which names are private.
+  markPrivate(dir);
+  return dir;
+}
+
+/**
+ * **THE 2026-09-23 INCIDENT, ASKED HERE INSTEAD OF IMPORTED.**
+ *
+ * A repository's own root `.gitignore` — 73 lines, tracked — was found
+ * truncated to the two bytes `*` and a newline, which is what this product
+ * writes into the private directories it creates. `core/private-gitignore.ts`
+ * is the authority on that line and it carries four refusals: a relative
+ * target (it resolves against a working directory nobody chose), a directory
+ * that is not one of this product's own, a directory holding a `.git` (never
+ * private state, and the one that catches a private NAME that is a link onto
+ * a repository), and a `.gitignore` that already carries rules (somebody's
+ * file). It discloses every refusal on stderr rather than returning quietly,
+ * because `INV-nothing-is-dropped-silently` applies to a marker as much as to
+ * a record.
+ *
+ * **THE STORE MAY NOT IMPORT IT, AND THIS IS THE DUPLICATION THAT BUYS.**
+ * D41 spec §7 gives `src/rules/` exactly one edge into `src/core/` — the
+ * frontmatter parser — and `test/rules/isolation.test.ts` fails the moment
+ * that widens; weakening that assertion to save nineteen lines would trade a
+ * governed architectural boundary for a copy this file can keep honest. So
+ * all four questions are asked here, in the authority's own order and in its
+ * own sentence shape, and `test/core/private-gitignore.test.ts`'s
+ * *"a rule store directory is guarded too"* drives them rather than taking
+ * this comment on trust.
+ *
+ * The one narrowing: refusal 2 asks for `DELIVERED_DIR` by name rather than
+ * generalising about which directory names are private, because this site
+ * builds its own path out of that constant three lines above.
+ *
+ * Never throws — a marker this could not write must never cost a caller the
+ * delivery row it was appending.
+ */
+function markPrivate(dir: string): void {
+  const refuse = (sentence: string): void => {
+    try {
+      process.stderr.write(
+        `my_context: refused to write a \`*\` .gitignore into ${dir} — ${sentence}\n`,
+      );
+    } catch { /* a lost line is not a lost record */ }
+  };
   try {
-    if (path.basename(dir) !== DELIVERED_DIR) return dir;
+    if (dir === '' || !path.isAbsolute(dir)) {
+      refuse('a relative target resolves against the working directory rather than a corpus, '
+        + 'which on 2026-09-23 was a repository root.');
+      return;
+    }
+    if (path.basename(dir) !== DELIVERED_DIR) {
+      refuse(`its name is not \`${DELIVERED_DIR}\`, so it is not the directory this log `
+        + 'creates for itself.');
+      return;
+    }
+    if (existsSync(path.join(dir, '.git'))) {
+      refuse('it holds a `.git`, so it is the root of somebody\'s repository and never this '
+        + 'product\'s private state.');
+      return;
+    }
     const marker = path.join(dir, '.gitignore');
     let existing = '';
-    try { existing = readFileSync(marker, 'utf8'); } catch { /* absent is the first write */ }
-    if (existing.trim() !== '' && existing.trim() !== '*') return dir;
+    try {
+      existing = readFileSync(marker, 'utf8');
+    } catch (err) {
+      // ENOENT is the ordinary first write. Anything else is a file that IS
+      // there and was not read, and overwriting what cannot be read is the
+      // exact act these refusals exist to prevent.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        refuse(`its .gitignore exists and could not be read (${
+          err instanceof Error ? err.message : String(err)}), so nothing was overwritten.`);
+        return;
+      }
+    }
+    if (existing.trim() !== '' && existing.trim() !== '*') {
+      refuse('its .gitignore already carries rules, so it is somebody\'s file and not the '
+        + 'one-line marker this product writes.');
+      return;
+    }
     writeFileSync(marker, '*\n', 'utf8');
-  } catch { /* best effort */ }
-  return dir;
+  } catch (err) {
+    refuse(`the write failed (${err instanceof Error ? err.message : String(err)}).`);
+  }
 }
 
 /**

@@ -661,22 +661,28 @@ test('a failed completion write still returns 200, discloses it, and leaves the 
     };
     rebind(run);
 
-    const shown = await confirm(h, '/api/execute/confirm?id=doctor');
-    const res = await postRaw(h, { id: 'doctor', values: {}, nonce: shown.nonce });
-    assert.equal(res.status, 200, 'the command RAN; a 500 would deny something that happened');
-    const body = (await res.json()) as RunBody;
-    assert.equal(body.exitCode, 0, 'the page is still told how the run ended');
-    assert.match(body.auditNote ?? '', /execute-done/,
-      'a completion row that could not be written was not disclosed to the caller');
+    try {
+      const shown = await confirm(h, '/api/execute/confirm?id=doctor');
+      const res = await postRaw(h, { id: 'doctor', values: {}, nonce: shown.nonce });
+      assert.equal(res.status, 200, 'the command RAN; a 500 would deny something that happened');
+      const body = (await res.json()) as RunBody;
+      assert.equal(body.exitCode, 0, 'the page is still told how the run ended');
+      assert.match(body.auditNote ?? '', /execute-done/,
+        'a completion row that could not be written was not disclosed to the caller');
 
-    // The first row still stands, unamended and readable.
-    const start = startRow(h.cwd);
-    assert.ok(start !== undefined, 'the execute row was lost with the completion row');
-    assert.equal(start.command?.exitCode, null);
-    assert.equal(doneRow(h.cwd), undefined);
-
-    // Handed back before teardown: a read-only file survives a tree removal.
-    chmodSync(auditLogPath(root), 0o666);
+      // The first row still stands, unamended and readable.
+      const start = startRow(h.cwd);
+      assert.ok(start !== undefined, 'the execute row was lost with the completion row');
+      assert.equal(start.command?.exitCode, null);
+      assert.equal(doneRow(h.cwd), undefined);
+    } finally {
+      // In a `finally`, not after the assertions: a read-only file survives a
+      // tree removal, so a FAILING assertion would leave the fixture undeletable
+      // and turn one red test into a leaked temporary directory as well.
+      // `chmodSync` on a path the runner never made read-only would throw and
+      // mask the real failure, so it is guarded by the write that set it.
+      try { chmodSync(auditLogPath(root), 0o666); } catch { /* never set */ }
+    }
   });
 });
 
