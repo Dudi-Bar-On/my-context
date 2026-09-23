@@ -1564,7 +1564,7 @@ test('scanTranscriptIds with null knownIds returns every pattern match, deduped 
 
 - [ ] **Step 2: Run to verify failure** — `node --test test/hooks/pre-compact.test.ts test/core/ledger.test.ts`. Expected: FAIL — today `Store.open` under the held lock burns the patient profile toward the kill, `null` knownIds is a type error, and no skip-note exists.
 
-- [ ] **Step 3: Implement — `scanTranscriptIds` null-filter mode** (`ledger.ts` · `export function scanTranscriptIds(` · ~911):
+- [ ] **Step 3: Implement — `scanTranscriptIds` null-filter mode** (`ledger.ts` · `export function scanTranscriptIds(` · ~911): <!-- historical-citation: quotes ledger.ts as it stood in 2026-08; task 4.7 (9bf6ee76, 2026-09-23) renamed scanTranscriptIds to scanTranscript and gave it a state -->
 
 ```ts
 export function scanTranscriptIds(
