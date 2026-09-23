@@ -827,20 +827,76 @@ export function searchArchive(
   if (trimmed.length < MIN_QUERY_CHARS) {
     return { query: trimmed, searchable: false, note: tooShortNote(trimmed), hits: [] };
   }
-  return {
-    query: trimmed,
-    searchable: true,
-    note: null,
-    hits: index.matchProse(
-      quoteTerm(trimmed),
-      {
-        sessionId: scope.sessionId, agentId: scope.agentId, kind: scope.kind ?? SAID_KINDS,
-        ...(scope.windows === undefined ? {} : { windows: scope.windows }),
-        ...(scope.offset === undefined ? {} : { offset: scope.offset }),
-      },
-      scope.limit ?? DEFAULT_SEARCH_LIMIT,
-    ),
-  };
+  const hits = index.matchProse(
+    quoteTerm(trimmed),
+    {
+      sessionId: scope.sessionId, agentId: scope.agentId, kind: scope.kind ?? SAID_KINDS,
+      ...(scope.windows === undefined ? {} : { windows: scope.windows }),
+      ...(scope.offset === undefined ? {} : { offset: scope.offset }),
+    },
+    scope.limit ?? DEFAULT_SEARCH_LIMIT,
+  );
+  // **A hit is an answer. Only an EMPTY list needs to say what it is empty
+  // of** — and it is also the only shape that can be mistaken for one, which
+  // is site M10 of
+  // `TASK-nine-sites-report-a-measured-zero-for-something-they-could`. Asking
+  // the coverage question here rather than above is not only tidier: this
+  // function is called once per probe by the per-turn anchor pass
+  // (`core/anchor-pass.ts`), and `coverageNote` reads a table.
+  if (hits.length > 0) return { query: trimmed, searchable: true, note: null, hits };
+  const note = coverageNote(index);
+  return { query: trimmed, searchable: note === null, note, hits };
+}
+
+/**
+ * **What an EMPTY answer is empty of** — `null` when the answer is a
+ * measurement, a sentence when it is not.
+ *
+ * This module's own header already admitted the defect this closes: *"until a
+ * caller runs it the table is EMPTY rather than stale, and an empty table
+ * answers nothing rather than answering wrongly"* — and `searchArchive` then
+ * answered `searchable: true, note: null, hits: []`, which every consumer draws
+ * as *the archive does not contain this*. A retrieval mission finds no pointers
+ * and presents that as "the archive holds no material about this"
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
+ *
+ * The comparison is the one report 3 asked for: `proseSources().size` against
+ * the archive's own source count. Three answers rather than two, because the
+ * middle one is real and common:
+ *
+ *  - **Nothing indexed, and there ARE transcripts.** Nothing was searched. The
+ *    prose index is filled by `mycontext conversation rebuild`, a CLI write
+ *    that nothing under `src/ui/` may perform, so this is the state every
+ *    workspace is in until somebody runs it — not an edge case.
+ *  - **Some indexed, and fewer than the archive holds.** The phrase is absent
+ *    from the part that was indexed, which is not the question that was asked.
+ *  - **Everything indexed, including an EMPTY archive.** Zero of zero is
+ *    complete coverage, and "this archive does not hold that phrase" is then a
+ *    true and useful answer. Reporting it as a fault would invent one out of a
+ *    fresh workspace — the measured zero this whole standard exists to protect.
+ *
+ * **It counts `sourcesOf`'s set without calling `sourcesOf`, and that is
+ * deliberate rather than a duplication.** The set is the same one
+ * `buildSearchIndex` indexes against — every session row, plus every lane under
+ * it — but `sourcesOf` also `statSync`s each transcript to answer `fileBytes`,
+ * which is real I/O this question does not need. `searchArchive` is called once
+ * per probe by the per-turn anchor pass, and every one of those probes that
+ * finds nothing would pay for a stat per transcript. Here it is two table
+ * reads and no filesystem at all.
+ */
+function coverageNote(index: ConversationIndex): string | null {
+  const indexed = index.proseSources().size;
+  let held = 0;
+  for (const row of index.all()) held += 1 + index.subagentsOf(row.sessionId).length;
+  if (indexed >= held) return null;
+  if (indexed === 0) {
+    return `my_context: the prose index holds nothing, and this archive holds ${held} `
+      + `transcript(s) — so nothing was searched, and this is not an answer of "nothing found". `
+      + `Build it with \`mycontext conversation rebuild\`, then search again.`;
+  }
+  return `my_context: the prose index covers ${indexed} of the ${held} transcript(s) this archive `
+    + `holds, so this search read part of it and found nothing there. That is not an answer about `
+    + `the archive. Bring it up to date with \`mycontext conversation rebuild\`, then search again.`;
 }
 
 /* ── THE READER'S SEARCH: THREE READINGS OF ONE QUERY — `semantic/4` ────────

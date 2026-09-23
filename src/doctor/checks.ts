@@ -426,6 +426,39 @@ export function checkDeadScopes(repoRoot: string, items: Item[], config: Config)
       });
     }
   }
+
+  // **The bound, disclosed — and this check reaches it soonest of the three.**
+  // `checkWatchedDocsServable` below has carried `watched_doc_coverage` since
+  // it shipped; this consumer of the same bounded walk did not, which is site
+  // M8 of `TASK-nine-sites-report-a-measured-zero-for-something-they-could`.
+  // The sentence above is a confident *"matches no file in the repository"*
+  // over a walk that may have read part of one, and a reader or an agent who
+  // acts on it re-scopes a GOVERNING constraint to a wrong path. `warn`, so the
+  // exit code says nothing either way.
+  //
+  // It is worse here than at the other two sites for a measurable reason:
+  // `listFilesForScopeCheck` walks with `SCOPE_SKIP_DIRS` — `.git` and
+  // `node_modules`, and nothing else — because a scope glob may legitimately
+  // name anything, so `dist/`, `build/`, `coverage/` and `.next/` all count
+  // against the same 20,000 that `SKIP_DIRS` keeps out of the other two walks.
+  //
+  // `about: 'dead_scope'` makes it a DISCLOSURE rather than a finding
+  // (`Finding.about`, and `isDoctorDisclosure` in `src/mcp/tools.ts`): it is a
+  // note the check makes about itself, it must not move a health count, and
+  // every surface that partitions on `about` already prints it.
+  if (files.length >= FILE_LIMIT) {
+    findings.push({
+      level: 'info', code: 'dead_scope_coverage', about: 'dead_scope',
+      remedy: NOTHING,
+      message:
+        `the repository walk stopped at its ${FILE_LIMIT}-file bound, so this check compared the ` +
+        `globs above against only part of the tree. Every "matches no file" line above is ` +
+        `therefore a statement about the part that fit — a glob reported dead here may match a ` +
+        `file the walk never reached, so verify the path before re-scoping anything on it. ` +
+        `Globs that DID match are unaffected.`,
+    });
+  }
+
   return findings;
 }
 

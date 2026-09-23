@@ -29,7 +29,7 @@ import { checksum } from '../core/slug.ts';
 import { updatesFor } from '../core/tag-projection.ts';
 import type { Item } from '../core/types.ts';
 import { ACK, NOTHING, type Finding } from './finding.ts';
-import { listRepoFiles } from './repo-files.ts';
+import { FILE_LIMIT, listRepoFiles } from './repo-files.ts';
 
 /**
  * `checkCliOnPath` deliberately is NOT one of the checks below, even though
@@ -330,7 +330,8 @@ export function readMarkers(line: string): MarkerRead {
 export function checkCitationForm(repoRoot: string, items: Item[]): Finding[] {
   const findings: Finding[] = [];
   const known = new Set<string>();
-  for (const rel of listRepoFiles(repoRoot)) {
+  const walked = listRepoFiles(repoRoot);
+  for (const rel of walked) {
     known.add(rel);
     known.add(rel.slice(rel.lastIndexOf('/') + 1));
   }
@@ -456,6 +457,37 @@ export function checkCitationForm(repoRoot: string, items: Item[]): Finding[] {
         `instead of being obeyed.`,
     });
   }
+
+  // **The bound, disclosed — and here the silence hides a MISSING finding
+  // rather than a false one.** `checkWatchedDocsServable` (`doctor/checks.ts`)
+  // has carried `watched_doc_coverage` over this same bounded walk since it
+  // shipped; this consumer did not, which is site M8 of
+  // `TASK-nine-sites-report-a-measured-zero-for-something-they-could`.
+  //
+  // What `known` decides is whether a bare `file:line` pointer names a file
+  // this repository HAS. A pointer to a file it does not have is an EXAMPLE and
+  // deliberately not a finding — so every file the walk failed to reach turns a
+  // real `citation_form` finding into silence, which is the direction nobody
+  // can see from the report. The excused count above is unaffected: a marker is
+  // read off the item body and never off the walk.
+  //
+  // `about: 'citation_form'` for `citation_form_excused`'s reason, one line up:
+  // a note about this check's own reach is not a row of work, must not move a
+  // health count, and every surface that partitions on `about` already prints
+  // it under its own heading.
+  if (walked.length >= FILE_LIMIT) {
+    findings.push({
+      level: 'info', code: 'citation_form_coverage', about: 'citation_form',
+      remedy: NOTHING,
+      message:
+        `the repository walk stopped at its ${FILE_LIMIT}-file bound, so this check knew only ` +
+        `part of the tree. A bare \`file:line\` pointer is reported only when the file it names ` +
+        `is one this repository holds — a pointer to a file that is not here is an EXAMPLE, not ` +
+        `a fault — so a pointer whose file the walk never reached is silently read as an example ` +
+        `and is NOT counted above. Whatever is reported is real; the count is a floor.`,
+    });
+  }
+
   return findings;
 }
 

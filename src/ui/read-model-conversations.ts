@@ -1566,6 +1566,31 @@ export interface ConversationSecretsBody {
   sessionId: string;
   /** Nobody has scanned this workspace, so there is no session to read. */
   indexed: boolean;
+  /**
+   * **Why no byte of this session was read, or `null` when it was.**
+   *
+   * `null` and never absent, so a consumer can tell "measured" from "this build
+   * does not say" — the same shape `matchedLanes`, `keptBytes` and
+   * `durationMs` carry on the row type above, and the same standard:
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
+   *
+   * **It exists because this body was answering a clean bill of health over
+   * zero bytes.** Site M6 of
+   * `TASK-nine-sites-report-a-measured-zero-for-something-they-could`: an id
+   * naming no row in the archive got `noSecrets(id, true, …)` — `indexed: true`
+   * with every count zero — so the screen skipped its `indexed === false`
+   * branch and drew *"None of the N shapes this looks for appears in this
+   * session. That is a measured zero and NOT a promise."* over a file nothing
+   * had opened. Report 3 named this the one screen in the product where being
+   * wrong has a cost OUTSIDE the screen: a reader deciding whether a transcript
+   * is safe to share.
+   *
+   * `indexed` could not carry it. `indexed: false` is a fact about the
+   * WORKSPACE — nobody has ever scanned it — and the screen already draws that
+   * with its own sentence and a rebuild command; overloading it to also mean
+   * "this one session is not here" would replace one confusion with another.
+   */
+  unscanned: string | null;
   /** The file this was read from, which may be the copy rather than the original. */
   file: string | null;
   source: string | null;
@@ -1589,11 +1614,19 @@ export interface ConversationSecretsBody {
   ms: number;
 }
 
-/** The empty answer, so a caller holds one shape whatever happened. */
-function noSecrets(sessionId: string, indexed: boolean, ms: number): ConversationSecretsBody {
+/**
+ * The empty answer, so a caller holds one shape whatever happened — and every
+ * caller of it must say WHY it is empty, which is what `unscanned` being a
+ * required parameter enforces. There is no path through this function that
+ * produces a clean scan report over a file nobody read.
+ */
+function noSecrets(
+  sessionId: string, indexed: boolean, ms: number, unscanned: string,
+): ConversationSecretsBody {
   return {
     sessionId,
     indexed,
+    unscanned,
     file: null,
     source: null,
     records: 0,
@@ -1655,7 +1688,14 @@ export function apiConversationSecrets(
   } catch (err) {
     if (err instanceof ConversationIndexUninitializedError
       || err instanceof ConversationIndexIncompleteError) {
-      return { status: 200, body: noSecrets(params.id, false, Date.now() - startedMs) };
+      return {
+        status: 200,
+        body: noSecrets(
+          params.id, false, Date.now() - startedMs,
+          'no transcript has ever been scanned in this workspace, so nothing was read and no '
+          + `shape was applied to this session. Run \`${REBUILD_COMMAND}\` first.`,
+        ),
+      };
     }
     throw err;
   }
@@ -1668,7 +1708,17 @@ export function apiConversationSecrets(
   } finally {
     index.close();
   }
-  if (row === null) return { status: 200, body: noSecrets(params.id, true, Date.now() - startedMs) };
+  if (row === null) {
+    return {
+      status: 200,
+      body: noSecrets(
+        params.id, true, Date.now() - startedMs,
+        `this workspace is indexed, but "${params.id}" names no session in the archive — so no `
+        + 'byte of it was read and no shape was applied. The counts below are UNMEASURED, not a '
+        + `clean scan. Check the id, or run \`${REBUILD_COMMAND}\` if the transcript is new.`,
+      ),
+    };
+  }
 
   const scan = scanSessionSecrets(row.file, { cap: CONVERSATION_SECRET_CAP });
   const plan = mark === null ? null : readRedactionPlan(mark.file);
@@ -1678,6 +1728,8 @@ export function apiConversationSecrets(
     body: {
       sessionId: params.id,
       indexed: true,
+      // The session was read. `null` and never absent — see `unscanned`.
+      unscanned: null,
       file: row.file,
       source: row.source,
       records: scan.records,

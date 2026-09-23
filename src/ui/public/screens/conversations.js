@@ -5700,6 +5700,26 @@ async function fillSecrets(ctx, box, sessionId) {
     return;
   }
 
+  // **AND THE OTHER WAY NOTHING WAS READ, WHICH THIS SCREEN USED TO DRAW AS A
+  // CLEAN SESSION.** The branch above covers a workspace nobody has scanned.
+  // It does NOT cover an id that names no row in an archive that IS scanned:
+  // `indexed` is then `true`, every count is zero, and the "measured zero"
+  // paragraph below drew a clean bill of health over a file nothing had
+  // opened — site M6 of
+  // `TASK-nine-sites-report-a-measured-zero-for-something-they-could`, on the
+  // one screen in the product where being wrong has a cost OUTSIDE the screen:
+  // a reader deciding whether a transcript is safe to share.
+  //
+  // `unscanned` is the read model's reason field, `null` on a real scan and
+  // never absent. It is drawn untranslated through `errorNote`, exactly like
+  // the fetch failure three lines above: it is the server's own sentence about
+  // this reader's own archive, and inventing a second wording for it here is
+  // how two surfaces come to disagree about what was measured.
+  if (typeof body.unscanned === 'string' && body.unscanned !== '') {
+    box.append(errorNote(body.unscanned));
+    return;
+  }
+
   // The sentence FIRST, above the list, because it is the thing that makes the
   // list safe to be wrong: most of a list like this is wrong, and a reader who
   // does not know that will tick things to be tidy.
