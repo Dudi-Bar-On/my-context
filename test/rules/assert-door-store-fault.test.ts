@@ -1,5 +1,6 @@
 // @basis TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody,
-// INV-nothing-is-dropped-silently
+// INV-nothing-is-dropped-silently,
+// TASK-d70-closed-all-five-instances-and-never-built-the-gate-the
 /**
  * **`assertDoor`'s `catch { return 0 }` is no longer the end of the story** —
  * `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`.
@@ -161,7 +162,11 @@ test('the missed row records that the store could not be read, never a zero nobo
   try {
     const key = 'a-session-with-no-door';
     withStoreDir(path.join(ws, 'no-such-store'), () => {
-      assert.equal(assertDoor(ws, key), '', 'still no sentence: nothing could be missed');
+      const assertion = assertDoor(ws, key);
+      assert.equal(assertion.text, '', 'still no sentence: nothing could be missed');
+      // `DoorAssertion.recorded` — the half `assertDelivered` used to drop.
+      // A writable tree wrote the row, so the honest answer here is `true`.
+      assert.equal(assertion.recorded, true, 'and the row this latches on was written');
     });
     const rows = readFileSync(deliveredFile(ws), 'utf8')
       .split('\n').filter((l) => l.trim() !== '')
@@ -205,7 +210,7 @@ test('assertDoor still returns the empty sentence over a store it cannot read, a
     const before = process.env[RULES_DIR_ENV];
     process.env[RULES_DIR_ENV] = path.join(ws, 'no-such-store');
     try {
-      assert.equal(assertDoor(ws, 'a-session-key'), '');
+      assert.equal(assertDoor(ws, 'a-session-key').text, '');
     } finally {
       if (before === undefined) delete process.env[RULES_DIR_ENV];
       else process.env[RULES_DIR_ENV] = before;

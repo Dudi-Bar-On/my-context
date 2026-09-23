@@ -312,6 +312,29 @@ export function buildSubagentStartOutput(input: HookInput, fallbackCwd: string):
       ...(dedupeKey === null ? {} : { dedupeKey }),
       agentId,
     });
+    // **The injection's OWN audit record** — `Injection.unrecorded`, returned
+    // rather than written from `core/inject.ts` because that builder is shared
+    // with the `load_context` MCP tool, which has no channel a person reads.
+    //
+    // **It is the `delivery=complete` half of the pair above.** The
+    // `delivery=attempted` row is disclosed thirty lines up on the grounds
+    // that an unwritten one leaves a killed lane looking like a lane that
+    // never started; this is the row that CLOSES that pair, and losing it
+    // leaves the opposite false reading — a lane that ran to completion
+    // looking exactly like one that was killed mid-selection, which is
+    // precisely the pair `core/inject.ts` relaxes its own record guard to
+    // keep apart. Both halves of that mechanism now say when they are gone.
+    //
+    // The dispatch is untouched: `INV-hooks-fail-open`, and a lane is not
+    // refused over a log line.
+    if (injection.unrecorded !== null) {
+      process.stderr.write(unrecordedHookLine(
+        'SubagentStart', injection.unrecorded.op, injection.unrecorded.error,
+        `this lane was delivered ${injection.deliveredIds.length} item(s) and nothing recorded ` +
+        `the completion, so the delivery=attempted row for agent ${agentId} has no partner and ` +
+        'this dispatch is indistinguishable in the log from a lane killed mid-selection',
+      ));
+    }
     /**
      * **D41's third door, and the one that carries the weight** (spec §8.1,
      * `plan:store seq:2` Task 7).

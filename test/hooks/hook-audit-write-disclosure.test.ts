@@ -1,4 +1,6 @@
-// @basis TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen, INV-nothing-is-dropped-silently, INV-hooks-fail-open
+// @basis TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen,
+// TASK-d70-closed-all-five-instances-and-never-built-the-gate-the,
+// INV-nothing-is-dropped-silently, INV-hooks-fail-open
 /**
  * **`recordAudit` answers, and every hook call site reads the answer.**
  *
@@ -62,6 +64,7 @@ import { agentDispatchNote, agentStepNote, nudgeFor } from '../../src/hooks/post
 import { buildRestoreSnapshot } from '../../src/hooks/pre-compact.ts';
 import { runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
 import { buildSessionEndOutcome } from '../../src/hooks/session-end.ts';
+import { buildSessionStartResult } from '../../src/hooks/session-start.ts';
 import { buildSubagentStartOutput } from '../../src/hooks/subagent-start.ts';
 import { recordAgentSteps, SUBAGENT_STOP } from '../../src/hooks/subagent-stop.ts';
 import { removeTree } from '../helpers/tmp.ts';
@@ -399,5 +402,109 @@ test('a log that takes the write discloses nothing on any of these paths', (t) =
   assert.doesNotMatch(
     captured.stderr, /audit record could not be written/,
     'a working log is the silent case, and it must stay silent',
+  );
+});
+
+/* ---------------------------------------------------------------------------
+ * THE SEVENTEENTH SITE — the injection's own record, on the CORE path the
+ * sixteen above call.
+ *
+ * `TASK-d70-closed-all-five-instances-and-never-built-the-gate-the`. Task 4.4
+ * closed the sixteen hook call sites; `core/inject.ts` was still calling
+ * `recordAudit` as a bare statement for the row that says a delivery HAPPENED
+ * — the one the seen-file append four blocks below it leans on in writing
+ * ("the audit record above holds the delivery durably"). Nothing downstream
+ * read it, so a workspace whose `.audit/` had stopped taking writes delivered
+ * items into context windows all day and left no evidence of one.
+ *
+ * `Injection.unrecorded` carries it out to the caller rather than printing
+ * from core, because the builder is shared with the `load_context` MCP tool,
+ * which has no channel a person reads.
+ * ------------------------------------------------------------------------- */
+
+/** A pinned item, so a session start has something to deliver and therefore to record. */
+function addPinned(cwd: string, id: string): void {
+  const file = path.join(cwd, '.my_context', 'items', 'constraint', `${id}.md`);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, `---
+id: ${id}
+type: constraint
+title: ${id} title
+status: active
+severity: hard
+always: true
+---
+
+# ${id} title
+
+Every session holds this.
+`);
+}
+
+test("the injection's own audit record is disclosed when it is lost, at the subagent door", (t) => {
+  const cwd = sandbox(t);
+  addPinned(cwd, 'CONST-always');
+  index(cwd);
+  breakAuditLog(cwd);
+
+  const captured = capturingStderr(() => buildSubagentStartOutput({
+    session_id: 's1', cwd, agent_id: 'agent-9', agent_type: 'general-purpose',
+  }, cwd));
+
+  // The lane still gets its context. The disclosure is about the RECORD.
+  assert.match(captured.value, /CONST-always/, 'the lane must still be delivered to');
+  assert.match(captured.stderr, /my_context: the SubagentStart audit record could not be written/);
+  assert.match(captured.stderr, /--op subagent-start/);
+  // The wording that makes this the COMPLETION row and not the attempt row
+  // thirty lines above it: both halves of that pair now say when they are gone.
+  assert.match(
+    captured.stderr, /delivery=attempted row for agent agent-9 has no partner/,
+    'the completion half must name what a missing partner makes this dispatch look like',
+  );
+  assert.match(captured.stderr, /killed mid-selection/);
+});
+
+test('a session start hands the loss of its own record out to the hook that has a channel', (t) => {
+  const cwd = sandbox(t);
+  addPinned(cwd, 'CONST-always');
+  index(cwd);
+  breakAuditLog(cwd);
+
+  const result = buildSessionStartResult(cwd, { source: 'startup', sessionId: 's1' });
+
+  // The injection is untouched — losing the delivery to disclose its loss
+  // would be the worse trade, and the seen file that remains is dedupe state.
+  assert.match(result.text, /CONST-always/, 'the session must still be delivered to');
+  assert.notEqual(result.unrecorded, null, 'the lost record must reach the caller');
+  // The op travels with the error because the line sends its reader to
+  // `mycontext audit --op <op>`, and a caller spelling it again is a second
+  // answer free to disagree with the row it describes.
+  assert.equal(result.unrecorded?.op, 'session-start');
+  assert.notEqual(result.unrecorded?.error, '');
+  // `failure` is a different fact and must not be invented out of this one:
+  // the config parsed, the corpus loaded, the block was built.
+  assert.equal(result.failure, null);
+});
+
+test('a compact-restore names its own op, so the reader looks under the right one', (t) => {
+  const cwd = sandbox(t);
+  addPinned(cwd, 'CONST-always');
+  index(cwd);
+  breakAuditLog(cwd);
+
+  const result = buildSessionStartResult(cwd, { source: 'compact', sessionId: 's1' });
+  assert.equal(result.unrecorded?.op, 'compact-restore');
+});
+
+test('an injection whose record LANDED reports no loss at all', (t) => {
+  const cwd = sandbox(t);
+  addPinned(cwd, 'CONST-always');
+  index(cwd);
+
+  const result = buildSessionStartResult(cwd, { source: 'startup', sessionId: 's1' });
+  assert.match(result.text, /CONST-always/);
+  assert.equal(
+    result.unrecorded, null,
+    'a healthy log must be the silent case, or the line stops being read',
   );
 });

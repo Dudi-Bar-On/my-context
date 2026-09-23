@@ -16,6 +16,7 @@ import type { Item } from '../core/types.ts';
 import { isUsableId } from '../core/vocabulary.ts';
 import { configLoadFailure, findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
 import { assertDoor } from '../rules/deliver.ts';
+import { unrecordedMissLine } from '../rules/delivered.ts';
 import {
   configUnreadableLine, hookParseErrorLine, ledgerKey, parseHookInput, preToolUseContext,
   preToolUseDeny, readStdin, payloadOf, unrecordedHookLine, type HookPayload,
@@ -825,7 +826,25 @@ function missedDoorNote(input: HookPayload<'PreToolUse'>, cwd: string): string {
     // record in `hooks/subagent-start.ts`.
     const root = findProjectRoot(cwd);
     if (root === null) return '';
-    return assertDoor(root, key);
+    const assertion = assertDoor(root, key);
+    // **`recorded` is READ here** — `assertDelivered` writes the `missed` row
+    // that both latches this check and supplies spec §8.2's count, and until
+    // now it dropped `recordDelivery`'s answer under a docblock promising the
+    // caller would disclose it. This is that caller.
+    //
+    // **Both sentences, and in this order.** They are two facts: one says the
+    // reader may be missing the constants, the other says the record of that
+    // is missing too. `unrecordedMissLine` is emitted even when the first is
+    // withheld — the first is silent when the applicable set is empty, which
+    // is a statement about the STORE and says nothing about a directory that
+    // refused a write.
+    //
+    // stderr is this hook's channel for exactly this class, and the reader is
+    // the person: see the call site below, and `unrecordedMissLine` for why
+    // this line repeats rather than latching.
+    return assertion.recorded
+      ? assertion.text
+      : assertion.text + unrecordedMissLine(key);
   } catch {
     return '';
   }

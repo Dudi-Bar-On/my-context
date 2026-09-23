@@ -377,7 +377,45 @@ export function reviewCount(input: HookInput, fallbackCwd: string): void {
     }
     if (!review.enabled) return;
 
-    bumpCounter(root, input.session_id);
+    const counted = bumpCounter(root, input.session_id);
+    /**
+     * **`written` is READ here rather than dropped, and deliberately not
+     * printed** — `TASK-d70-closed-all-five-instances-and-never-built-the-gate-the`.
+     *
+     * The flag was discarded at this line while `core/review-counter.ts`
+     * listed *"a discarded write is DISCLOSED, never swallowed"* among the
+     * three properties that matter. It is bound now, and what it is worth is
+     * this sentence rather than a line on stderr, because the same file's
+     * header has already ruled on the channel: *"that failure is silent to the
+     * USER by construction — there is nowhere on the `PostToolUse` path to say
+     * it — so `hooks/stop.ts` puts its own verdict in the audit row it was
+     * already writing, which is the one durable sink that is not the
+     * casualty."*
+     *
+     * **THE FACT REACHES THE READER, BY A ROUTE THAT IS BUILT AND TESTED.** A
+     * counter that cannot be written is FROZEN, and `review/trigger.ts` says
+     * exactly that, once per turn, in the `because` that travels into the
+     * audit row: *"the review counter at <path> cannot be written, so this
+     * count is FROZEN at N rather than low … no pass can become due in this
+     * session until that file is writable again"*. `counterWritable` is the
+     * probe behind it and `CounterState.unread` carries the read half of the
+     * same fault on the same string. That is a better sentence than this site
+     * could write — it names the path, the threshold and the consequence —
+     * and it is the one `unread/3` closed this subject with.
+     *
+     * **So printing here would say the same thing again, 85 times.** Measured
+     * in this file's own header: this hook fired 85 times in one turn, and the
+     * fault is a persistent one, so a line per firing would bury the turn's
+     * single accurate account of it under eighty-five copies. The project's
+     * standing economy — *"a line on every tool call is a line nobody reads"*
+     * — is the reason the disclosure sits at `Stop` and not here.
+     *
+     * There is nothing left for this hook to do with the answer, and saying so
+     * is the honest end of the path rather than a shrug: the count returned is
+     * still correct for THIS call (see `bumpCounter`), and only the next
+     * process is affected by the loss.
+     */
+    if (!counted.written) return;
   } catch {
     // INV-hooks-fail-open. A knowledge base that breaks a session is worse
     // than one that says nothing.

@@ -44,7 +44,9 @@
  * stays answerable by reading an import list.
  */
 import path from 'node:path';
-import { assertDelivered, recordDelivery, type Door } from './delivered.ts';
+import {
+  assertDelivered, recordDelivery, type Door, type DoorAssertion,
+} from './delivered.ts';
 // `integrity.ts` AND NEVER `manifest.ts`, which re-exports the same two names.
 // The distinction is load-bearing and `test/rules/budget.test.ts` enforces it:
 // `manifest.ts` holds the budget and the publish step, and a budget reachable
@@ -548,7 +550,15 @@ export function resolveStoreDir(storeDir?: string): string {
 
 /**
  * **The assertion, with the store's own knowledge behind it** — spec §8.2,
- * `plan:store seq:2` Task 7. Returns the sentence to disclose, or `''`.
+ * `plan:store seq:2` Task 7. Returns `DoorAssertion` — the sentence to
+ * disclose, or `''`, and whether the `missed` row behind it was written.
+ *
+ * **`recorded` passes straight through and is not interpreted here.** This
+ * function's job is the COUNT; what a refused row costs is
+ * `unrecordedMissLine`'s sentence, and which channel carries it is the hook's
+ * decision — `pre-tool-use.ts` has a stderr a person watches and
+ * `pre-compact.ts` has ruled that channel out for its own event and carries
+ * the fact in its audit row instead. Deciding it here would pick for both.
  *
  * It lives here rather than in `delivered.ts` for one reason: answering *"how
  * many constants would have applied"* means loading and tier-filtering the
@@ -557,7 +567,9 @@ export function resolveStoreDir(storeDir?: string): string {
  * accidentally decide it — and the callback is not invoked at all unless the
  * key is genuinely unanswered, so the parse is paid at most once per key.
  */
-export function assertDoor(stateRoot: string, key: string, storeDir?: string): string {
+export function assertDoor(
+  stateRoot: string, key: string, storeDir?: string,
+): DoorAssertion {
   // A store that cannot be read is still counted as nothing, for the reason
   // `assertDelivered` states: a sentence saying a reader may be missing the
   // constants, when there were none for them to miss, is a check crying wolf.

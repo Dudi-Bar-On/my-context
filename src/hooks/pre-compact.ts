@@ -225,9 +225,24 @@ export function buildRestoreSnapshot(
      * that ruling.
      */
     const missedStore = assertDoor(ws.projectRoot, sessionId);
-    const storeClause = missedStore === ''
+    // **The row, and now whether the row landed.** `assertDoor` returns
+    // `DoorAssertion` since `TASK-d70-closed-all-five-instances-and-never-
+    // built-the-gate-the`: `assertDelivered` was dropping `recordDelivery`'s
+    // answer, so an assertion whose `missed` row was refused looked exactly
+    // like one that never needed to write.
+    //
+    // **It goes in the note and NOT on stderr**, which is this hook's standing
+    // ruling three paragraphs up and is unchanged by a new fact arriving —
+    // *"the row carries it for whoever goes looking, which is what this record
+    // is for"*. `pre-tool-use.ts` is the door with the person's channel and
+    // says it there, in `unrecordedMissLine`'s words.
+    const storeClause = (missedStore.text === ''
       ? ''
-      : 'PRODUCT RULE STORE NOT DELIVERED to this session — no door recorded one; ';
+      : 'PRODUCT RULE STORE NOT DELIVERED to this session — no door recorded one; ')
+      + (missedStore.recorded
+        ? ''
+        : 'and the missed-door row for this key could NOT be written, so this check has no '
+          + 'latch and §8.2\'s count of missed doors is a floor; ');
 
     // seen set ← the per-session file (parent-keyed: PreCompact is a
     // parent-only event by measurement — E2). Unreadable → empty set,

@@ -421,15 +421,35 @@ export interface ApplicableCount {
   unreadable: string;
 }
 
+/**
+ * **What an assertion answers, and why it is two fields rather than a
+ * sentence** — `TASK-d70-closed-all-five-instances-and-never-built-the-gate-the`.
+ *
+ * `assertDelivered` returned only `text`, under a docblock on `recordDelivery`
+ * that says in as many words *"the caller discloses, this module does not"* —
+ * while this module dropped the one thing there was to disclose. `recorded`
+ * is that half, travelling to the caller the docblock names.
+ *
+ * **`recorded` is `true` whenever no row was owed.** Both latches above return
+ * before any write, so nothing was lost and nothing is claimed: `false` means
+ * a `missed` row was attempted and refused, and nothing weaker.
+ */
+export interface DoorAssertion {
+  /** The sentence to disclose, or `''` — `assertDelivered`'s old return value. */
+  text: string;
+  /** `false` only when the `missed` row this call tried to write was refused. */
+  recorded: boolean;
+}
+
 export function assertDelivered(
   root: string, key: string, applicable: () => ApplicableCount, at?: string,
-): string {
+): DoorAssertion {
   const rows = deliveries(root, key);
-  if (rows.some((row) => row.kind === 'delivered')) return '';
+  if (rows.some((row) => row.kind === 'delivered')) return { text: '', recorded: true };
   // Already reported for this key: the latch. Not a second sentence, and not
   // a second row — a `missed` count that grew per tool call would measure
   // tool calls rather than doors.
-  if (rows.some((row) => row.kind === 'missed')) return '';
+  if (rows.some((row) => row.kind === 'missed')) return { text: '', recorded: true };
 
   /**
    * **The count is taken LAST, and lazily, and both halves matter.**
@@ -441,7 +461,22 @@ export function assertDelivered(
    * key, ever.
    */
   const { count, unreadable } = applicable();
-  recordDelivery(root, {
+  // **`recordDelivery`'s answer is READ, and this module's own docblock is the
+  // reason it now has to be.** That function says *"the caller discloses, this
+  // module does not, because only the caller knows which channel a person is
+  // watching"* — and for as long as this line was a bare statement, this
+  // module WAS the caller and disclosed nothing, so the sentence was a
+  // promise made on somebody else's behalf.
+  //
+  // What a refused write costs is specific and is not the delivered row's
+  // cost: the latch eleven lines above IS this row, so an assertion that
+  // could not write it re-asserts on the next tool call for the rest of the
+  // session, and spec §8.2's count — `missed` rows over `delivered` rows, the
+  // number that turns *"the store is always present"* into a measurement — is
+  // a floor rather than a figure. `unrecordedMissLine` says exactly that, and
+  // deliberately not `unrecordedDeliveryLine`, which asserts a delivery that
+  // did not happen here.
+  const recorded = recordDelivery(root, {
     ...(at === undefined ? {} : { at }),
     kind: 'missed',
     key,
@@ -475,7 +510,7 @@ export function assertDelivered(
    * state, and so is every stranger's install until the store carries its
    * first `product` entry.
    */
-  return count === 0 ? '' : missedDoorLine(key);
+  return { text: count === 0 ? '' : missedDoorLine(key), recorded };
 }
 
 /**
@@ -510,6 +545,45 @@ export function unrecordedDeliveryLine(door: Door, key: string | null): string {
     'the evidence. A later hook may report that this session has no record of the store being ' +
     'delivered to it; that report will be about this failed write, not about a door that did ' +
     `not run. Check that \`${DELIVERED_DIR}/\` is writable. Nothing was blocked.\n`;
+}
+
+/**
+ * **The ASSERTION's row did not land**, which is the other half of the same
+ * write failure and is not the same sentence.
+ *
+ * `unrecordedDeliveryLine` above opens *"the product rule store WAS delivered
+ * at this door"*. At this site nothing of the kind is known — the assertion
+ * fires precisely because no `delivered` row exists for the key — so reusing
+ * that wording would tell a reader their session holds constants nobody can
+ * show it was given. One fault, two facts, and the project's rule about a
+ * second copy applies to sentences as much as to rules: the wording is spelled
+ * once, here, rather than softened out of the neighbouring one.
+ *
+ * **What is actually lost is the LATCH and the COUNT.** `assertDelivered`
+ * latches on the `missed` row it writes, so an assertion that could not write
+ * one has no memory: it re-asserts at the next tool call, and the next, for
+ * the rest of the session. And spec §8.2 counts those rows — *"what is
+ * verifiable is that we injected at every door and none was missed"* — so a
+ * refused write leaves that count a floor, in the direction that flatters.
+ *
+ * **It repeats, and that is the disclosure being honest about itself.** Every
+ * other line in this area speaks once because a row latches it; the row is
+ * what failed here, so there is nothing to latch on, and a line that fell
+ * silent after the first firing would be claiming a durability it has not
+ * got. The repetition stops when the directory takes a write.
+ *
+ * **stderr, and the person.** `unrecordedDeliveryLine`'s channel argument
+ * holds unchanged: the model can do nothing about a directory that will not
+ * take a write, and `hooks/pre-compact.ts` — which rules out stderr for its
+ * own event — carries this in the audit row it was already writing instead.
+ */
+export function unrecordedMissLine(key: string): string {
+  return 'my_context: the row recording that NO door delivered the product rule store to this ' +
+    `session (key \`${key}\`) could NOT be written to \`${DELIVERED_DIR}/\`. Two consequences: ` +
+    'this check latches on that row, so with none written it will say this again on every tool ' +
+    'call until the directory is writable; and the count of missed doors against delivered ' +
+    'ones — the measurement behind "the store is always present" — is a floor rather than a ' +
+    'figure. Nothing was blocked and nothing else changed.\n';
 }
 
 /**
