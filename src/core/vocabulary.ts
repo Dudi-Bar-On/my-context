@@ -263,10 +263,13 @@ export const INVERSE_RELATIONS: Record<string, string> = {
  * `linkItems`' mirror check, which is the gate that keeps one fact from being
  * stored as two rows that disagree.
  *
- * Sixteen names, four of them paired above and fourteen declared here, and the
- * two lists must between them cover `RELATION_TYPES` exactly. A seventeenth
- * name added to the vocabulary and declared in NEITHER is now a THROW naming
- * the omission, not a silently unguarded write.
+ * `RELATION_TYPES` holds EIGHTEEN names: the four paired in
+ * `INVERSE_RELATIONS` above, and the fourteen declared here. The two maps must
+ * between them cover it exactly, and a NINETEENTH name added to the vocabulary
+ * and declared in neither is now a THROW naming the omission, not a silently
+ * unguarded write. (The count was written as sixteen/seventeenth in the first
+ * round of this task and was wrong by two; it is pinned by
+ * `test/core/relation-inverses.test.ts` rather than by this sentence.)
  */
 export const NO_INVERSE: Record<string, string> = {
   conflicts_with:

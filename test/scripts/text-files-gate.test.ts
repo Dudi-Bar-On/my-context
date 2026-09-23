@@ -30,12 +30,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removeTree } from '../helpers/tmp.ts';
 import {
   BINARY_EXTENSIONS, SKIP_REASON_UNTRACKED,
-  nulOffenders, partition, summarise, trackedFiles,
+  nulOffenders, partition, skipReason, summarise, trackedFiles,
 } from '../../scripts/check-text-files.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -62,22 +63,24 @@ test('a skipped file carries the reason it was skipped', () => {
   assert.deepEqual(scanned, ['src/a.ts']);
   assert.deepEqual(skipped.map((s) => s.file).toSorted(), ['docs/shot.png', 'src/ui/f.woff2']);
   for (const s of skipped) {
-    assert.equal(typeof s.why, 'string');
-    assert.ok(s.why.length > 0, `${s.file} was skipped with no reason`);
-    assert.equal(s.why, BINARY_EXTENSIONS.get(path.extname(s.file)));
+    const ext = path.extname(s.file);
+    // The extension is folded INTO the reason, so that grouping the printed
+    // disclosure BY REASON groups it by extension without a second grouping
+    // rule living here. See `skipReason`.
+    assert.equal(s.why, `${ext}, ${BINARY_EXTENSIONS.get(ext)}`);
+    assert.equal(skipReason(s.file), s.why);
   }
+  assert.equal(skipReason('src/a.ts'), null, 'a scannable file must not carry a reason');
 });
 
 test('the summary names what was scanned AND what was skipped, with why', () => {
-  const line = summarise(
-    ['src/a.ts', 'README.md'],
-    [{ file: 'docs/shot.png', why: BINARY_EXTENSIONS.get('.png')! }],
-  );
+  const line = summarise(['src/a.ts', 'README.md'], [
+    { file: 'docs/shot.png', why: skipReason('docs/shot.png')! },
+  ]);
   assert.match(line, /2 scanned/);
   assert.match(line, /1 skipped/);
-  assert.match(line, /\.png/);
-  assert.match(line, new RegExp(BINARY_EXTENSIONS.get('.png')!.split(' ')[0]));
-  assert.match(line, new RegExp(SKIP_REASON_UNTRACKED.split(' ')[0]));
+  assert.ok(line.includes(`skipped 1 — .png, ${BINARY_EXTENSIONS.get('.png')}`), line);
+  assert.ok(line.includes(SKIP_REASON_UNTRACKED), line);
 });
 
 test('a NUL is found in a file the old allow-list did not know', () => {
@@ -91,7 +94,7 @@ test('a NUL is found in a file the old allow-list did not know', () => {
     assert.deepEqual(found.map((o) => o.file).toSorted(), ['notes.jsonl', 'ui/Panel.tsx']);
     assert.equal(found.find((o) => o.file === 'ui/Panel.tsx')!.offset, 12);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 });
 
@@ -104,7 +107,7 @@ test('a declared binary file is not read for NULs at all', () => {
     assert.deepEqual(nulOffenders(dir, scanned), []);
     assert.equal(skipped.length, 1);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 });
 

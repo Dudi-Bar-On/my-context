@@ -73,9 +73,9 @@
  *   node scripts/check-faint-usage.ts --json   the same report, machine-readable
  */
 
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { skipLines, walkTracked, type Skip } from './tracked-walk.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 
@@ -85,7 +85,7 @@ const REPO = path.resolve(import.meta.dirname, '..');
  */
 export const TOKEN_BLOCK_FILE = 'docs/design/web-ui-mockup.html';
 
-export interface Skip { file: string; why: string }
+export type { Skip };
 
 /**
  * **The trees this rule does not govern, named and counted rather than left
@@ -107,6 +107,10 @@ export const SKIPPED_TREES: ReadonlyArray<{ prefix: string; why: string }> = [
   },
 ];
 
+/** Why a file with no stylesheet-bearing extension is out of range. */
+export const NOT_A_STYLESHEET =
+  'not a stylesheet or a page — no `.html`, `.css` or `.js` to carry a rule or a token';
+
 /** Why a vendored file is out of range: it is not ours to restyle. */
 export const SKIP_REASON_VENDOR =
   'vendored third-party CSS, pinned by checksum in VENDOR.md — restyling it would break its own gate';
@@ -121,32 +125,24 @@ export const SKIP_REASON_VENDOR =
  * be able to print while blind.
  */
 export function scannedFiles(root: string = REPO): { scanned: string[]; skipped: Skip[] } {
-  const out = execFileSync('git', ['-C', root, 'ls-files', '-z'], {
-    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-  });
-  const tracked = out.split('\0').filter((f) => f !== '');
-  if (tracked.length === 0) throw new Error(`git tracks no file under ${root}`);
-
-  const scanned: string[] = [];
-  const skipped: Skip[] = [];
-  for (const file of tracked) {
-    if (!/\.(html|css|js)$/.test(file)) continue;
-    if (file.includes('/vendor/')) { skipped.push({ file, why: SKIP_REASON_VENDOR }); continue; }
+  return walkTracked(root, (file) => {
+    // Not a candidate at all — no extension that can carry CSS or reference a
+    // token. Returning `null`-worthy files here would flood the disclosure with
+    // the whole corpus, so they are dropped from the population rather than
+    // skipped from it; what remains is every file that COULD break this rule.
+    if (!/[.](html|css|js)$/.test(file)) return NOT_A_STYLESHEET;
+    if (file.includes('/vendor/')) return SKIP_REASON_VENDOR;
     const tree = SKIPPED_TREES.find((t) => file.startsWith(t.prefix));
-    if (tree !== undefined) { skipped.push({ file, why: tree.why }); continue; }
-    scanned.push(file);
-  }
-  return { scanned, skipped };
+    return tree === undefined ? null : tree.why;
+  });
 }
 
 /** What was read and what was declined, in one line that is true either way. */
 export function summariseScan(scanned: readonly string[], skipped: readonly Skip[]): string {
-  const byReason = new Map<string, number>();
-  for (const s of skipped) byReason.set(s.why, (byReason.get(s.why) ?? 0) + 1);
-  const lines = [`${scanned.length} file(s) scanned, ${skipped.length} skipped.`];
-  if (byReason.size === 0) lines.push('  skipped: none — every tracked stylesheet was read.');
-  for (const [why, count] of byReason) lines.push(`  skipped ${count} — ${why}`);
-  return lines.join('\n');
+  return [
+    `${scanned.length} file(s) scanned, ${skipped.length} skipped.`,
+    ...skipLines(skipped),
+  ].join('\n');
 }
 
 /** 18pt in CSS reference pixels. WCAG 2.2, SC 1.4.3. */

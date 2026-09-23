@@ -219,7 +219,6 @@
  * Zero dependencies, no build step, erasable syntax only — the same constraints
  * as `src/`.
  */
-import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { loadLayer, type LoadError } from '../src/core/rebuild.ts';
@@ -229,6 +228,7 @@ import { RETIRED_STATUSES } from '../src/core/select.ts';
 import { SUPERSEDED_BY } from '../src/core/relations.ts';
 import { ITEM_ID, readCorpus, resolveId, type Corpus } from './check-handover.ts';
 import { DOC_SOURCES, documentsUnder } from './check-diagrams-parse.ts';
+import { skipLines, walkTracked, type Skip } from './tracked-walk.ts';
 import type { Item } from '../src/core/types.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..');
@@ -244,16 +244,16 @@ const REPO = path.resolve(import.meta.dirname, '..');
  * retired item reads exactly the same in a harness case as in `src/`, and
  * nothing looked at one.
  *
- * So the population is every SOURCE file git tracks (`sourceWalk` below), and
- * the removals are declared in `NOT_SOURCE` and printed in the summary. The
- * documents are a separate walk for a reason `DOC_ROOTS` states below, and
+ * So the population is every SOURCE file git tracks (`sourceWalk` below, over
+ * the one walk in `scripts/tracked-walk.ts` that all five gates here share),
+ * and the removals are declared in `NOT_SOURCE` and printed in the summary.
+ * The documents are a separate walk for a reason `DOC_ROOTS` states below, and
  * that split is unchanged.
  *
- * Kept exported under this name because `test/scripts/cited-items.test.ts`
- * re-walks the tree four times independently and names it.
+ * `SOURCE_ROOTS` and `walkSources` are GONE rather than left exported beside
+ * the walk that replaced them. A root list nothing reads is the next thing
+ * somebody re-points a scanner at.
  */
-export const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
-
 /** Why a tracked file is not walked as source, stated so it can be printed. */
 export const NOT_SOURCE =
   'not a source file — this walk reads `.ts`/`.js`/`.mjs`/`.cjs` comments; '
@@ -269,19 +269,8 @@ export const NOT_SOURCE =
  * so in words for the empty case, and this keeps it from being reachable
  * quietly.
  */
-export function sourceWalk(root: string): { scanned: string[]; skipped: string[] } {
-  const out = execFileSync('git', ['-C', root, 'ls-files', '-z'], {
-    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-  });
-  const tracked = out.split('\0').filter((f) => f !== '');
-  if (tracked.length === 0) throw new Error(`git tracks no file under ${root}`);
-  const scanned: string[] = [];
-  const skipped: string[] = [];
-  for (const file of tracked) {
-    if (isSourceFile(file)) scanned.push(file);
-    else skipped.push(file);
-  }
-  return { scanned, skipped };
+export function sourceWalk(root: string): { scanned: string[]; skipped: Skip[] } {
+  return walkTracked(root, (file) => (isSourceFile(file) ? null : NOT_SOURCE));
 }
 
 /**
@@ -477,33 +466,6 @@ export interface Report {
   findings: Finding[];
   /** Ids that look like ids and answer to nothing — printed only on request. */
   unresolved: Array<{ file: string; line: number; raw: string; why: string }>;
-}
-
-/**
- * Every source file under `dir`. Exported so the test's anti-vacuity pass walks
- * the SAME tree this does — a test that reimplemented the walk could agree with
- * itself about a tree neither of them covers.
- */
-export function walkSources(dir: string, out: string[]): string[] {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return out;
-  }
-  for (const entry of entries) {
-    if (entry === 'node_modules' || entry === '.git') continue;
-    const full = path.join(dir, entry);
-    let s;
-    try {
-      s = statSync(full);
-    } catch {
-      continue;
-    }
-    if (s.isDirectory()) walkSources(full, out);
-    else if (isSourceFile(entry)) out.push(full);
-  }
-  return out;
 }
 
 const rel = (full: string): string => path.relative(REPO, full).split(path.sep).join('/');
@@ -935,10 +897,10 @@ function main(): number {
   // covered the repository or a quarter of it. Printed BEFORE the summary so
   // that `main`'s tail stays the shape `test/scripts/cited-items.test.ts`
   // reads it for: summary, load errors, unconditional `return 0`.
-  write(
-    `${walk.scanned.length} tracked source file(s) walked, ${walk.skipped.length} not: ` +
-      `${NOT_SOURCE}.`,
-  );
+  write([
+    `${walk.scanned.length} tracked source file(s) walked, ${walk.skipped.length} not.`,
+    ...skipLines(walk.skipped),
+  ].join('\n'));
   write(summary(report, showUnresolved));
   for (const e of errors) write(`load error: ${e.file}: ${e.message}`);
   return 0;

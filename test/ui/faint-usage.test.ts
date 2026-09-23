@@ -35,8 +35,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BOLD_WEIGHT, LARGE_BOLD_PX, LARGE_TEXT_PX, NO_DOCUMENT_SIZE, REPLACEMENT, SKIP_REASON_VENDOR,
-  SKIPPED_TREES, TOKEN, TOKEN_BLOCK_FILE,
+  BOLD_WEIGHT, LARGE_BOLD_PX, LARGE_TEXT_PX, NOT_A_STYLESHEET, NO_DOCUMENT_SIZE, REPLACEMENT,
+  SKIP_REASON_VENDOR, SKIPPED_TREES, TOKEN, TOKEN_BLOCK_FILE,
   analyse, buildCascade, customProperties, describe as describeUse, isLargeText, parseStylesheet,
   readSources, scannedFiles, summariseScan,
 } from '../../scripts/check-faint-usage.ts';
@@ -125,12 +125,24 @@ test('every shipped stylesheet is scanned, and every skip carries its reason', (
   );
   assert.ok(scanned.length > 20, `only ${scanned.length} file(s) scanned`);
 
+  // Every skip carries a reason, and it is one of the three DECLARED reasons —
+  // never an unexplained absence. `NOT_A_STYLESHEET` is the largest group
+  // because the population is now the whole tracked tree; the point is that it
+  // is counted and printed rather than silently outside a list of three paths.
+  const declaredReasons = new Set<string>([
+    NOT_A_STYLESHEET, SKIP_REASON_VENDOR, ...SKIPPED_TREES.map((t) => t.why),
+  ]);
   for (const s of skipped) {
-    assert.ok(s.why.length > 0, `${s.file} was skipped with no reason`);
-    const declared = s.why === SKIP_REASON_VENDOR
-      || SKIPPED_TREES.some((t) => s.file.startsWith(t.prefix) && t.why === s.why);
-    assert.ok(declared, `${s.file} was skipped by a rule nobody declared`);
+    assert.ok(declaredReasons.has(s.why), `${s.file} was skipped by a rule nobody declared`);
   }
+  assert.ok(
+    skipped.some((s) => s.why === SKIP_REASON_VENDOR),
+    'the vendored stylesheets are skipped and the reason must be exercised',
+  );
+  assert.ok(
+    skipped.some((s) => SKIPPED_TREES.some((t) => s.file.startsWith(t.prefix))),
+    'the history tree is skipped and the reason must be exercised',
+  );
 
   // A measured zero is drawn and named: the summary is true either way.
   const line = summariseScan(scanned, skipped);

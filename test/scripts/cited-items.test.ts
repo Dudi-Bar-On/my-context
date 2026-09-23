@@ -45,8 +45,8 @@ import { SUPERSEDED_BY } from '../../src/core/relations.ts';
 import { readCorpus, resolveId, type Corpus } from '../../scripts/check-handover.ts';
 import { documentsUnder } from '../../scripts/check-diagrams-parse.ts';
 import {
-  DOC_ROOTS, NOT_SOURCE, SOURCE_ROOTS, build, isSourceFile, liveSites, paragraphAround, scanFile,
-  sourceWalk, successorChain, walkSources,
+  DOC_ROOTS, NOT_SOURCE, build, isSourceFile, liveSites, paragraphAround, scanFile,
+  sourceWalk, successorChain,
 } from '../../scripts/check-cited-items.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import type { Item } from '../../src/core/types.ts';
@@ -58,6 +58,16 @@ const SCRIPT = path.join(REPO, 'scripts', 'check-cited-items.ts');
 const ws = resolveWorkspace(REPO);
 const ITEMS: Item[] = ws.projectRoot === null ? [] : loadLayer(ws.projectRoot, 'project', [], ws.config);
 const CORPUS: Corpus | null = ws.projectRoot === null ? null : readCorpus(ITEMS, ws.config);
+
+/**
+ * The real walk, as absolute paths, because `build` takes absolute paths.
+ *
+ * It was four calls to a `walkSources`/`SOURCE_ROOTS` pair that `main` itself
+ * had stopped using — a second walk beside the real one, which is how a test
+ * comes to prove something the product no longer does.
+ */
+const sourceFiles = (): string[] =>
+  sourceWalk(REPO).scanned.map((rel) => path.join(REPO, ...rel.split('/')));
 
 /** The retired item whose live-sounding citation cost the morning this check answers. */
 const THE_DEFECT = 'DEC-the-ui-is-developed-against-a-simulated-corpus-until-the';
@@ -112,8 +122,7 @@ function reportFor(text: string, items: Item[], name = 'planted.ts'): ReturnType
  */
 test('the real walk reads the real tree and the real corpus', () => {
   assert.notEqual(CORPUS, null, 'the repository must resolve as a workspace');
-  const files: string[] = [];
-  for (const root of SOURCE_ROOTS) walkSources(path.join(REPO, root), files);
+  const files = sourceFiles();
   assert.ok(files.length > 500, `expected the four source roots to hold hundreds of files, saw ${files.length}`);
 
   const report = build(files, CORPUS!, ITEMS);
@@ -128,8 +137,7 @@ test('the real walk reads the real tree and the real corpus', () => {
  * it teaches the reader to stop following them.
  */
 test('every reported site names a line that really contains the id as written', () => {
-  const files: string[] = [];
-  for (const root of SOURCE_ROOTS) walkSources(path.join(REPO, root), files);
+  const files = sourceFiles();
   const report = build(files, CORPUS!, ITEMS);
   for (const f of report.findings) {
     assert.ok(f.sites.length > 0, `${f.id} was reported with no site`);
@@ -159,8 +167,7 @@ test('the citation that cost the morning is named, with its successor', () => {
   assert.ok(chain.length > 0, `${THE_DEFECT} must record what replaced it`);
   assert.equal(chain[0]!.id, 'INSTR-testing-happens-against-the-current-corpus-and-an-exception');
 
-  const files: string[] = [];
-  for (const root of SOURCE_ROOTS) walkSources(path.join(REPO, root), files);
+  const files = sourceFiles();
   const report = build(files, CORPUS!, ITEMS);
   const finding = report.findings.find((f) => f.id === THE_DEFECT);
   if (finding === undefined) return;
@@ -427,8 +434,7 @@ test('check:cited-items is wired to this script', () => {
   assert.equal(pkg.scripts['check:cited-items'], 'node scripts/check-cited-items.ts');
 });
 
-test('the walk covers the four trees the task scoped and the browser modules in them', () => {
-  assert.deepEqual(SOURCE_ROOTS, ['src', 'test', 'scripts', 'e2e']);
+test('the walk covers the browser modules as source, not as build output', () => {
   assert.ok(isSourceFile('app.js'), 'src/ui/public/** is hand-written source, not build output');
   assert.ok(isSourceFile('select.ts'));
   assert.ok(!isSourceFile('types.d.ts'), 'a declaration file is generated and cites nothing');
@@ -450,14 +456,39 @@ test('the walk is the tracked tree, and what it leaves out carries its reason', 
     scanned.some((f) => f.startsWith('harness/')),
     'harness/ is executable source outside the four roots and must be walked',
   );
-  for (const root of SOURCE_ROOTS) {
+  for (const root of ['src', 'test', 'scripts', 'e2e']) {
     assert.ok(scanned.some((f) => f.startsWith(`${root}/`)), `${root}/ dropped out of the walk`);
   }
   assert.ok(scanned.length > 1000, `only ${scanned.length} source file(s) walked`);
   assert.ok(scanned.every(isSourceFile), 'a non-source file reached the walk');
-  assert.ok(!skipped.some(isSourceFile), 'a source file was skipped');
+  assert.ok(!skipped.some((s) => isSourceFile(s.file)), 'a source file was skipped');
   assert.ok(!set.has('README.md'), 'a document belongs to the second walk, not this one');
-  assert.ok(NOT_SOURCE.length > 0, 'the skip must carry a printable reason');
+  for (const s of skipped) assert.equal(s.why, NOT_SOURCE, `${s.file} skipped without the reason`);
+});
+
+/**
+ * **And the reason is PRINTED.** Round 1 of this task added the disclosure and
+ * asserted only that `NOT_SOURCE` was a non-empty string — which is true of a
+ * reason nobody ever prints. A skip a reader cannot see is the defect this item
+ * is about, one level up.
+ */
+test('the real run prints what it walked and what it skipped, with the reason', () => {
+  const out = execFileSync(process.execPath, [SCRIPT, '--quiet'], { encoding: 'utf8' });
+
+  const walked = /(\d[\d,]*) tracked source file\(s\) walked, (\d[\d,]*) not\./.exec(out);
+  assert.notEqual(walked, null, `no walk disclosure in the output:\n${out}`);
+  assert.ok(Number(walked![1]!.replaceAll(',', '')) > 1000, 'the walked count is not the tree');
+  assert.ok(Number(walked![2]!.replaceAll(',', '')) > 0, 'nothing was skipped, which cannot be');
+
+  // The REASON, verbatim off the constant rather than paraphrased here, so a
+  // reason edited into something unprintable fails rather than passing.
+  const skipped = out.split(/\r?\n/).find((l) => l.trimStart().startsWith('skipped '));
+  assert.notEqual(skipped, undefined, `no skip line in the output:\n${out}`);
+  assert.ok(
+    skipped!.includes(NOT_SOURCE),
+    `the skip line does not carry the reason:\n${skipped}\nwanted: ${NOT_SOURCE}`,
+  );
+  assert.match(out, /not tracked: untracked —/);
 });
 
 /**
@@ -497,14 +528,10 @@ test('no source file cites the absent-vs-zero standard by a name no item answers
     NICKNAME.replace(/-/g, '-(?:\\r?\\n[ \\t]*(?:\\/\\/|\\*)?[ \\t]*)?'), 'g',
   );
   const sites: string[] = [];
-  for (const root of SOURCE_ROOTS) {
-    for (const file of walkSources(path.join(REPO, root), [])) {
-      if (!isSourceFile(path.basename(file))) continue;
-      const text = readFileSync(file, 'utf8');
-      const rel = path.relative(REPO, file).replace(/\\/g, '/');
-      for (const m of text.matchAll(BROKEN)) {
-        sites.push(`${rel}:${text.slice(0, m.index).split(/\r?\n/).length}`);
-      }
+  for (const rel of sourceWalk(REPO).scanned) {
+    const text = readFileSync(path.join(REPO, rel), 'utf8');
+    for (const m of text.matchAll(BROKEN)) {
+      sites.push(`${rel}:${text.slice(0, m.index).split(/\r?\n/).length}`);
     }
   }
   assert.deepEqual(

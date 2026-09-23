@@ -99,4 +99,17 @@ test('the real script runs green over this repository and says what it considere
   assert.match(out, /considered/);
   assert.match(out, /declare retired phrases/);
   assert.match(out, /every recorded correction is also applied/);
+
+  // **And what it did NOT consider, with why.** Round 1 asserted the
+  // considered count and left the skip line unasserted — a reason nobody
+  // prints is the same silence as no reason at all, one level up from the
+  // defect this item is about.
+  const skipped = out.split(/\r?\n/).find((l) => l.trimStart().startsWith('skipped '));
+  assert.notEqual(skipped, undefined, `no skip line in the output:\n${out}`);
+  assert.ok(
+    skipped!.includes(SKIP_REASON_NOT_MARKDOWN),
+    `the skip line does not carry the reason:\n${skipped}\nwanted: ${SKIP_REASON_NOT_MARKDOWN}`,
+  );
+  assert.match(skipped!, /skipped \d+ —/, 'a skip with no count is not a measurement');
+  assert.match(out, /not tracked: untracked —/);
 });

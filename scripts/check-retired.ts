@@ -54,17 +54,17 @@
  * `ROOTS` could not reach, and still plants a violation to prove it goes red.
  */
 
-import { execFileSync, } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { isMainEntry } from '../src/core/paths.ts';
+import { skipLines, walkTracked, type Skip } from './tracked-walk.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 
 const BLOCK = /<!--\s*retired-phrases\s*\n([\s\S]*?)-->/;
 
 export interface Hit { doc: string; line: number; phrase: string; text: string }
-export interface Skip { file: string; why: string }
+export type { Skip };
 
 /** The one reason a tracked file is not considered, stated so it can be printed. */
 export const SKIP_REASON_NOT_MARKDOWN =
@@ -79,22 +79,10 @@ export const SKIP_REASON_NOT_MARKDOWN =
  * gate must never be able to print while blind.
  */
 export function candidates(root: string): { considered: string[]; skipped: Skip[] } {
-  const out = execFileSync('git', ['-C', root, 'ls-files', '-z'], {
-    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-  });
-  const files = out.split('\0').filter((f) => f !== '');
-  if (files.length === 0) {
-    throw new Error(
-      `git tracks no file under ${root}. This gate refuses to report a clean run over nothing.`,
-    );
-  }
-  const considered: string[] = [];
-  const skipped: Skip[] = [];
-  for (const file of files) {
-    if (file.endsWith('.md')) considered.push(file);
-    else skipped.push({ file, why: SKIP_REASON_NOT_MARKDOWN });
-  }
-  return { considered, skipped };
+  const walk = walkTracked(
+    root, (file) => (file.endsWith(`.md`) ? null : SKIP_REASON_NOT_MARKDOWN),
+  );
+  return { considered: walk.scanned, skipped: walk.skipped };
 }
 
 /**
@@ -170,12 +158,11 @@ export interface Tally {
  */
 export function summarise(t: Tally): string {
   const n = (v: number): string => v.toLocaleString('en-US');
-  const lines = [
+  return [
     `${n(t.considered)} tracked Markdown document(s) considered: ${n(t.declaring)} declare `
     + `retired phrases, ${n(t.phrases)} phrase(s) in all, ${n(t.hits)} still present in a body.`,
-    `  ${n(t.skipped.length)} tracked file(s) not considered: ${SKIP_REASON_NOT_MARKDOWN}.`,
-  ];
-  return lines.join('\n');
+    ...skipLines(t.skipped),
+  ].join('\n');
 }
 
 function main(): number {

@@ -56,11 +56,15 @@
  * the old one could not see. `test/scripts/text-files-gate.test.ts` holds both
  * halves.
  */
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../src/core/paths.ts';
+import {
+  NOT_TRACKED, partition as partitionTracked, skipLines, trackedFiles, type Skip, type Walk,
+} from './tracked-walk.ts';
+
+export { trackedFiles };
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -91,48 +95,34 @@ export const BINARY_EXTENSIONS: ReadonlyMap<string, string> = new Map([
   ['.bundle', 'a git bundle — a packfile, binary by construction'],
 ]);
 
-/** Why an untracked file is out of range: git never diffs it. */
-export const SKIP_REASON_UNTRACKED =
-  'untracked — git never diffs it, so the lost-diff defect cannot reach it';
+/**
+ * Why an untracked file is out of range, re-exported from the one place every
+ * gate here says it: `scripts/tracked-walk.ts`.
+ */
+export const SKIP_REASON_UNTRACKED = NOT_TRACKED;
 
-export interface Skip { file: string; why: string }
+export type { Skip };
 export interface Offender { file: string; offset: number; context: string }
 
 /**
- * Every file git tracks, repository-relative, with `/` separators on every
- * platform.
+ * The reason to skip a file, or `null` to scan it — this gate's whole
+ * contribution to the shared walk (`scripts/tracked-walk.ts`).
  *
- * Fails CLOSED. If `git ls-files` cannot answer, this THROWS rather than
- * returning `[]`: a scanner that reports "0 files scanned, none contains a
- * NUL" because it could not look is the exact failure
- * `INV-nothing-is-dropped-silently` refuses, and it is the failure that let
- * the previous shape pass while seeing a third of the tree.
+ * The extension is folded INTO the reason rather than grouped beside it, so
+ * that `skipLines`' grouping BY REASON is grouping by extension here, and no
+ * second grouping rule has to live in this file.
  */
-export function trackedFiles(root: string): string[] {
-  const out = execFileSync('git', ['-C', root, 'ls-files', '-z'], {
-    encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-  });
-  const files = out.split('\0').filter((f) => f !== '');
-  if (files.length === 0) {
-    throw new Error(
-      `git tracks no file under ${root}. This gate refuses to report a clean scan of nothing — `
-      + 'see INV-nothing-is-dropped-silently.',
-    );
-  }
-  return files;
+export function skipReason(file: string): string | null {
+  const ext = path.extname(file).toLowerCase();
+  const why = BINARY_EXTENSIONS.get(ext);
+  return why === undefined ? null : `${ext}, ${why}`;
 }
 
 /** Split a tracked file list into what is read and what is declined, with why. */
-export function partition(files: readonly string[]): { scanned: string[]; skipped: Skip[] } {
-  const scanned: string[] = [];
-  const skipped: Skip[] = [];
-  for (const file of files) {
-    const why = BINARY_EXTENSIONS.get(path.extname(file).toLowerCase());
-    if (why === undefined) scanned.push(file);
-    else skipped.push({ file, why });
-  }
-  return { scanned, skipped };
+export function partition(files: readonly string[]): Walk {
+  return partitionTracked(files, skipReason);
 }
+
 
 /** The files carrying a NUL, with the byte offset and the text around it. */
 export function nulOffenders(root: string, files: readonly string[]): Offender[] {
@@ -167,26 +157,11 @@ export function nulOffenders(root: string, files: readonly string[]): Offender[]
  * not distinguish a healthy repository from a gate pointed at a third of one.
  */
 export function summarise(scanned: readonly string[], skipped: readonly Skip[]): string {
-  const byExtension = new Map<string, { count: number; why: string }>();
-  for (const s of skipped) {
-    const ext = path.extname(s.file).toLowerCase();
-    const row = byExtension.get(ext);
-    if (row === undefined) byExtension.set(ext, { count: 1, why: s.why });
-    else row.count += 1;
-  }
-  const lines = [
+  return [
     `${scanned.length + skipped.length} tracked file(s): `
     + `${scanned.length} scanned for NUL bytes, ${skipped.length} skipped.`,
-  ];
-  if (byExtension.size === 0) {
-    lines.push('  skipped: none — every tracked file was read.');
-  } else {
-    for (const [ext, row] of [...byExtension].sort((a, b) => b[1].count - a[1].count)) {
-      lines.push(`  skipped ${row.count} × ${ext} — ${row.why}`);
-    }
-  }
-  lines.push(`  not tracked: ${SKIP_REASON_UNTRACKED}.`);
-  return lines.join('\n');
+    ...skipLines(skipped),
+  ].join('\n');
 }
 
 function main(): number {
