@@ -640,14 +640,82 @@ const SESS_NOT_PROJECTED_KEY = 'sess.notProjected';
  */
 function noteCodeSkew(answer) {
   if (answer === null || typeof answer !== 'object') return;
+  // **THE THIRD STATE, AND IT IS NEITHER OF THE TWO ABOVE**
+  // (`TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`).
+  //
+  // `staleCode` became `boolean | null` on 2026-09-23: `null` is a server that
+  // could not walk its own sources at all, so it has no boot stamp and can
+  // never answer the question either way. Before that it answered `false` —
+  // the measured good state — and the two lines below then CLEARED a banner on
+  // the strength of a walk that never happened.
+  //
+  // `codeUnmeasured` carries which directory and which error. It is kept and
+  // drawn rather than merely not-cleared, because a fact that arrives on the
+  // wire every sixty seconds and is rendered nowhere is the same silence one
+  // layer up (`INV-nothing-is-dropped-silently`).
+  if (answer.staleCode === null && answer.codeUnmeasured !== undefined) {
+    codeUnmeasuredAnswer = answer.codeUnmeasured;
+    fillCodeState();
+    return;
+  }
   if (answer.staleCode === true) {
     if (!codeSkewSeen) { codeSkewSeen = true; showLiveState(); }
     showCodeSkew();
     return;
   }
+  // `=== false` and never a falsy test — see above. `null` must not reach here
+  // and `undefined` (the twenty other routes) must not either.
   if (answer.staleCode === false) {
     if (codeSkewSeen) { codeSkewSeen = false; showLiveState(); }
+    if (codeUnmeasuredAnswer !== null) { codeUnmeasuredAnswer = null; fillCodeState(); }
   }
+}
+
+/**
+ * The server's own reason, remembered — the shape `corpusDriftAnswer` below
+ * established, and for its argument: `stream()`'s catch stops the heartbeat, so
+ * a notice that fetched its own answer would be asking down the channel that is
+ * down.
+ *
+ * `null` is both "nothing has answered yet" and "the last answer was measured".
+ * Neither draws anything, which is the existing ruling for a code state that is
+ * ordinary: `showLiveState` draws no chip for a feed that is running, and a
+ * server that CAN see its own files has the banner for the one state that needs
+ * saying. What had no rendering at all was the state where the question cannot
+ * be asked.
+ */
+let codeUnmeasuredAnswer = null;
+
+/**
+ * Draw the unmeasured-code chip, as the `chip unmeas` the strip already has.
+ *
+ * Deliberately the same visual vocabulary `fillCorpusDrift` uses for `drifted:
+ * null` — the glyph, the class and the "not known rather than no" reading are
+ * one convention in this strip, and a second one invented here would be a
+ * reader having to learn that two ◌ chips mean different kinds of absence.
+ *
+ * The reason rides in the TITLE rather than in the chip's text: the strip is
+ * one line of chips with `min-inline-size: 88px` and an ellipsis, and a path
+ * plus an errno does not fit in it. The chip says the state; the title says
+ * which directory and which error, which is what a reader acts on.
+ */
+function fillCodeState() {
+  const host = document.getElementById('codestate');
+  if (host === null) return;
+  if (codeUnmeasuredAnswer === null || typeof codeUnmeasuredAnswer !== 'object') {
+    host.replaceChildren();
+    return;
+  }
+  const chip = document.createElement('span');
+  chip.className = 'chip unmeas';
+  chip.dataset.g = '◌';
+  chip.dataset.f = 'code-state';
+  chip.dataset.k = 'strip.codeUnmeasured';
+  chip.append(...translate(table.strings, 'strip.codeUnmeasured'));
+  chip.title = flat(table.strings, 'title.codeUnmeasured', {
+    reason: typeof codeUnmeasuredAnswer.reason === 'string' ? codeUnmeasuredAnswer.reason : '—',
+  });
+  host.replaceChildren(chip);
 }
 
 /* ══ THE CORPUS HAS MOVED AND THE LOG DID NOT SEE IT ══════════════════
@@ -4669,6 +4737,30 @@ function renderChrome() {
   const configErr = document.createElement('span');
   configErr.className = 'configerr';
   configErr.id = 'configerr';
+  // ── AND WHETHER THIS SERVER CAN SEE ITS OWN SOURCE AT ALL —
+  // `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`. A
+  // FOURTH fact, its own element for the reason the two above are: a different
+  // source (`staleCode: null` on the same two requests), a different refill
+  // trigger, and a refill of any of them must never blank the others.
+  //
+  // It is EMPTY in the ordinary case and that is not a silence: the two
+  // measured states already have their surfaces — the `ex.codeSkew` banner for
+  // a skew, and nothing at all for a current server, which is this page's
+  // standing ruling for its own ordinary state (see `showLiveState`, which
+  // draws no chip for a feed that is running). What had no rendering anywhere
+  // was the state where the question could not be asked.
+  //
+  // **Its class carries no CSS rule, and that is `#configerr`'s precedent
+  // rather than an omission.** `.corpusdrift` declares `min-inline-size: 88px`
+  // because that chip is ALWAYS drawn and must not jitter as its text changes.
+  // This one is empty on every healthy install, so the same rule would spend 88
+  // pixels of a one-line strip on a span that renders nothing — measured
+  // against `e2e/strip.spec.ts`, which asserts the strip's widths. `.configerr`
+  // is the existing host with exactly this shape and exactly no rule; the class
+  // is a handle for a test, not a box.
+  const codeState = document.createElement('span');
+  codeState.className = 'codestate';
+  codeState.id = 'codestate';
   // ── AND WHAT THE CORPUS IS WAITING ON — owner ruling 2026-08-31.
   //
   // Two counts and two doors: doctor findings at error or warning level, and
@@ -4697,7 +4789,7 @@ function renderChrome() {
   const notes = document.createElement('span');
   notes.className = 'sprop';
   notes.id = 'corpusnotes';
-  corpus.append(count, drift, configErr, notes);
+  corpus.append(count, drift, configErr, codeState, notes);
 
   // ── WHERE THIS SESSION IS, AND WHICH CORPUS IT GOT — owner request,
   // 2026-09-02, and the coordinator's ruling the same day that BOTH are drawn
@@ -6166,6 +6258,13 @@ async function fillChrome() {
   // config governing it is the file on disk is not a page that measured a
   // working one — see `fillConfigError`.
   fillConfigError();
+  // And the third, whose empty is the ordinary case rather than a not-yet:
+  // `codeUnmeasuredAnswer` is `null` at boot and stays `null` for every server
+  // that CAN walk its own sources, so this draws nothing until one cannot. It
+  // is called here anyway so the element is owned by one function from the
+  // first paint — a host that is filled only from a network answer is a host
+  // nothing clears when the answer stops saying it.
+  fillCodeState();
   await Promise.all([fillGit(git), fillItems(count), fillProvenance()]);
 }
 

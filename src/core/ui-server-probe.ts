@@ -321,6 +321,17 @@ export async function claimUiServerRecord(
  * exactly as it treats `fresh` — it leaves the server alone. Restarting a
  * server because a question about it went unanswered would be a new outage
  * bought to fix an old one.
+ *
+ * **That sentence was true about this file and false about the file it cited,
+ * until 2026-09-23** — `TASK-an-install-whose-sources-cannot-be-walked-reports-
+ * its-code`. `stampCodeIdentity` made no such distinction: a boot walk that
+ * failed set its stamp to `null` and `isStale()` answered `false` for the life
+ * of the process, so a server that could not see its own sources served
+ * `staleCode: false` and `freshnessOf` below read it as `'fresh'`. It now
+ * answers `staleCode: null` in that state, which falls through both of this
+ * function's equality tests to `'unknown'` — the value this paragraph always
+ * claimed. **Nothing here changed**, and that is the point: the reader was
+ * already written correctly for a wire that had one state too few.
  */
 export type Freshness = 'fresh' | 'stale' | 'unknown';
 

@@ -83,7 +83,9 @@ import { STATUSES } from '../core/validate.ts';
 import { VERSION } from '../core/version.ts';
 import { liveWorkspace, repositoryRoot, type Workspace } from '../core/workspace.ts';
 import { registerAskRoutes } from './ask-model.ts';
-import { stampCodeIdentity, type CodeScope } from '../core/code-identity.ts';
+import {
+  stampCodeIdentity, type CodeIdentity, type CodeScope, type UnmeasuredCode,
+} from '../core/code-identity.ts';
 import { registerCaptureRoutes } from './capture-model.ts';
 import { CLI_ENTRY, registerExecuteRoutes } from './execute.ts';
 import { registerAnchorWriteRoutes } from './anchor-write.ts';
@@ -289,6 +291,49 @@ let routesRegistered = false;
  * wrapped here. An unsafe session id, a torn sample and a killed writer all
  * already land on one of the four named reasons.
  */
+/**
+ * **The code disclosure, as the two fields both routes serve** —
+ * `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`.
+ *
+ * `staleCode` was a bare boolean and that was a lie in one direction. An
+ * install whose sources cannot be walked has no boot stamp at all, so
+ * `isStale()` answered `false` — and `false` is not neutral anywhere
+ * downstream: `noteCodeSkew` in `public/app.js` CLEARS its banner on an
+ * explicit `false`, and `freshnessOf` in `core/ui-server-probe.ts` reads it as
+ * `'fresh'` and leaves the server alone. The one warning this product has for a
+ * process answering from code it can no longer see was being told, every sixty
+ * seconds, that everything was current.
+ *
+ * **`boolean | null`, which is not a new convention on this payload.** `corpus:
+ * { drifted: boolean | null }` has carried the identical distinction since
+ * `plan:live seq:4` — `false` is a measurement, `null` is the absence of one —
+ * and `core/ui-server-probe.ts` already reads anything that is neither `true`
+ * nor `false` as `unknown`, which every caller of it treats as "leave it
+ * alone". So the wire gains a state that its existing readers already handle,
+ * rather than a second field they would have to be taught.
+ *
+ * **`codeUnmeasured` beside it, present either way**, for the reason `git` is
+ * present either way one field up: which directory and which error is what
+ * makes the `null` actionable, and a strip that can only say "something is
+ * wrong" sends the reader looking for what.
+ *
+ * **One `freshness()` call, not a `freshness()` and an `isStale()`.** Both run
+ * the same stat gate — measured at 2.4 ms over the real scope in
+ * `core/code-identity.ts` — and this rides the heartbeat, once a minute per
+ * visible tab. Deriving both fields from one reading also means the two cannot
+ * disagree, which is the whole argument `staleCode` was written with: one
+ * identity, two readers, never two stamps.
+ */
+function codeState(
+  code: CodeIdentity,
+): { staleCode: boolean | null; codeUnmeasured: UnmeasuredCode | null } {
+  const freshness = code.freshness();
+  return {
+    staleCode: freshness === 'unmeasured' ? null : freshness === 'stale',
+    codeUnmeasured: code.unmeasured,
+  };
+}
+
 function pingOccupancy(ws: Workspace, url: URL): Occupancy | null {
   const root = ws.projectRoot;
   if (root === null) return null;
@@ -467,7 +512,7 @@ export function registerReadRoutes(): void {
       status: 200,
       body: {
         ok: true,
-        staleCode: ctx.code.isStale(),
+        ...codeState(ctx.code),
         corpus: measureCorpusDrift(ctx.ws.projectRoot),
         occupancy: pingOccupancy(ctx.ws, ctx.url),
         // **AND A FOURTH: `session`** — owner request 2026-09-09, and it is
@@ -497,7 +542,7 @@ export function registerReadRoutes(): void {
         // a sentence without it: a reader who knows when this process loaded
         // its modules can see for themselves how far behind it is.
         startedAt: ctx.code.startedAt,
-        staleCode: ctx.code.isStale(),
+        ...codeState(ctx.code),
         // **The config break, on the channel every screen already reads**
         // (`plan:live seq:13`).
         //
@@ -1571,7 +1616,61 @@ export async function startUiServer(options: UiServerOptions): Promise<RunningUi
 
     let body: unknown;
     if (req.method === 'POST') {
-      try { body = JSON.parse(await readBody(req)); } catch { body = undefined; }
+      // ── A BODY THAT WAS NOT JSON IS NOT A BODY THAT WAS NOT SENT ────────
+      //
+      // `swallow/11` m19. This line used to be
+      // `try { … } catch { body = undefined; }`, and `undefined` is also what
+      // a POST with no body produces — so every one of the thirteen POST
+      // handlers answered a caller whose ENVELOPE was wrong with its own
+      // sentence about the CONTENTS it wanted: *"POST /api/config/check takes
+      // a JSON body: { candidate: … }"*, said to a caller that sent a
+      // candidate and mistyped it. `read-model-config.ts` states the rule
+      // directly above the handler that broke it — *"'Your config is invalid'
+      // and 'I could not read what you sent me' must never share a
+      // response"* — so the argument was already written and only the
+      // narrowing was missing.
+      //
+      // **Refused HERE rather than in each handler**, because the conflation
+      // is not in any of them: they are each entitled to their own sentence,
+      // and what they were handed was a value with two meanings. One refusal
+      // at the one line that produces it is the version the fourteenth route
+      // cannot forget.
+      //
+      // **`readBody`'s own rejection lands here too**, and it is the worse
+      // half: a body past `MAX_BODY_BYTES` was reported as a missing field,
+      // which tells a caller to add the field it had already sent 10 MB of.
+      // Its message rides the same answer.
+      //
+      // **An empty body is still no body.** `JSON.parse('')` throws, so
+      // refusing on every parse failure would refuse every bodyless POST —
+      // a behaviour change wearing this item's name. Nothing sent stays
+      // `undefined` and reaches the handler exactly as before.
+      let raw: string;
+      try {
+        raw = await readBody(req);
+      } catch (err) {
+        sendJson(res, { status: 400, body: { error:
+          'the request body could not be read: ' +
+          `${err instanceof Error ? err.message : String(err)}` } });
+        return;
+      }
+      if (raw.trim() === '') body = undefined;
+      else {
+        try {
+          body = JSON.parse(raw);
+        } catch (err) {
+          // The submitted text is NOT echoed — ruling 11's rule for the gate's
+          // reasons, and §0.6 field rule 3 for what may reach the log: it is
+          // unbounded caller-supplied text and the sender already has it. The
+          // parser's own message says where it went wrong, which is the part
+          // the sender does not have.
+          sendJson(res, { status: 400, body: { error:
+            `the request body was not JSON, so nothing here read it (${raw.length} byte(s): ` +
+            `${err instanceof Error ? err.message : String(err)}). This is a refusal about the ` +
+            'ENVELOPE — no route saw the body and none of them is reporting a missing field.' } });
+          return;
+        }
+      }
     }
     // **`live.now()`, per request.** The one line that makes every endpoint
     // read the same `config.json` the user is editing. `boot` above is not in

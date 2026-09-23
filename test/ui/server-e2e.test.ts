@@ -199,14 +199,24 @@ test('wrong token 403, missing header 401, bad Origin 403 — and no CORS header
     // transcript nor a session that dispatched no lanes. Its three real states
     // are held apart in `test/cli/statusline-session-scale.test.ts`, which owns
     // the reads both surfaces make.
+    // `codeUnmeasured` (`TASK-an-install-whose-sources-cannot-be-walked-
+    // reports-its-code`) is the fifth field and it is `staleCode`'s other half:
+    // that one became `boolean | null`, where `null` says the server never
+    // managed to walk its own sources, and this one names which directory and
+    // which error. Present either way, for the reason `git` is present either
+    // way on `/api/meta`. Its unmeasured state is driven end to end in
+    // `test/ui/code-skew.test.ts`, which owns the three readings.
     const body = await good.json() as {
-      ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null }; occupancy: unknown;
+      ok: boolean; staleCode: boolean | null; codeUnmeasured: unknown;
+      corpus: { drifted: boolean | null }; occupancy: unknown;
       session: unknown;
     };
-    assert.deepEqual(Object.keys(body).sort(), ['corpus', 'occupancy', 'ok', 'session', 'staleCode']);
+    assert.deepEqual(Object.keys(body).sort(),
+      ['codeUnmeasured', 'corpus', 'occupancy', 'ok', 'session', 'staleCode']);
     assert.equal(body.session, null, 'a ping that names no session asked nothing of the disk either');
     assert.equal(body.ok, true);
-    assert.equal(typeof body.staleCode, 'boolean');
+    assert.ok(body.staleCode === null || typeof body.staleCode === 'boolean',
+      'the heartbeat must always carry a code finding, even when it is "not known"');
     assert.ok(
       body.corpus.drifted === null || typeof body.corpus.drifted === 'boolean',
       'the heartbeat must always carry a corpus finding, even when it is "not known"',
