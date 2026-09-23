@@ -240,7 +240,7 @@ says "establish by executing" instead of asserting it.
 | An append retries per line, with a named worst case | `core/seen-file.ts` · `= 200 ms of backoff PER LINE` · ~154 |
 | Sanitisation is lossy for a composite key — a digest, not reversible | `core/ledger.ts` · `export function sanitizeSessionId(sessionId: string): string {` · ~711 |
 | The restore snapshot lives beside the seen file, keyed the same way | `core/ledger.ts` · `export function snapshotPath(root: string, sessionId: string): string {` · ~719 |
-| `state/` is gitignored by the file that writes into it | `core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~764 |
+| `state/` is gitignored by the file that writes into it | `core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~764 | <!-- historical-citation: quotes ledger.ts as it stood in 2026-08; release/25 (2026-09-23) routed the marker write through core/private-gitignore.ts writePrivateGitignore -->
 | Reading a snapshot never throws | `core/ledger.ts` · `export function readSnapshotMeta(root: string, sessionId: string): SnapshotMeta` · ~861 | <!-- historical-citation: the signature as this plan found it; readSnapshotMeta now answers SnapshotRead so an unreadable snapshot can be told from an absent one (TASK-unreadable-is-collapsed-into-absent-and-the-next-message, 2026-09-14) -->
 | The only cleanup is age-based, 30 days by mtime | `core/ledger.ts` · `export const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;` · ~792 |
 | …its signature, including the per-file callback a caller needs to disclose what went | `core/ledger.ts` · `export function pruneSnapshots(` · ~814 |
@@ -1752,7 +1752,7 @@ explicit**: the caller always supplies the id. That is §6m.8's ruling expressed
 **Write mechanics:** temp file then rename through
 `core/rebuild.ts` · `export function retryOnTransientFsError<T>(fn: () => T, attempts = 5): T {` · ~247,
 the same shape `writeSnapshot` uses, and write a `.gitignore` of `*` beside it exactly as
-`core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~764 does — because
+`core/ledger.ts` · `writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');` · ~764 does — because <!-- historical-citation: quotes ledger.ts as it stood in 2026-08; release/25 (2026-09-23) routed the marker write through core/private-gitignore.ts writePrivateGitignore -->
 `state/` may not have one yet if no snapshot has ever been written, and a name file that reaches git
 is a session identifier travelling with the corpus.
 
