@@ -102,10 +102,22 @@
  * why the freeze reads from it and is not confused by it.
  */
 import { CORPUS, CORPUS_ENV } from './app.ts';
-import { ARCHIVE_CONFIG_ENV, FROZEN_ROOT_ENV, freezeCorpus } from './frozen-corpus.ts';
+import {
+  ARCHIVE_CONFIG_ENV, FROZEN_ROOT_ENV, SEEDED_SESSION, freezeCorpus,
+} from './frozen-corpus.ts';
 
 export default function globalSetup(): void {
   const frozen = freezeCorpus(CORPUS);
+  // **Said out loud, because a seeded history is not a real one.** A corpus
+  // that had recorded no session at all — a fresh clone, every hosted runner —
+  // was given one delivery through the SubagentStart door; `frozen-corpus.ts`'s
+  // `SEEDED_SESSION` carries why. A workstation's snapshot is never seeded.
+  if (frozen.seeded) {
+    process.stdout.write(
+      `e2e: the corpus had recorded no session; the snapshot was seeded with one delivery `
+      + `under "${SEEDED_SESSION}" (never the source corpus)\n`,
+    );
+  }
   process.env[CORPUS_ENV] = frozen.workspace;
   // **The BOX, not the workspace**, and the two are different on purpose: the
   // workspace is named after the repository so the provenance bar and the

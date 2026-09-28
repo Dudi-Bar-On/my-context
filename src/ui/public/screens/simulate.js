@@ -724,6 +724,18 @@ export async function render(root, ctx) {
   qbar.setAttribute('aria-label', ctx.tFlat('sess.title'));
   const qNote = el('p', 'small');
   qNote.append(...ctx.t('sim.qnote'));
+  /* **AND WHEN THERE IS NO SESSION, THE MISSING BUTTON IS NAMED.** `drawQ`
+     draws one button rather than an inert second one when the corpus has
+     recorded no session — correctly — but a strip that silently lost half of
+     the choice `sim.qnote` just promised reads as a screen that failed to
+     load it. Measured 2026-09-28 on a fresh clone's corpus (no audit history,
+     so `/api/sessions` answers none and the shell is `cold`): the note
+     beneath promised "the session above" over a strip that drew no session.
+     Shown only in that state, and hidden the moment a session exists. */
+  const qNone = el('p', 'small');
+  qNone.id = 'simqnone';
+  qNone.append(...ctx.t('sim.qnone'));
+  qNone.hidden = true;
 
   /**
    * The session every `/api/simulate` and `/api/simulate/sweep` call on this
@@ -764,7 +776,7 @@ export async function render(root, ctx) {
   // the belief that the second is a view of the first.
   stairCol.append(
     stairHead, stairPlate, ctl, rangeCtl, spaced(rangeNote), restoreCtl, spaced(wasNote),
-    tierPick, qbar, spaced(qNote), readout, spaced(stairNote),
+    tierPick, qbar, spaced(qNone), spaced(qNote), readout, spaced(stairNote),
   );
 
   const ladderCol = el('div');
@@ -1611,6 +1623,7 @@ export async function render(root, ctx) {
     qbar.replaceChildren();
     const live = ctx.session();
     const options = live === 'cold' ? ['cold'] : ['live', 'cold'];
+    qNone.hidden = live !== 'cold';
     for (const mode of options) {
       const button = el('button');
       button.type = 'button';

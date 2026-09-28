@@ -46,10 +46,11 @@ interface Entry {
   key: string; group: string; subject: string; label: string; urgency: string | null;
 }
 const {
-  CHOICE_KEY, STRIP_PICK, isUrgent, neverForced, pickColumns, pickGroups, pickKeyOf,
-  readChoice, writeChoice,
+  CHOICE_KEY, FIELD_PICK_KEY, STRIP_PICK, isUrgent, neverForced, pickColumns, pickGroups,
+  pickKeyOf, readChoice, writeChoice,
 } = (await import(CHOICE)) as {
   CHOICE_KEY: string;
+  FIELD_PICK_KEY: Readonly<Record<string, string>>;
   STRIP_PICK: readonly Entry[];
   isUrgent: (el: unknown, urgency: string | null) => boolean;
   neverForced: () => string[];
@@ -146,6 +147,26 @@ describe('which pill answers to which name', () => {
     // not a strip NAME, so the field id is the handle.
     assert.equal(pickKeyOf(pill({ f: 'injections', ulab: 'strip.inj' })), 'injections');
     assert.equal(pickKeyOf(pill({ f: 'corpus-drift' })), 'corpus-drift');
+  });
+
+  it('answers a nameless state of a named field to the row of THAT field', () => {
+    // Measured 2026-09-28 on a corpus with no recorded session: the shell opens
+    // cold, the context figure prints `cold session …` with no WINDOW name and
+    // the limits group prints `no account windows reported` with no 5H name,
+    // and both answered to ids the dialog had no row for — so unticking WINDOW
+    // left the cold sentence standing where the window figure had been.
+    assert.equal(pickKeyOf(pill({ f: 'context' })), 'window');
+    assert.equal(pickKeyOf(pill({ f: 'rate-5h' })), 'rate5');
+    // The named state is unchanged: the printed name still decides first.
+    assert.equal(pickKeyOf(pill({ f: 'context', ulab: 'strip.grp.window' })), 'window');
+    assert.equal(pickKeyOf(pill({ f: 'rate-5h', ulab: 'strip.grp.rate5' })), 'rate5');
+    // And every alias lands on a row the dialog really offers — an alias to a
+    // key the table does not hold would be the same hole with a new name.
+    const keys = new Set(STRIP_PICK.map((e) => e.key));
+    for (const [field, key] of Object.entries(FIELD_PICK_KEY)) {
+      assert.ok(keys.has(key), `${field} answers to ${key}, which STRIP_PICK does not name`);
+      assert.ok(!keys.has(field), `${field} is aliased AND has its own row — one of them is a lie`);
+    }
   });
 
   it('answers null for something that is not a pill', () => {

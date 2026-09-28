@@ -1,4 +1,5 @@
 // @basis TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-the-audit-log-still-records-two-session-ids-that-never,
 // TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the,
 // INSTR-testing-happens-against-the-current-corpus-and-an-exception
 /**
@@ -27,7 +28,9 @@ import {
   existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
-import { disposeFrozenCorpus, freezeCorpus } from '../../e2e/frozen-corpus.ts';
+import {
+  SEEDED_SESSION, disposeFrozenCorpus, freezeCorpus, recordsASession,
+} from '../../e2e/frozen-corpus.ts';
 import { sandbox } from '../helpers/workspace.ts';
 
 /**
@@ -146,4 +149,57 @@ test('the repository half is linked, and disposing the snapshot leaves the repos
     'disposing the snapshot reached the source corpus',
   );
   repo.dispose();
+});
+
+/**
+ * **A CORPUS THAT HAS RECORDED NO SESSION IS SEEDED — IN THE SNAPSHOT ONLY —
+ * AND ONE THAT HAS IS LEFT EXACTLY AS IT WAS.** `SEEDED_SESSION` in
+ * `e2e/frozen-corpus.ts` carries why: a hosted runner's corpus has no audit
+ * history since task 4.15 closed the `npm test` leak that used to be one, and
+ * every session-subject browser spec then measured the cold shell.
+ */
+test('a corpus with no recorded session is given one delivery in the snapshot, never in the source', () => {
+  const repo = repository();
+  assert.equal(recordsASession(path.join(repo.cwd, '.my_context')), false,
+    'the throwaway corpus already records a session, so this measures nothing');
+  const made = freezeCorpus(repo.cwd);
+  try {
+    assert.equal(made.seeded, true, 'a corpus with no session was not seeded');
+    assert.equal(recordsASession(path.join(made.workspace, '.my_context')), true,
+      'the seed reported success and the snapshot records no session');
+    const log = readFileSync(
+      path.join(made.workspace, '.my_context', '.audit', 'audit.jsonl'), 'utf8');
+    assert.match(log, new RegExp(`"sessionId":"${SEEDED_SESSION}"`),
+      'the delivery is not under the declared seed id, so a reader cannot tell it from a real one');
+    // History, not state: the seed leaves no seen file behind.
+    assert.equal(existsSync(path.join(made.workspace, '.my_context', 'state')), false,
+      'the seed left session state in the snapshot');
+    // And the source corpus is untouched.
+    assert.equal(recordsASession(path.join(repo.cwd, '.my_context')), false,
+      'seeding the snapshot wrote a delivery into the source corpus');
+  } finally {
+    disposeFrozenCorpus(made.box);
+    repo.dispose();
+  }
+});
+
+test('a corpus that already records a session is not seeded', () => {
+  const repo = repository();
+  const audit = path.join(repo.cwd, '.my_context', '.audit');
+  mkdirSync(audit, { recursive: true });
+  const real = '{"protocol":"my_context/audit@2","kind":"injection","op":"session-start",'
+    + '"hook":"SessionStart","sessionId":"a-real-session","injected":[],"tokens":0,'
+    + '"at":"2026-09-28T00:00:00.000Z"}\n';
+  writeFileSync(path.join(audit, 'audit.jsonl'), real);
+  const made = freezeCorpus(repo.cwd);
+  try {
+    assert.equal(made.seeded, false, 'a corpus with a real history was seeded anyway');
+    const log = readFileSync(
+      path.join(made.workspace, '.my_context', '.audit', 'audit.jsonl'), 'utf8');
+    assert.doesNotMatch(log, new RegExp(SEEDED_SESSION),
+      'the snapshot of a corpus with a real history carries a seeded delivery');
+  } finally {
+    disposeFrozenCorpus(made.box);
+    repo.dispose();
+  }
 });

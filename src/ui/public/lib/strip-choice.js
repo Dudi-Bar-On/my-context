@@ -52,11 +52,34 @@ export const CHOICE_KEY = 'mycontext.strip.fields';
 export const GRP_PREFIX = 'strip.grp.';
 
 /**
+ * **A FIELD THAT PRINTS ITS NAME IN ONE STATE AND NOT IN ANOTHER IS STILL ONE
+ * FIELD.**
+ *
+ * The context figure prints `WINDOW` beside its bar when the context is
+ * known (`bandUsage` gives it the `.ulab`), and prints a sentence with no
+ * name when it is not — `cold session …`, `no status-line bridge`,
+ * `context unknown …`. The limits group prints `5H` beside a window that
+ * reported, and `no account windows reported` when neither did. Keyed by
+ * printed name alone, those second states answered to their raw field ids,
+ * `context` and `rate-5h` — ids this table has no row for — so a reader who
+ * unticked WINDOW still saw the cold-session sentence in its place, and the
+ * dialog had no row that could remove it. Measured 2026-09-28 on a corpus with
+ * no recorded session, where the shell opens cold: `e2e/strip-picker.spec.ts`
+ * collected exactly those two keys as drawn and unnamed.
+ *
+ * So a field id whose nameless states stand in for a named field answers to
+ * THAT field's row. The `data-f` stays what it is — it is the terminal's
+ * segment id, and the parity gates address the fact by it.
+ */
+export const FIELD_PICK_KEY = Object.freeze({ context: 'window', 'rate-5h': 'rate5' });
+
+/**
  * **WHICH NAME THIS PILL ANSWERS TO.**
  *
  * The pill's own printed name where it has one, and its field id where it does
- * not. Two pills that print one name — the model and its modes — are one
- * entry, which is right: MODEL is one thing to a reader.
+ * not — through `FIELD_PICK_KEY` for the two ids whose nameless states stand
+ * in for a named field. Two pills that print one name — the model and its
+ * modes — are one entry, which is right: MODEL is one thing to a reader.
  *
  * Takes anything with `dataset` and `querySelector`, so it is drivable without
  * a browser.
@@ -70,7 +93,8 @@ export function pickKeyOf(el) {
     if (name !== '') return name;
   }
   const field = el.dataset?.f;
-  return typeof field === 'string' && field !== '' ? field : null;
+  if (typeof field !== 'string' || field === '') return null;
+  return Object.hasOwn(FIELD_PICK_KEY, field) ? FIELD_PICK_KEY[field] : field;
 }
 
 /**

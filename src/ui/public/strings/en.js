@@ -1205,6 +1205,7 @@ export const strings = {
   // ── The question: this session, or a brand-new one (plan:walk seq:86) ────
   // The injection preview's precedent, carried to the second screen with the
   // same defect. Warm stays the default; cold is offered and LABELLED.
+  'sim.qnone': 'No session is recorded in this corpus yet, so there is no session for the warm question to ask about — {b:cold} is the only question this screen can answer here.',
   'sim.qnote': '{b:Two questions, not two views.} Default is {b:cold} — what a brand-new window would get from this corpus and these budgets, unaffected by any one session’s history. The session above answers what it would get right now, with the {m:seen} set it was handed. Pressed control shows which one you see.',
   'sim.seen': '{b:Filtered before budgeting} — {n} item(s) removed at the {m:seen} gate: already delivered this session. The gate runs before any tier picks candidates, so 0 of 0 below can mean this. Ask the cold question instead.',
   'sim.seen0': 'Nothing was removed at the {m:seen} gate, so an empty tier below means nothing qualified. A cold question always reads zero — a new window has been shown nothing.',

@@ -1,6 +1,7 @@
 // @basis INSTR-testing-happens-against-the-current-corpus-and-an-exception,
 // TASK-the-browser-suite-returns-to-the-real-corpus-and-the,
 // TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-the-audit-log-still-records-two-session-ids-that-never,
 // TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the
 /**
  * **THE CORPUS IS STILL THIS REPOSITORY'S OWN. WHAT IS FROZEN IS THE SESSION
@@ -99,12 +100,14 @@
  */
 import { execFileSync } from 'node:child_process';
 import {
-  copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync,
+  copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync,
+  symlinkSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { DIR_NAME } from '../src/core/workspace.ts';
 import { projectDirName } from '../src/core/conversation-index.ts';
+import { auditSegments } from '../src/core/audit.ts';
 
 /** Where `globalSetup` records the snapshot it made, so teardown can delete it. */
 export const FROZEN_ROOT_ENV = 'MYCONTEXT_E2E_FROZEN_ROOT';
@@ -144,6 +147,93 @@ export const FROZEN_ROOT_ENV = 'MYCONTEXT_E2E_FROZEN_ROOT';
 export const ARCHIVE_CONFIG_ENV = 'CLAUDE_CONFIG_DIR';
 
 const CLI = path.join(import.meta.dirname, '..', 'src', 'cli', 'index.ts');
+
+/**
+ * **A CORPUS THAT HAS NEVER DELIVERED ANYTHING IS GIVEN ONE DELIVERY, IN THE
+ * SNAPSHOT, THROUGH THE PRODUCT'S OWN DOOR — and the run says it did.**
+ *
+ * ── WHAT A HOSTED RUNNER SERVES ────────────────────────────────────────────
+ *
+ * `git ls-files .my_context` is `items/`, `config.json` and `.gitignore`. The
+ * audit log is untracked (owner ruling 2026-09-09: no conversation-derived
+ * data reaches git), so a fresh clone freezes a corpus with NO audit history:
+ * `/api/sessions` answers an empty ledger, the shell falls to its `cold`
+ * sentinel, and every screen whose subject is a session answers the
+ * no-session question instead of the one its spec asks. Measured 2026-09-28 on
+ * a `git archive HEAD` of `cc024211` with an empty `CLAUDE_CONFIG_DIR`:
+ * `strip`, `strip-picker`, `simulate-question` and `ratio-legibility` all red,
+ * with CI's own messages — and all red the same way on a bare archive of
+ * `fc4817b2`, the commit CI had last passed them on.
+ *
+ * ── WHY CI WAS GREEN BEFORE, AND WHY THAT WAS NOT A FIXTURE ────────────────
+ *
+ * Until task 4.15 (`d6300bcd`) `npm test` — which CI runs a few steps before
+ * the browser suite, in the same checkout — wrote two `subagent-start` records
+ * under the session id `lane-still-gets-the-no-git-rule` into the checkout's
+ * own `.my_context/.audit/`. That leak WAS the browser suite's delivery history
+ * on every hosted run: one session, one delivery, no seen file (`state/` is
+ * excluded below). 4.15 closed the leak, correctly
+ * (`TASK-the-audit-log-still-records-two-session-ids-that-never`), and the
+ * suite lost a premise nobody had written down.
+ *
+ * ── SO THE PREMISE IS WRITTEN DOWN, HERE ───────────────────────────────────
+ *
+ * The same shape, made on purpose: one `SubagentStart` delivery, through the
+ * hook binary itself (`src/hooks/subagent-start.ts`, stdin and all — the
+ * product records it, this file forges no record), under a session id that
+ * says what it is, into the SNAPSHOT and never the source. The session state
+ * the door writes is removed again so the snapshot still starts where a clean
+ * checkout does (`copyableIntoSnapshot` below) — a seen file would empty the
+ * delivered preview, which is the measured reason `state/` is excluded.
+ *
+ * **Only when the corpus has recorded no session at all.** A workstation's
+ * snapshot carries its owner's real history and is left exactly as it was, so
+ * the seed changes nothing a local gate measures; it exists for the machine
+ * that has never delivered anything, and `globalSetup` prints a line when it
+ * runs so a green run on a seeded corpus is never mistaken for one on a real
+ * history.
+ */
+export const SEEDED_SESSION = 'e2e-seeded-no-history';
+
+/**
+ * Whether the corpus's audit log holds at least one `injection` record that
+ * names a session — the record `audit replay-ledger` builds a ledger row from.
+ * Stops at the first one, so a workstation's multi-segment log costs one
+ * segment's read. A missing log is a real, empty history and answers false.
+ */
+export function recordsASession(corpusDir: string): boolean {
+  for (const file of auditSegments(corpusDir)) {
+    let raw: string;
+    try { raw = readFileSync(file, 'utf8'); } catch { continue; }
+    for (const line of raw.split('\n')) {
+      if (line.includes('"kind":"injection"') && line.includes('"sessionId":"')) return true;
+    }
+  }
+  return false;
+}
+
+/** Record one real delivery in `root`'s corpus through the SubagentStart door. */
+function seedOneDelivery(root: string, env: NodeJS.ProcessEnv): void {
+  const hook = path.join(import.meta.dirname, '..', 'src', 'hooks', 'subagent-start.ts');
+  execFileSync(process.execPath, ['--disable-warning=ExperimentalWarning', hook], {
+    cwd: root, encoding: 'utf8', stdio: 'pipe', env,
+    input: JSON.stringify({
+      hook_event_name: 'SubagentStart', session_id: SEEDED_SESSION,
+      agent_id: 'e2e-seed', agent_type: 'general-purpose', cwd: root,
+    }),
+  });
+  const corpusDir = path.join(root, DIR_NAME);
+  // The session state the door wrote goes again: the snapshot's contract is
+  // "the session state a clean checkout has: none", and the seed is history,
+  // not state.
+  rmSync(path.join(corpusDir, 'state'), { recursive: true, force: true });
+  if (!recordsASession(corpusDir)) {
+    throw new Error(
+      'e2e: the snapshot recorded no session, and one delivery through the SubagentStart door '
+      + 'recorded none either — every session-subject spec would measure the cold shell',
+    );
+  }
+}
 
 /**
  * **TWO EXCLUSIONS, AND THEY ARE EXCLUDED FOR OPPOSITE REASONS.**
@@ -204,7 +294,7 @@ const copyableIntoSnapshot = (corpusDir: string) => (source: string): boolean =>
  */
 export function freezeCorpus(
   source: string,
-): { workspace: string; box: string; config: string } {
+): { workspace: string; box: string; config: string; seeded: boolean } {
   const box = mkdtempSync(path.join(tmpdir(), 'myctx-e2e-frozen-'));
   /**
    * **THE SNAPSHOT KEEPS THE REPOSITORY'S OWN NAME, and that is not cosmetic.**
@@ -284,6 +374,11 @@ export function freezeCorpus(
    * the index built from it, which is the same distinction `scratch-corpus.ts`
    * records for the ledger.
    */
+  // Before the index commands, so `audit --limit 1` and `audit replay-ledger`
+  // project the seeded delivery exactly as they project a real one.
+  const seeded = !recordsASession(path.join(root, DIR_NAME));
+  if (seeded) seedOneDelivery(root, env);
+
   for (const args of [
     ['rebuild'], ['audit', '--limit', '1'], ['audit', 'replay-ledger'],
     ['conversation', 'rebuild'],
@@ -292,7 +387,7 @@ export function freezeCorpus(
       cwd: root, encoding: 'utf8', stdio: 'pipe', env,
     });
   }
-  return { workspace: root, box, config };
+  return { workspace: root, box, config, seeded };
 }
 
 /**
