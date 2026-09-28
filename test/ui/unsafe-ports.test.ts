@@ -23,22 +23,23 @@
  * cases were failing on the OS, never reaching the product's unsafe-port
  * screen at all — a test that depended on one specific port being bindable on
  * whatever machine runs it. So the two real-server cases below choose their
- * port at run time: probe `CHROME_UNSAFE_PORTS` with a throwaway
- * `net.createServer().listen(port, '127.0.0.1')` and take the first one the OS
- * actually lets bind. If the OS refuses every single one, those two cases skip
- * — with the OS's own last refusal in the message, not a canned excuse.
+ * port at run time: probe `CHROME_UNSAFE_PORTS` with `probeBindable` from
+ * `test/helpers/safe-port.ts` — a throwaway `net.createServer().listen(port,
+ * '127.0.0.1')` that lives in the one module `safe-port-gate.test.ts` allows
+ * to hold that shape — and take the first port the OS actually lets bind. If
+ * the OS refuses every single one, those two cases skip — with the OS's own
+ * last refusal in the message, not a canned excuse.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { createServer as createNetServer } from 'node:net';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { spawnUiChild, startUiChild, type UiHarness } from './helpers.ts';
-import { listenOnSafePort } from '../helpers/safe-port.ts';
+import { listenOnSafePort, probeBindable } from '../helpers/safe-port.ts';
 import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 import type { RunningUiServer } from '../../src/ui/server.ts';
 import {
@@ -218,6 +219,16 @@ test('a nonsensical attempt budget is refused rather than silently doing nothing
  * excluded range can swallow several at once. All of that is exactly why this
  * asks the OS instead of assuming, the same reasoning `startOnSafePort` itself
  * is built on.
+ *
+ * The actual bind is `probeBindable`, from `test/helpers/safe-port.ts` — the
+ * one module `safe-port-gate.test.ts` allows to hold a raw `.listen(`. This
+ * file used to bind directly, which the gate correctly refused: it is the
+ * file's OWN `fetch(` calls, in the two real-server cases further down, that
+ * make this a file that "reaches a server over HTTP", and the gate's
+ * raw-listen check is coupled per FILE, not per call — it cannot see that the
+ * probe's bind is never the thing `fetch` reaches. Moving the bind to the
+ * wrapper is the honest fix; a comment cannot exempt a line because every
+ * comment is masked before the gate reads anything.
  */
 async function firstBindableUnsafePort(): Promise<{
   port: number | null;
@@ -226,15 +237,7 @@ async function firstBindableUnsafePort(): Promise<{
 }> {
   let lastRefusal: string | null = null;
   for (const port of CHROME_UNSAFE_PORTS) {
-    const refusal = await new Promise<string | null>((resolve) => {
-      const probe = createNetServer();
-      probe.once('error', (err: NodeJS.ErrnoException) => {
-        resolve(`${port}: ${err.code ?? err.message}`);
-      });
-      probe.listen(port, '127.0.0.1', () => {
-        probe.close(() => resolve(null));
-      });
-    });
+    const refusal = await probeBindable(port);
     if (refusal === null) return { port, lastRefusal: null };
     lastRefusal = refusal;
   }
