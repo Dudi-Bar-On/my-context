@@ -388,6 +388,7 @@ async function draw(
   api: (route: string) => Promise<unknown>, lang = 'en',
   interact?: (root: FakeElement, fire: () => void) => void,
   session = 'cold',
+  recorded = 0,
 ): Promise<Drawn> {
   const { render } = await simulate();
   const { t, tFlat } = await i18n();
@@ -408,6 +409,10 @@ async function draw(
     tFlat: (key: string, subs: Record<string, string | number> = {}) => tFlat(strings, key, subs),
     api: (route: string) => { routes.push(route); return api(route); },
     session: () => session,
+    // The shell's count of the sessions `/api/sessions` answered — see
+    // `sessionsRecorded` in `app.js`. Zero unless a test says otherwise, which
+    // is the state every `'cold'` render here was always drawn in.
+    sessionsRecorded: () => recorded,
     // The screen registers one; nothing here fires it, and a stand-in that
     // threw would fail on registration rather than on use.
     //
@@ -1253,6 +1258,47 @@ test('a shell with no session draws one button, not an inert second one', async 
   const { root } = await draw(RICH);
   const buttons = questionBar(root).children as FakeElement[];
   assert.deepEqual(buttons.map((b) => b.dataset['q']), ['cold']);
+});
+
+/** A string table value as it reads once drawn: its `{b:…}` marks are type, not text. */
+const plainOf = (value: string): string => value.replace(/{[a-z]+:([^}]*)}/g, '$1');
+
+/** An element as the screen leaves it: `el()` sets `id` and `hidden` as plain properties. */
+type Noted = FakeElement & { id?: string; hidden?: boolean };
+
+/** The `#simqnone` note, or undefined. */
+const coldNote = (root: FakeNode): Noted | undefined =>
+  all(root, (n) => (n as Noted).id === 'simqnone')[0] as Noted | undefined;
+
+test('a corpus with no recorded session says so under the one button', async () => {
+  const en = (await table('en')).strings;
+  const { root } = await draw(RICH, 'en', undefined, 'cold', 0);
+  const note = coldNote(root);
+  assert.ok(note !== undefined, 'no #simqnone was drawn');
+  assert.notEqual(note.hidden, true, 'a cold shell over no sessions hid the note saying why');
+  assert.equal(flatText(note), plainOf(en['sim.qnone']!),
+    'with zero sessions the note must be the no-session sentence');
+});
+
+test('a cold shell over a corpus WITH sessions does not claim there are none', async () => {
+  // `loadSessions` answers cold for sessions with no default too, and the
+  // reader can pick cold with sessions recorded (review of 8ec298c7).
+  const en = (await table('en')).strings;
+  const { root } = await draw(RICH, 'en', undefined, 'cold', 3);
+  const note = coldNote(root);
+  assert.ok(note !== undefined, 'no #simqnone was drawn');
+  assert.notEqual(note.hidden, true, 'a cold shell hid the note saying why it is cold');
+  assert.equal(flatText(note), plainOf(en['sim.qcold']!),
+    'with sessions recorded the note must be the choose-one sentence');
+  assert.doesNotMatch(flatText(note), /No session is recorded/,
+    'the note said no session is recorded over a corpus that has three');
+});
+
+test('a warm shell hides the cold note', async () => {
+  const { root } = await draw(RICH, 'en', undefined, 'sess-1', 1);
+  const note = coldNote(root);
+  assert.ok(note !== undefined, 'no #simqnone was drawn');
+  assert.equal(note.hidden, true, 'a shell with a session still showed the cold note');
 });
 
 test('the default is cold from the first fetch, before any press', async () => {

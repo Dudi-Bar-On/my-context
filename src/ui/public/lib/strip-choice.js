@@ -67,34 +67,75 @@ export const GRP_PREFIX = 'strip.grp.';
  * no recorded session, where the shell opens cold: `e2e/strip-picker.spec.ts`
  * collected exactly those two keys as drawn and unnamed.
  *
- * So a field id whose nameless states stand in for a named field answers to
- * THAT field's row. The `data-f` stays what it is — it is the terminal's
+ * So a field id whose nameless states stand in for named fields answers to
+ * THOSE fields' rows. The `data-f` stays what it is — it is the terminal's
  * segment id, and the parity gates address the fact by it.
+ *
+ * **A LIST, BECAUSE ONE OF THE TWO STANDS FOR A GROUP.** The context figure's
+ * nameless states stand in for exactly one field, WINDOW. The limits chip does
+ * not stand in for 5H: `app.js` draws it only when NEITHER window reported
+ * ("a group may not be empty"), so it is the absence of both 5H and 7D. Keyed
+ * to 5H alone (the first cut of this table, review of `8ec298c7`), unticking
+ * 7D could not hide it and unticking 5H hid it while 7D was still ticked. So
+ * it answers to BOTH window rows, and `pickKeysOf`'s rule is that a pill is
+ * switched off only when EVERY row it answers to is off — the same rule
+ * `stripGroupsOf` already applies one level up, where a group leaves the bar
+ * only when every field in it is off. `rate-verdict` is not in the list: it
+ * is a third, separately drawn verdict about the windows, not one of them.
  */
-export const FIELD_PICK_KEY = Object.freeze({ context: 'window', 'rate-5h': 'rate5' });
+export const FIELD_PICK_KEY = Object.freeze({
+  context: Object.freeze(['window']),
+  'rate-5h': Object.freeze(['rate5', 'rate7']),
+});
 
 /**
- * **WHICH NAME THIS PILL ANSWERS TO.**
+ * **WHICH ROWS THIS PILL ANSWERS TO.**
  *
  * The pill's own printed name where it has one, and its field id where it does
- * not — through `FIELD_PICK_KEY` for the two ids whose nameless states stand
- * in for a named field. Two pills that print one name — the model and its
- * modes — are one entry, which is right: MODEL is one thing to a reader.
+ * not — through `FIELD_PICK_KEY` for the ids whose nameless states stand in
+ * for named fields. Two pills that print one name — the model and its modes —
+ * are one entry, which is right: MODEL is one thing to a reader.
+ *
+ * Almost always ONE row. More than one only for a pill that stands for several
+ * fields' shared absence, and then the pill is off only when every one of them
+ * is (`applyStripChoice` in `app.js`). An empty list means "not a pill".
  *
  * Takes anything with `dataset` and `querySelector`, so it is drivable without
  * a browser.
  */
-export function pickKeyOf(el) {
-  if (el === null || el === undefined) return null;
+export function pickKeysOf(el) {
+  if (el === null || el === undefined) return [];
   const lab = typeof el.querySelector === 'function' ? el.querySelector(':scope > .ulab') : null;
   const key = lab?.dataset?.k;
   if (typeof key === 'string' && key.startsWith(GRP_PREFIX)) {
     const name = key.slice(GRP_PREFIX.length);
-    if (name !== '') return name;
+    if (name !== '') return [name];
   }
   const field = el.dataset?.f;
-  if (typeof field !== 'string' || field === '') return null;
-  return Object.hasOwn(FIELD_PICK_KEY, field) ? FIELD_PICK_KEY[field] : field;
+  if (typeof field !== 'string' || field === '') return [];
+  return Object.hasOwn(FIELD_PICK_KEY, field) ? [...FIELD_PICK_KEY[field]] : [field];
+}
+
+/** The first row `pickKeysOf` names, or `null` — for a caller that needs one handle. */
+export function pickKeyOf(el) {
+  return pickKeysOf(el)[0] ?? null;
+}
+
+/**
+ * **WHAT THE CHOICE DOES TO ONE PILL** — `'shown'`, `'off'` or `'back'`
+ * (unticked, but loud, so drawn and marked). `off` is the set of unticked
+ * rows, or `null` for "he has never chosen"; `urgencyOf` answers a row's
+ * `STRIP_PICK` urgency.
+ *
+ * Kept here rather than in `applyStripChoice` so the one rule a multi-row
+ * pill adds — off only when EVERY row it answers to is off — is provable
+ * without a browser. Returns `null` for something that is not a pill.
+ */
+export function pillChoice(el, off, urgencyOf) {
+  const keys = pickKeysOf(el);
+  if (keys.length === 0) return null;
+  if (off === null || !keys.every((k) => off.has(k))) return 'shown';
+  return keys.some((k) => isUrgent(el, urgencyOf(k) ?? null)) ? 'back' : 'off';
 }
 
 /**

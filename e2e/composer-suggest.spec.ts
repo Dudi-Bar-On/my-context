@@ -38,6 +38,7 @@
  */
 import { expect, test } from './app.ts';
 import type { Page } from '@playwright/test';
+import { settleScreen } from './settle.ts';
 
 const PALETTE = '[data-p="palette"]';
 
@@ -106,7 +107,23 @@ async function pick(page: Page, command: string): Promise<void> {
   // exactly like the control not having been built at all. The argv chips are
   // written by `recompose()` at the end of `build()`, so one of them on screen
   // is the form having been drawn.
-  await page.locator(`${PALETTE} .chip`).first().waitFor({ state: 'visible', timeout: 30_000 });
+  //
+  // **But `.chip` alone is not one of them, measured 2026-09-28.** The screen's
+  // own header draws `<span class="chip index">real pickers and a live glob
+  // tester</span>` before any of this, so on a cold server — the first test in
+  // a worker, where `/api/glob` is still walking the repository — the wait
+  // resolved on the HEADER 15ms after the select, `build()` had not run, and
+  // the `finding` box read as MISSING (trace: `/api/glob` in flight, no
+  // `/api/tags` or `/api/cli-help` requested yet). The argv chips are the
+  // ones `argvChip` paints `ok` or `crit`, so that is what is waited for —
+  // through `settleScreen`, the same way `e2e/settle.ts` waits for a screen
+  // whose controls arrive with a later fetch, and failing as itself if the form
+  // never settles. The 30s budget is the one this wait already had.
+  const drawn = await settleScreen(page, 'palette', {
+    requires: ':is(.chip.ok, .chip.crit)', samples: 75,
+  });
+  expect(drawn.settled, `the Composer never drew ${command}'s form (${drawn.count} nodes, `
+    + `${drawn.inFlight} reads in flight) — a LOAD failure, not a missing control`).toBe(true);
 }
 
 test('ack offers the codes doctor reports on the item beside it, and no others', async ({ app }) => {

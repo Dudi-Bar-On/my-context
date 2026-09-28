@@ -731,10 +731,18 @@ export async function render(root, ctx) {
      load it. Measured 2026-09-28 on a fresh clone's corpus (no audit history,
      so `/api/sessions` answers none and the shell is `cold`): the note
      beneath promised "the session above" over a strip that drew no session.
-     Shown only in that state, and hidden the moment a session exists. */
+     Shown only while the shell is cold.
+
+     **Cold has more than one cause, and the sentence says which** (review of
+     `8ec298c7`). `app.js`'s `loadSessions` answers `'cold'` for zero
+     sessions AND for sessions whose `/api/sessions` answer named no default,
+     and the reader can pick cold in the session picker with sessions
+     recorded. Only the first is "no session is recorded"; the other two are a
+     cold shell over a corpus that HAS sessions, and the remedy is the picker.
+     `ctx.sessionsRecorded()` is the shell's own count of the rows it holds,
+     so the two sentences are chosen from what the shell knows, not guessed. */
   const qNone = el('p', 'small');
   qNone.id = 'simqnone';
-  qNone.append(...ctx.t('sim.qnone'));
   qNone.hidden = true;
 
   /**
@@ -1624,6 +1632,9 @@ export async function render(root, ctx) {
     const live = ctx.session();
     const options = live === 'cold' ? ['cold'] : ['live', 'cold'];
     qNone.hidden = live !== 'cold';
+    if (live === 'cold') {
+      qNone.replaceChildren(...ctx.t(ctx.sessionsRecorded() === 0 ? 'sim.qnone' : 'sim.qcold'));
+    }
     for (const mode of options) {
       const button = el('button');
       button.type = 'button';

@@ -169,16 +169,30 @@ export async function outcome(
   page: Page, line: string,
 ): Promise<{ code: number; out: string; ran: string }> {
   const region = outcomeFor(page, line);
-  const codeText = (await region.locator('.exitcode').first().textContent()) ?? '';
-  const code = Number(/(-?\d+)/.exec(codeText)?.[1] ?? 'NaN');
+  await region.locator('.exitcode').first().waitFor({ state: 'attached' });
   const showAll = region.getByRole('button', { name: /^Show all |^הצג את כל / });
   if (await showAll.count() > 0 && await showAll.first().isVisible().catch(() => false)) {
     await showAll.first().click();
   }
-  const said = region.locator('pre.lit');
-  const out = await said.count() > 0 ? ((await said.first().textContent()) ?? '') : '';
-  const ran = (await region.locator('.cmd code').first().textContent()) ?? '';
-  return { code, out, ran };
+  // **ONE READ OF THE REGION, NOT THREE.** The run's own redraw DETACHES this
+  // node while `render()` awaits its reads and re-attaches it afterwards
+  // (`noteExecuteSettled` → `attachExecuteOutcome`). Read as three separate
+  // locator calls, the exit code could come off the node before the redraw and
+  // the output count after it had begun: `pre.lit` counted 0 on a detached
+  // node, and the output read as "" while the exit code agreed with the CLI.
+  // That is what CI recorded on 2026-09-23 (run 35919929821, `ack …: the UI's
+  // output IS the CLI's output`, Received ""). One `evaluate` on the region
+  // waits for it to be attached and reads all three facts from one snapshot.
+  // The region that CARRIES the result — the product can hold more than one
+  // node under one key (the earlier reads were descendant searches across all
+  // of them), and only the one with an exit code is the answer.
+  const read = await region.filter({ has: page.locator('.exitcode') }).first().evaluate((node) => ({
+    codeText: node.querySelector('.exitcode')?.textContent ?? '',
+    out: node.querySelector('pre.lit')?.textContent ?? '',
+    ran: node.querySelector('.cmd code')?.textContent ?? '',
+  }));
+  const code = Number(/(-?\d+)/.exec(read.codeText)?.[1] ?? 'NaN');
+  return { code, out: read.out, ran: read.ran };
 }
 
 /**
@@ -192,6 +206,8 @@ export async function outcome(
  * `PALETTE[0]`, `ack`. So the def the reader chose, every field they filled and
  * the glob pattern they typed are gone the moment their command succeeds. That
  * is reported as a finding; it is not this file's to fix.
+ * (2026-09-28: the ENTRY is now kept across the redraw — `KEPT` in
+ * `screens/palette.js`; the field values still are not, by decision.)
  *
  * What it costs a TEST is that the redraw lands at an unpredictable moment
  * AFTER the outcome appears, so a `chooseEntry` that has already returned can
@@ -213,10 +229,23 @@ export async function settleScreen(page: Page): Promise<void> {
         const root = document.querySelector(pal);
         const select = root?.querySelector('select');
         const form = root?.querySelector('.card.pane > div:nth-of-type(1)');
+        // The run's outcome, which the redraw DETACHES while `render()` awaits
+        // its reads and re-attaches when it is done (`attachExecuteOutcome`).
+        const outcomes = root?.querySelectorAll('.execresult .exitcode').length ?? 0;
         return `${select === null || select === undefined ? '?' : select.value}`
-          + `/${form === null || form === undefined ? -1 : form.querySelectorAll(':scope > label.small').length}`;
+          + `/${form === null || form === undefined ? -1 : form.querySelectorAll(':scope > label.small').length}`
+          + `/${outcomes}`;
       }, PAL);
-      const verdict = now === previous ? 'settled' : 'moving';
+      // **A SCREEN MID-REDRAW IS NOT A SETTLED ONE, however long it stays so.**
+      // Measured on CI (runs 35895453162 and 35919929821): the redraw spends
+      // its first several hundred milliseconds with no `<select>` and no
+      // outcome on screen — five reads in flight — and two identical samples
+      // of THAT (`?/-1/0`) were read as settled, so the next case was driven
+      // into a form the redraw then replaced, or the outcome was read while it
+      // was detached. So a sample with no picker or no outcome is always
+      // moving: the redraw has not finished until both are back.
+      const verdict = now === previous && !now.startsWith('?/') && !now.endsWith('/0')
+        ? 'settled' : 'moving';
       previous = now;
       return verdict;
     }, { timeout: 60_000, intervals: [300, 300, 400, 500, 700] })

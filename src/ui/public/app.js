@@ -185,8 +185,8 @@ import { createPanel } from '/lib/panel.js';
 // name, what counts as loud) are drivable without a browser and are driven in
 // `test/ui/strip-picker.test.ts`; only the wiring below is not.
 import {
-  STRIP_PICK, clearChoice, defaultStorage as stripStorage, isUrgent, neverForced,
-  pickColumns, pickKeyOf, readChoice, writeChoice,
+  STRIP_PICK, clearChoice, defaultStorage as stripStorage, neverForced,
+  pickColumns, pickKeysOf, pillChoice, readChoice, writeChoice,
 } from '/lib/strip-choice.js';
 // The ONE markdown renderer. It lived inside the Docs screen until 2026-09-05,
 // because Docs was the first screen that needed one; it is a library now, since
@@ -5571,17 +5571,20 @@ function applyStripChoice() {
   const forced = new Set();
   const off = stripOff === null ? null : new Set(stripOff);
   for (const el of stripPills()) {
-    const key = pickKeyOf(el);
-    if (key === null) continue;
-    if (off === null || !off.has(key)) {
+    // A pill that stands for several rows' shared absence (`FIELD_PICK_KEY`)
+    // is off only when EVERY row it answers to is off — `pillChoice` owns
+    // that rule so `test/ui/strip-picker.test.ts` can hold it.
+    const choice = pillChoice(el, off, (k) => STRIP_URGENCY.get(k));
+    if (choice === null) continue;
+    if (choice === 'shown') {
       el.classList.remove('stripoff');
       el.classList.remove('stripback');
       continue;
     }
-    if (isUrgent(el, STRIP_URGENCY.get(key) ?? null)) {
+    if (choice === 'back') {
       el.classList.remove('stripoff');
       el.classList.add('stripback');
-      forced.add(key);
+      for (const k of pickKeysOf(el)) forced.add(k);
       continue;
     }
     el.classList.remove('stripback');
@@ -9182,6 +9185,13 @@ async function main() {
     // to carry to the confirm route; see the screen-contract note above.
     lang: table.lang,
     session: currentSession,
+    // How many sessions the last `/api/sessions` answer held. `session()`
+    // answers `'cold'` both when there are none and when there are some but
+    // none is the default (or the reader picked cold), and a screen that says
+    // WHY it is cold must be able to tell those apart (`screens/simulate.js`,
+    // `#simqnone`). The count, not the rows: nothing else about them is this
+    // contract's business.
+    sessionsRecorded: () => sessionRows.length,
     // **Returns its own unsubscribe, and a screen that subscribes must call
     // it.** This used to answer `push`'s return value — an array length, which
     // nothing could do anything with — and there was no way to stop listening

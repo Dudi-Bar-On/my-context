@@ -257,6 +257,32 @@ export const EVERY_FILE = UNSCOPED_GLOB;
 const GLOB_DEBOUNCE_MS = 180;
 
 /**
+ * **THE ENTRY THE READER CHOSE, KEPT ACROSS THE REDRAW THEIR OWN RUN CAUSES.**
+ *
+ * Measured 2026-09-07 and written down in `e2e/composer-run.ts` as a finding
+ * nobody had fixed: a run from here triggers the shell's post-run refresh
+ * (`noteExecuteSettled` → this screen's `render()`), `render()` built a fresh
+ * `<select>`, and a fresh `<select>` opens on `PALETTE[0]` — `ack`. So the
+ * reader who had just run `edit` came back to a form for a different command
+ * than the one whose outcome sits under it.
+ *
+ * It also blinded the only wait that watched for that redraw. `e2e/composer-
+ * run.ts`'s `settleScreen` samples the entry name and the field count, and when
+ * the entry WAS `ack` the reset changed neither — so on CI's slow runner the
+ * `ack … --clear` case was filled before the `ack` run's redraw landed, the
+ * redraw emptied it, and the checker answered `incomplete` (run 35895453162,
+ * 4fb7d0a3).
+ *
+ * So the ENTRY is kept for the life of the page and chosen again when the
+ * screen is redrawn — the shape `screens/simulate.js`'s `PICKED` keeps its
+ * question in. The field VALUES are deliberately not: whether a successful run
+ * should leave its arguments filled in for the next one is a decision about
+ * what the form means after a run (`focus --tag …` followed by `focus --clear`
+ * is refused by the CLI if the tags survive), and it is not this fix's to make.
+ */
+const KEPT = { name: null };
+
+/**
  * **The picker sources that are fetched WHEN A FIELD ASKS FOR THEM, and never
  * on the way in** (owner ruling D11, 2026-09-06).
  *
@@ -937,6 +963,10 @@ export async function render(root, ctx) {
 
   const picker = document.createElement('select');
   for (const def of PALETTE) picker.append(optionEl(def.name, `${def.name} · ${def.kind}`));
+  // The entry the reader had chosen, if this is a redraw — see `KEPT`.
+  if (KEPT.name !== null && PALETTE.some((def) => def.name === KEPT.name)) {
+    picker.value = KEPT.name;
+  }
   // `btn.compose` — *Compose* — is the caption, and it is a REUSED key rather
   // than a new one. The reason recorded here was that
   // `strings-parity.test.ts` "fails in both directions"; it fails in one, and
@@ -1358,6 +1388,9 @@ export async function render(root, ctx) {
   function recompose() {
     const def = PALETTE.find((candidate) => candidate.name === picker.value);
     const values = currentValues();
+    // Kept only from the drawn screen: a superseded render finishing late must
+    // not overwrite the entry the reader is composing on the current one.
+    if (root.isConnected) KEPT.name = def.name;
 
     // **Every paint, and before any of the early returns below.** The tag
     // checkboxes are DERIVED from the box, so they are re-marked whenever this
@@ -1606,6 +1639,8 @@ export async function render(root, ctx) {
     globWrap.append(globControl);
     globCard.replaceChildren(globHead, globLabel, globWrap, globCount, globTree, spaced(globNote));
     if (globError !== null) globCard.append(globError);
+
+    KEPT.name = def.name;
 
     testGlob(globControl.value.trim());
     // The disclosure is per ENTRY, so it is asked for here rather than in
