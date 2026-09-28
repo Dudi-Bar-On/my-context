@@ -740,7 +740,17 @@ export async function render(root, ctx) {
      recorded. Only the first is "no session is recorded"; the other two are a
      cold shell over a corpus that HAS sessions, and the remedy is the picker.
      `ctx.sessionsRecorded()` is the shell's own count of the rows it holds,
-     so the two sentences are chosen from what the shell knows, not guessed. */
+     so the two sentences are chosen from what the shell knows, not guessed.
+
+     **And a zero is only "no session is recorded" when it was MEASURED.**
+     `/api/sessions` answers an empty list both for a projected ledger that
+     holds no rows and for one nobody has projected (`ledger:
+     'not-projected'`), and only the second field says which
+     (`ctx.sessionLedger()`, the shell's `sessionLedgerPresence`). Over an
+     unprojected ledger the note is drawn UNMEASURED — the `◌` `chip unmeas`
+     primitive the session picker's own not-projected panel uses — rather than
+     as a zero nobody counted
+     (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`). */
   const qNone = el('p', 'small');
   qNone.id = 'simqnone';
   qNone.hidden = true;
@@ -1633,7 +1643,15 @@ export async function render(root, ctx) {
     const options = live === 'cold' ? ['cold'] : ['live', 'cold'];
     qNone.hidden = live !== 'cold';
     if (live === 'cold') {
-      qNone.replaceChildren(...ctx.t(ctx.sessionsRecorded() === 0 ? 'sim.qnone' : 'sim.qcold'));
+      const recorded = ctx.sessionsRecorded();
+      if (recorded === 0 && ctx.sessionLedger() === 'not-projected') {
+        const chip = el('span', 'chip unmeas');
+        chip.dataset.g = '◌';
+        chip.append(...ctx.t('sim.qunmeas'));
+        qNone.replaceChildren(chip);
+      } else {
+        qNone.replaceChildren(...ctx.t(recorded === 0 ? 'sim.qnone' : 'sim.qcold'));
+      }
     }
     for (const mode of options) {
       const button = el('button');

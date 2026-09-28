@@ -279,8 +279,53 @@ const GLOB_DEBOUNCE_MS = 180;
  * should leave its arguments filled in for the next one is a decision about
  * what the form means after a run (`focus --tag …` followed by `focus --clear`
  * is refused by the CLI if the tags survive), and it is not this fix's to make.
+ *
+ * **For the life of the PAGE, not of the visit — and that is the behaviour,
+ * not an oversight.** A reader who chooses `edit`, leaves for another screen
+ * and comes back to the Composer finds `edit` chosen, not `ack`: returning is
+ * a `route()` and a fresh `render()` like any other, and nothing here can tell
+ * it from the post-run redraw. It is kept because the alternative is worse in
+ * the case this exists for — a second clock to forget the entry by would be a
+ * guess about when "the same visit" ended, and a wrong guess puts the reader
+ * back on `ack` under the outcome of a different command. A reload forgets it,
+ * because the module is fetched again. Disclosed at the phase-4 checkpoint.
+ *
+ * **Written in ONE place, `recompose()`, and only by the CURRENT render.**
+ * Every path that draws a form — `build()` on a picker change and at the end
+ * of `render()` — ends in `recompose()`, so that write is the only one there
+ * needs to be; a render a newer one has superseded does not write it at all
+ * (`renderGeneration` below).
  */
 const KEPT = { name: null };
+
+/**
+ * **THE RENDER GENERATION** — the token `screens/doctor.js` guards its own
+ * redraws with (task 3.10), one convention: a module counter, and each
+ * `render()` holds its own number as `mine`.
+ *
+ * Here it does two jobs.
+ *
+ *  1. It is what makes `KEPT`'s guard mean something. The section a render
+ *     draws into is the SAME `[data-p="palette"]` element for the life of the
+ *     page (`route()` reuses it), so `root.isConnected` is true for a
+ *     superseded render too and could never tell the two apart. `mine ===
+ *     renderGeneration` can.
+ *  2. It is STAMPED on the section, readable: `data-render="N"` when render N
+ *     starts, `data-drawn="N"` when it has finished drawing. `app.js` redraws
+ *     this screen after every Execute, and one Execute is three records whose
+ *     later redraws are debounced — and since `KEPT` keeps the entry, the
+ *     screen LOOKS the same before a redraw, between two, and after the last.
+ *     A wait over what the screen shows cannot tell "not started yet" from
+ *     "done" (`e2e/composer-run.ts` `settleScreen`, review of `db6ba6cb`);
+ *     a wait over these two numbers can. `data-render !== data-drawn` is a
+ *     redraw awaiting its reads.
+ *
+ * Counted per RENDER, not per `recompose()`: a recompose re-marks the form it
+ * is given and never replaces it, and the question the number answers is
+ * "has the form been replaced since I looked". A checker answer landing
+ * between two looks would otherwise count as a redraw that never happened.
+ */
+let renderGeneration = 0;
 
 /**
  * **The picker sources that are fetched WHEN A FIELD ASKS FOR THEM, and never
@@ -863,6 +908,12 @@ function argvChip(chip) {
 }
 
 export async function render(root, ctx) {
+  const mine = ++renderGeneration;
+  root.dataset.render = String(mine);
+  /** Stamped once this render's form is on screen — see `renderGeneration`. */
+  const drawn = () => {
+    if (mine === renderGeneration) root.dataset.drawn = String(mine);
+  };
   root.replaceChildren();
   screenHead(ctx, root, 'pal.h', 'pal.v', 'pal.sub');
 
@@ -895,6 +946,7 @@ export async function render(root, ctx) {
     bodies = { items, config, queue, revisions, meta };
   } catch (error) {
     card.append(errorNote(error.message));
+    drawn();
     return;
   }
   const sources = sourceLists(bodies);
@@ -1388,9 +1440,12 @@ export async function render(root, ctx) {
   function recompose() {
     const def = PALETTE.find((candidate) => candidate.name === picker.value);
     const values = currentValues();
-    // Kept only from the drawn screen: a superseded render finishing late must
-    // not overwrite the entry the reader is composing on the current one.
-    if (root.isConnected) KEPT.name = def.name;
+    // Kept only by the CURRENT render: a superseded render finishing late — or
+    // its checker answering after a newer render drew — must not overwrite the
+    // entry the reader is composing on the current one. `root.isConnected`
+    // alone could not say that: the section is the same element for every
+    // render (see `renderGeneration`). The one write of `KEPT`.
+    if (root.isConnected && mine === renderGeneration) KEPT.name = def.name;
 
     // **Every paint, and before any of the early returns below.** The tag
     // checkboxes are DERIVED from the box, so they are re-marked whenever this
@@ -1640,8 +1695,6 @@ export async function render(root, ctx) {
     globCard.replaceChildren(globHead, globLabel, globWrap, globCount, globTree, spaced(globNote));
     if (globError !== null) globCard.append(globError);
 
-    KEPT.name = def.name;
-
     testGlob(globControl.value.trim());
     // The disclosure is per ENTRY, so it is asked for here rather than in
     // `recompose()`: what the command is legal to take does not change on a
@@ -1652,4 +1705,5 @@ export async function render(root, ctx) {
 
   picker.addEventListener('change', build);
   build();
+  drawn();
 }

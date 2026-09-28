@@ -9192,6 +9192,12 @@ async function main() {
     // `#simqnone`). The count, not the rows: nothing else about them is this
     // contract's business.
     sessionsRecorded: () => sessionRows.length,
+    // And whether that count was MEASURED: `/api/sessions`' `LedgerPresence`,
+    // `'ready'` or `'not-projected'` (`sessionLedgerPresence`). A zero over a
+    // ledger nobody projected is not "no session is recorded", and a screen
+    // that says why the shell is cold must not claim it is
+    // (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
+    sessionLedger: () => sessionLedgerPresence,
     // **Returns its own unsubscribe, and a screen that subscribes must call
     // it.** This used to answer `push`'s return value — an array length, which
     // nothing could do anything with — and there was no way to stop listening

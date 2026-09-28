@@ -389,6 +389,7 @@ async function draw(
   interact?: (root: FakeElement, fire: () => void) => void,
   session = 'cold',
   recorded = 0,
+  ledger: 'ready' | 'not-projected' = 'ready',
 ): Promise<Drawn> {
   const { render } = await simulate();
   const { t, tFlat } = await i18n();
@@ -413,6 +414,10 @@ async function draw(
     // `sessionsRecorded` in `app.js`. Zero unless a test says otherwise, which
     // is the state every `'cold'` render here was always drawn in.
     sessionsRecorded: () => recorded,
+    // The shell's `LedgerPresence` off `/api/sessions` — see `sessionLedger`
+    // in `app.js`. `'ready'` unless a test says otherwise: a projected ledger,
+    // so a zero above is a MEASURED zero.
+    sessionLedger: () => ledger,
     // The screen registers one; nothing here fires it, and a stand-in that
     // threw would fail on registration rather than on use.
     //
@@ -1292,6 +1297,37 @@ test('a cold shell over a corpus WITH sessions does not claim there are none', a
     'with sessions recorded the note must be the choose-one sentence');
   assert.doesNotMatch(flatText(note), /No session is recorded/,
     'the note said no session is recorded over a corpus that has three');
+});
+
+test('a ledger nobody projected is drawn unmeasured, never as a measured zero', async () => {
+  // `/api/sessions` answers an empty list for a `not-projected` ledger AND for
+  // a projected one holding no rows; only `ledger` says which. Saying "no
+  // session is recorded" over the first is a zero claimed for a ledger nobody
+  // measured (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
+  const en = (await table('en')).strings;
+  const { root } = await draw(RICH, 'en', undefined, 'cold', 0, 'not-projected');
+  const note = coldNote(root);
+  assert.ok(note !== undefined, 'no #simqnone was drawn');
+  assert.notEqual(note.hidden, true, 'a cold shell over an unprojected ledger hid the note');
+  assert.doesNotMatch(flatText(note), /No session is recorded/,
+    'the note claimed a measured zero for a ledger that was never projected');
+  const chip = all(note, (n) => (n as FakeElement).className === 'chip unmeas')[0] as
+    FakeElement | undefined;
+  assert.ok(chip !== undefined, 'the unmeasured state is not drawn with the `chip unmeas` primitive');
+  assert.equal(chip.dataset['g'], '◌', 'the unmeasured chip does not carry the ◌ glyph');
+  assert.equal(flatText(note), plainOf(en['sim.qunmeas']!),
+    'with an unprojected ledger the note must be the not-measured sentence');
+});
+
+test('a projected ledger with no rows is still the measured zero', async () => {
+  const en = (await table('en')).strings;
+  const { root } = await draw(RICH, 'en', undefined, 'cold', 0, 'ready');
+  const note = coldNote(root);
+  assert.ok(note !== undefined, 'no #simqnone was drawn');
+  assert.equal(flatText(note), plainOf(en['sim.qnone']!),
+    'a projected, empty ledger IS a measured zero and says so');
+  assert.equal(all(note, (n) => (n as FakeElement).className === 'chip unmeas').length, 0,
+    'a measured zero was drawn as unmeasured');
 });
 
 test('a warm shell hides the cold note', async () => {

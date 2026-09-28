@@ -80,7 +80,7 @@ import { CORPUS } from './app.ts';
 import { startUiChild, type UiHarness } from '../test/ui/helpers.ts';
 import { REAL_GLOBAL_ROOT, fingerprint, fingerprintDiff, throwawayHome } from './throwaway-home.ts';
 import {
-  normalise, openApp, outcome, pressExecute, runIt, settleScreen,
+  normalise, openApp, outcome, pressExecute, renderGeneration, runIt, settleScreen,
 } from './composer-run.ts';
 import { snapshot, worthCopying } from '../src/ui/execute-effect.ts';
 import { addSettlingContradictions } from './seeds.ts';
@@ -299,11 +299,20 @@ async function drive(page: Page, pair: Pair, c: Case): Promise<string> {
   // workspaces are in the same state when each receives the command.
   const truth = cli(pair, argv);
 
-  await runIt(page, line!, c.what);
+  const before = await runIt(page, line!, c.what);
   // The write triggers a live refresh that re-renders the whole screen and
   // re-homes the outcome node; reading before that has landed reads a node
-  // mid-move. `settleScreen` carries the measurement.
-  await settleScreen(page);
+  // mid-move. `settleScreen` carries the measurement, and waits on the
+  // screen's own render generation rather than on how the screen looks.
+  await settleScreen(page, before);
+  // **The redraw this run caused HAPPENED and FINISHED before anything is
+  // read.** Asserted here as well as waited for, so a screen that stopped
+  // stamping its generation fails as that rather than as an empty output.
+  const after = await renderGeneration(page);
+  expect(after.render, `${c.what}: the run's redraw moved the Composer's render generation `
+    + `past ${before}`).toBeGreaterThan(before);
+  expect(after.drawn, `${c.what}: and the last redraw that started has finished drawing`)
+    .toBe(after.render);
   const got = await outcome(page, line!);
 
   expect(got.ran, `${c.what}: the outcome names the line that was composed`).toBe(line);

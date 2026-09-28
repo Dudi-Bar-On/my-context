@@ -400,28 +400,47 @@ test('the round trip: a category unticked comes BACK when it is ticked again, '
    * server and did not in a harness whose context payload is absent, which is
    * a test that was measuring the fixture rather than the feature.
    */
-  const drawnKeys = (sel: string) => tab.evaluate((panel) => {
-    // The picker key a pill answers to — the same derivation `pickKeyOf` makes,
-    // spelled here because a browser context cannot import the module.
-    const keyOf = (e: Element) => {
-      const lab = e.querySelector(':scope > .ulab') as HTMLElement | null;
-      const named = lab?.dataset.k ?? '';
-      return named.startsWith('strip.grp.')
-        ? named.slice('strip.grp.'.length) : ((e as HTMLElement).dataset.f ?? '');
+  const drawnKeys = (sel: string) => tab.evaluate(async (panel) => {
+    /*
+     * **THE RULE IS THE SHIPPED MODULE'S, IMPORTED — NOT A COPY OF IT.** This
+     * census used to spell its own `keyOf`, "the same derivation `pickKeyOf`
+     * makes, spelled here because a browser context cannot import the module".
+     * Both halves stopped being true: `pickKeysOf` gained `FIELD_PICK_KEY`
+     * (`rate-5h` answers to BOTH window rows) and `pillChoice` the rule that a
+     * pill is off only when EVERY row it answers to is, and the copy knew
+     * neither — and the page CAN import it: `/lib/strip-choice.js` is a served
+     * asset, the very specifier `app.js` imports it by. So the keys, and which
+     * one can be unticked ON ITS OWN, come from `pickKeysOf` and `pillChoice`,
+     * and this spec cannot drift from them.
+     */
+    // A runtime URL, not a module specifier TypeScript should resolve: the
+    // module is the browser's, served by the harness.
+    const lib = '/lib/strip-choice.js';
+    const { pickKeysOf, pillChoice } = await import(lib) as {
+      pickKeysOf: (el: Element) => string[];
+      pillChoice: (el: Element, off: Set<string> | null, urgencyOf: (k: string) => unknown) => string | null;
     };
-    const out: Record<string, string[]> = {};
+    const out: Record<string, { keys: string[]; solo: string | null }> = {};
     for (const all of document.querySelectorAll(`${panel} .stripickall`)) {
       const group = (all as HTMLElement).dataset.g ?? '';
       const host = document.querySelector(`#strip .sgrp-${group}`);
       if (host === null) continue;
-      const keys = new Set<string>();
+      const pills: Element[] = [];
       for (const pill of host.querySelectorAll('[data-f]')) {
         if (pill.parentElement?.closest('[data-f]') !== null) continue;
         if (pill.getClientRects().length === 0) continue;
-        const key = keyOf(pill);
-        if (key !== '') keys.add(key);
+        if (pickKeysOf(pill).length > 0) pills.push(pill);
       }
-      out[group] = [...keys];
+      const keys = [...new Set(pills.flatMap((pill) => pickKeysOf(pill)))];
+      // A row that, unticked ALONE, takes at least one pill off and leaves at
+      // least one drawn — asked of `pillChoice` itself. A target group holds
+      // no urgent row (checked below), so no urgency is passed.
+      const solo = keys.find((key) => {
+        const off = new Set([key]);
+        const states = pills.map((pill) => pillChoice(pill, off, () => null));
+        return states.includes('off') && states.includes('shown');
+      }) ?? null;
+      out[group] = { keys, solo };
     }
     return out;
   }, sel);
@@ -434,19 +453,22 @@ test('the round trip: a category unticked comes BACK when it is ticked again, '
    *
    * TWO conditions, and each is load-bearing:
    *
-   *   — **at least two distinct picker KEYS drawn**, so one can be unticked
-   *     without emptying the group. Two PILLS is not enough: MODEL draws two
-   *     and they answer to one name, so unticking it takes both.
+   *   — **a row that can be unticked ON ITS OWN** — one that, by `pillChoice`,
+   *     takes at least one pill off and leaves at least one drawn — so the
+   *     group survives it. Two PILLS is not enough: MODEL draws two and they
+   *     answer to one name, so unticking it takes both. Two KEYS is not enough
+   *     either: `rate-5h` answers to 5H and 7D, and unticking one of them
+   *     hides nothing.
    *   — **no field in it urgent**, because a group holding an urgent field
    *     keeps that field and can never detach — and detachment is the whole
    *     defect this test exists for.
    */
   const bar = await drawnKeys(PANEL);
   const target = await tab.evaluate((args) => {
-    const [panel, drawn] = args as [string, Record<string, string[]>];
+    const [panel, drawn] = args as [string, Record<string, { keys: string[]; solo: string | null }>];
     for (const all of document.querySelectorAll(`${panel} .stripickall`)) {
       const key = (all as HTMLElement).dataset.g ?? '';
-      if ((drawn[key] ?? []).length < 2) continue;
+      if ((drawn[key]?.solo ?? null) === null) continue;
       const rows = [...(all.closest('.stripickgrp')?.nextElementSibling
         ?.querySelectorAll('.stripickopt') ?? [])];
       if (rows.some((r) => r.querySelector('.stripickurg') !== null)) continue;
@@ -470,7 +492,7 @@ test('the round trip: a category unticked comes BACK when it is ticked again, '
    * it went green against a build whose hiding rule had stopped matching.
    * Found by a removal proof that reddened NOTHING, which is what those are for.
    */
-  const first = bar[target!][0];
+  const first = bar[target!]!.solo!;
   await tab.locator(`${PANEL} input[data-f="${first}"]`).uncheck();
   await tab.waitForTimeout(700);
   const soloed = await tab.evaluate((args) => {

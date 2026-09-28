@@ -17,9 +17,13 @@ import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import type { UiHarness } from '../test/ui/helpers.ts';
 import { CMD, PAL } from './composer.ts';
+import { pendingApi } from './settle.ts';
 
 /** Open the app on a server of our own, authenticated the way a person is. */
 export async function openApp(page: Page, h: UiHarness): Promise<void> {
+  // Installed BEFORE the page loads, so `settleScreen`'s "no read in flight"
+  // counts every read the page makes, not only those begun after it first asks.
+  pendingApi(page);
   await page.goto(`http://127.0.0.1:${h.port}/#${h.nonce}`);
   await expect(
     page.locator('.nav').first(),
@@ -137,17 +141,47 @@ export async function openConfirm(page: Page, what: string): Promise<Locator> {
   return pressed.confirm;
 }
 
-/** Press Execute, answer the confirm, and settle. THE NONCE PATH, NOT BYPASSED. */
-export async function runIt(page: Page, line: string, what: string): Promise<void> {
+/**
+ * **THE COMPOSER'S RENDER GENERATION, as the screen itself stamps it.**
+ *
+ * `screens/palette.js` writes `data-render="N"` on its section when render N
+ * STARTS and `data-drawn="N"` when render N has finished drawing — the
+ * `renderGeneration` token `screens/doctor.js` guards its own redraws with,
+ * made readable. `NaN` when the section carries no marker, which is what a
+ * build without the marker answers, so a wait written over it fails as itself
+ * rather than settling on a number that was never there.
+ */
+export async function renderGeneration(page: Page): Promise<{ render: number; drawn: number }> {
+  return page.evaluate((pal) => {
+    const root = document.querySelector(pal) as HTMLElement | null;
+    return {
+      render: Number(root?.dataset.render ?? 'NaN'),
+      drawn: Number(root?.dataset.drawn ?? 'NaN'),
+    };
+  }, PAL);
+}
+
+/**
+ * Press Execute, answer the confirm, and settle. THE NONCE PATH, NOT BYPASSED.
+ *
+ * Returns the render generation the screen stood at BEFORE `Run it` was
+ * pressed — read while the confirm is open, after which nothing on this screen
+ * renders until the run's own outcome triggers the redraw — so `settleScreen`
+ * can wait for a redraw that happened AFTER the run rather than for a screen
+ * that merely looks the same as it did before it.
+ */
+export async function runIt(page: Page, line: string, what: string): Promise<number> {
   // **The confirm is NOT bypassed**, which is the item's own instruction about
   // the approval boundary: "Entries that sit on the approval boundary exercise
   // the confirm-and-nonce path, which must not be bypassed to make a test
   // convenient." The nonce is minted by the GET that renders this, and spending
   // it is the only way to reach the run.
   const confirm = await openConfirm(page, what);
+  const before = (await renderGeneration(page)).render;
   await confirm.getByRole('button', { name: 'Run it', exact: true }).click();
   await expect(outcomeFor(page, line).locator('.exitcode'), `${what}: an outcome arrives`)
     .toBeVisible({ timeout: 180_000 });
+  return before;
 }
 
 /**
@@ -216,39 +250,85 @@ export async function outcome(
  * `ack`'s `finding` box ("Not a checkbox or radio button"), and an outcome
  * region read as empty because it was read while it was being re-homed.
  *
- * So this waits for two consecutive identical samples of the two things the
- * redraw changes — the picker's value and the form's field count. It is written
- * over what the screen SHOWS rather than over "the picker says ack", so it will
- * keep working, unchanged, on the day the reset is fixed.
+ * The first version waited for two consecutive identical samples of the
+ * picker's value and the form's field count, written over what the screen
+ * SHOWS. Since `KEPT` keeps the entry, the screen SHOWS the same thing before
+ * a redraw, during the gap between two redraws, and after the last one — so
+ * "it stopped changing" could not tell "the redraw has not started yet" from
+ * "the redraw is done" (review of `db6ba6cb`, the 4fb7d0a3 shape). One Execute
+ * is three records, and the later redraws are debounced ~250ms
+ * (`app.js`, `setupLiveScreen`), so a redraw can start after two samples
+ * agreed.
+ *
+ * So it now reads the screen's own RENDER GENERATION (`renderGeneration`):
+ *
+ *  1. it has ADVANCED past `before`, the value `runIt` read with the confirm
+ *     open — a redraw caused by this run has happened, not merely "nothing
+ *     moved yet";
+ *  2. the last render that started has FINISHED drawing (`data-render` equals
+ *     `data-drawn`), and no `/api/` read is in flight (`pendingApi`, the set
+ *     `e2e/settle.ts` keeps) — a redraw awaiting its five reads is moving;
+ *  3. the picker and the outcome are on screen — kept from round 3: a screen
+ *     with neither is mid-redraw however long it stays so;
+ *  4. all of that held, UNCHANGED, across a settle window longer than the
+ *     live refresh's debounce — `STABLE_SAMPLES` samples no less than
+ *     `STABLE_MS` apart in total — so a debounced redraw that is armed but
+ *     not yet started has time to start and move the generation.
+ *
+ * What it still cannot see is a redraw armed by a stream frame that arrives
+ * later than the window: the debounce timer lives inside `app.js` and is not
+ * on the page. The window is sized against the measured 250ms, not against
+ * that.
  */
-export async function settleScreen(page: Page): Promise<void> {
+const STABLE_SAMPLES = 4;
+const STABLE_MS = 1_000;
+
+export async function settleScreen(page: Page, before: number): Promise<void> {
+  const pending = pendingApi(page);
   let previous = '';
+  let run = 0;
+  let since = 0;
   await expect
     .poll(async () => {
       const now = await page.evaluate((pal) => {
-        const root = document.querySelector(pal);
+        const root = document.querySelector(pal) as HTMLElement | null;
         const select = root?.querySelector('select');
         const form = root?.querySelector('.card.pane > div:nth-of-type(1)');
         // The run's outcome, which the redraw DETACHES while `render()` awaits
         // its reads and re-attaches when it is done (`attachExecuteOutcome`).
         const outcomes = root?.querySelectorAll('.execresult .exitcode').length ?? 0;
-        return `${select === null || select === undefined ? '?' : select.value}`
-          + `/${form === null || form === undefined ? -1 : form.querySelectorAll(':scope > label.small').length}`
-          + `/${outcomes}`;
+        return {
+          render: Number(root?.dataset.render ?? 'NaN'),
+          drawn: Number(root?.dataset.drawn ?? 'NaN'),
+          select: select === null || select === undefined ? null : select.value,
+          fields: form === null || form === undefined
+            ? -1 : form.querySelectorAll(':scope > label.small').length,
+          outcomes,
+        };
       }, PAL);
-      // **A SCREEN MID-REDRAW IS NOT A SETTLED ONE, however long it stays so.**
-      // Measured on CI (runs 35895453162 and 35919929821): the redraw spends
-      // its first several hundred milliseconds with no `<select>` and no
-      // outcome on screen — five reads in flight — and two identical samples
-      // of THAT (`?/-1/0`) were read as settled, so the next case was driven
-      // into a form the redraw then replaced, or the outcome was read while it
-      // was detached. So a sample with no picker or no outcome is always
-      // moving: the redraw has not finished until both are back.
-      const verdict = now === previous && !now.startsWith('?/') && !now.endsWith('/0')
-        ? 'settled' : 'moving';
-      previous = now;
-      return verdict;
-    }, { timeout: 60_000, intervals: [300, 300, 400, 500, 700] })
+      const sample = `r${now.render}/d${now.drawn}/${now.select ?? '?'}/${now.fields}/${now.outcomes}`
+        + `/inflight=${pending.size}`;
+      const still = now.render > before
+        && now.render === now.drawn
+        && pending.size === 0
+        && now.select !== null
+        && now.outcomes > 0;
+      if (!still || sample !== previous) {
+        previous = sample;
+        run = still ? 1 : 0;
+        since = Date.now();
+        return `moving ${sample}`;
+      }
+      run += 1;
+      return run >= STABLE_SAMPLES && Date.now() - since >= STABLE_MS ? 'settled' : `holding ${sample}`;
+    }, {
+      timeout: 60_000,
+      intervals: [300],
+      message: `the Composer never settled after the run: it must redraw past generation ${before}, `
+        + 'finish that redraw with no read in flight, and hold still for the settle window '
+        + '(the received value is the last sample: r = render started, d = render drawn, '
+        + 'the entry, the field count, the outcomes, the /api reads in flight)',
+    })
     .toBe('settled');
 }
 

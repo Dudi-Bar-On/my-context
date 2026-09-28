@@ -1206,6 +1206,7 @@ export const strings = {
   // The injection preview's precedent, carried to the second screen with the
   // same defect. Warm stays the default; cold is offered and LABELLED.
   'sim.qnone': 'No session is recorded in this corpus yet, so there is no session for the warm question to ask about — {b:cold} is the only question this screen can answer here.',
+  'sim.qunmeas': 'Not measured: this corpus’s session history has not been projected yet, so whether any session is recorded is unknown, and {b:cold} is the only question this screen can answer. Run {m:mycontext status} to build it.',
   'sim.qcold': 'This shell is on the {b:cold} session, so there is no session for the warm question to ask about. Sessions are recorded — choose one in the session picker to ask it.',
   'sim.qnote': '{b:Two questions, not two views.} Default is {b:cold} — what a brand-new window would get from this corpus and these budgets, unaffected by any one session’s history. The session above answers what it would get right now, with the {m:seen} set it was handed. Pressed control shows which one you see.',
   'sim.seen': '{b:Filtered before budgeting} — {n} item(s) removed at the {m:seen} gate: already delivered this session. The gate runs before any tier picks candidates, so 0 of 0 below can mean this. Ask the cold question instead.',
