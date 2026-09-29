@@ -21,7 +21,10 @@
 
 4. **OPEN FOR THE OWNER (not blocking):** the six items under "ideas awaiting the owner" in checkpoint 4;
    the design-sketch edit committed alone as 0a33e02e (revert it or keep it, one command either way);
-   549 foreign rows in this repository's own audit log (the 4.15 report §3 has the removal command).
+   549 foreign rows in this repository's own audit log (the 4.15 report §3 has the removal command);
+   OPEN RED on e01cfa30: Ubuntu's browser suite fails conversations-panels.spec.ts (:289 en+he, :683 en, chrome
+   project, click timeout) serially — the e2e lane's round 6 is on it (task-4.e2e-report.md); the phase
+   exit stands on 2eabb77f, which was green on both jobs end to end.
 
 ---
 
