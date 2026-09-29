@@ -1,3 +1,30 @@
+## ⏭ 2026-09-29 — RELEASE 2.0.0, PHASE 4 COMPLETE; PHASE 5 WAITS ON THE OWNER'S GO
+
+1. **CHECKPOINT 4 IS IN `reports/2026-09-22-release-checkpoints.md`** (newest first) and is the current
+   state; every block below it is history. The board is `mycontext ready --json` — read `.open` (125 (release/28–38 filed; the twenty-one phase-4 tasks and release/16, /19, /22, /23, /24, /4 closed; the in-sync-verdict task superseded — 123 ready, 2 held)), not
+   `.ready.length` (capped at 50). The SDD ledger `.superpowers/sdd/2026-09-22-v2-0-release/progress.md`
+   (gitignored) holds every ruling; every lane's report is beside it as `task-4.N-report.md`.
+
+2. **NEXT: phase 5** (`TASK-release-phase-5-cli-store-types-and-hygiene`, `state: todo`) starts on the owner's
+   next message after the checkpoint-4 report — that message IS the go; do not ask again. Phase 5 also
+   carries release/31, /32, /33, /35, /36, /37 (filed this phase; each body names it).
+
+3. **RULES LEARNED THIS PHASE, ALL IN THE LEDGER:** a reviewer asserts through the surface the item
+   names, never the function edited (the standing lesson; it caught three misses); before staging a
+   file from a lane's reported list, read that file's diff against the report — two lanes in one file
+   twice put one lane's hunk under the other's commit; run `npm test` on the head before every push
+   (the repository-wide meta-tests run only there); after `mycontext supersede <plan/seq>`, re-point
+   every D-map row that names it (check:board gates it); an `edit` with only `--extra` takes no
+   `--summary-unchanged`; never put backticks inside a double-quoted shell echo — use a quoted heredoc;
+   a perf red on one runner and not the other is diagnosed by an interleaved per-function A/B on
+   identical trees, never by absolute local numbers under load.
+
+4. **OPEN FOR THE OWNER (not blocking):** the six items under "ideas awaiting the owner" in checkpoint 4;
+   the design-sketch edit committed alone as 0a33e02e (revert it or keep it, one command either way);
+   549 foreign rows in this repository's own audit log (the 4.15 report §3 has the removal command).
+
+---
+
 ## ⏭ 2026-09-23 — RELEASE 2.0.0, PHASE 3 COMPLETE; PHASE 4 WAITS ON THE OWNER'S GO
 
 1. **CHECKPOINT 3 IS IN `reports/2026-09-22-release-checkpoints.md`** (newest first) and is the current
