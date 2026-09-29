@@ -81,3 +81,7 @@ THE DELIVERABLE: a report naming, for each of the four categories, how many and 
 3 and 4 — exactly which, with the evidence. Plus filed items for anything in category 3 or 4 that
 is still worth doing, and an explicit list of what is NOT worth filing and why. A finding the owner
 ruled out, or that time has overtaken, is closed by saying so, not by silence.
+
+## Request
+
+yes, and also we need to go back to our revised 6 reviews reports and look what we need to do and currentlly didn't according to the reports

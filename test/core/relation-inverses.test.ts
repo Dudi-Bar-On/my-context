@@ -1,3 +1,4 @@
+// @basis TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan, DEC-all-nineteen-relation-types-ship-and-an-inverse-pair-is-two, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
 /**
  * **One edge, two names, and never two rows.**
  *
@@ -29,7 +30,7 @@ import assert from 'node:assert/strict';
 import { createItem } from '../../src/core/mutate.ts';
 import { linkItems, unlinkItems } from '../../src/core/relations.ts';
 import {
-  INVERSE_RELATIONS, PASSIVE_OF, RELATION_MEANINGS, RELATION_TYPES, inverseOf,
+  INVERSE_RELATIONS, NO_INVERSE, PASSIVE_OF, RELATION_MEANINGS, RELATION_TYPES, inverseOf,
 } from '../../src/core/vocabulary.ts';
 import { relationLinks } from '../../src/core/search.ts';
 import type { Item } from '../../src/core/types.ts';
@@ -161,6 +162,54 @@ test('the symmetric member and the blocks pair are not treated as inverses', () 
   assert.equal(inverseOf('blocks'), null);
   assert.equal(inverseOf('unblocks'), null);
   assert.equal(inverseOf('derived_from'), null);
+});
+
+/**
+ * **The two maps must cover the vocabulary between them** —
+ * `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan`.
+ *
+ * `inverseOf` used to answer `null` for every name `INVERSE_RELATIONS` did not
+ * list, so "this relation is its own thing" and "nobody has said" were one
+ * answer — and the second silently turns off `linkItems`' mirror gate. A
+ * seventeenth relation type added without a declaration is now a throw that
+ * names the omission.
+ */
+test('every relation type is declared as paired or as having no inverse, with a reason', () => {
+  const undeclared = RELATION_TYPES.filter(
+    (t) => !Object.hasOwn(INVERSE_RELATIONS, t) && !Object.hasOwn(NO_INVERSE, t),
+  );
+  assert.deepEqual(
+    undeclared, [],
+    'a relation type in neither map leaves the mirror gate unguarded for it, and nothing says so',
+  );
+  for (const [name, why] of Object.entries(NO_INVERSE)) {
+    assert.ok(RELATION_TYPES.includes(name), `${name} has no inverse and is not in the vocabulary`);
+    assert.ok(why.length > 20, `${name} is declared with no reason worth reading`);
+    assert.ok(!Object.hasOwn(INVERSE_RELATIONS, name), `${name} is in both maps`);
+  }
+});
+
+test('an undeclared vocabulary name throws rather than reading as "no inverse"', () => {
+  const restore = RELATION_TYPES.slice();
+  RELATION_TYPES.push('invented_pair');
+  try {
+    assert.throws(
+      () => inverseOf('invented_pair'),
+      /declared in neither INVERSE_RELATIONS nor NO_INVERSE/,
+    );
+  } finally {
+    RELATION_TYPES.length = 0;
+    RELATION_TYPES.push(...restore);
+  }
+  // A name that is NOT in the vocabulary still answers null: a stored row may
+  // carry anything, and a read surface must get an answer rather than a throw.
+  assert.equal(inverseOf('not_a_relation_at_all'), null);
+});
+
+test('a prototype key is not an inverse — Object.hasOwn, not a bare index', () => {
+  assert.equal(inverseOf('constructor'), null);
+  assert.equal(inverseOf('toString'), null);
+  assert.equal(inverseOf('__proto__'), null);
 });
 
 test('the passive side of a pair is writable, on its own', () => {

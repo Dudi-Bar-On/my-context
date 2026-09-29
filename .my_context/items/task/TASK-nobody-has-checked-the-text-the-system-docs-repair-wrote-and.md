@@ -111,3 +111,7 @@ DELIVERABLE: the repairs, plus `reports/2026-09-17-system-docs-final.md`. State 
 CHECKED, not only those found false — a denominator is what makes the numerator mean anything. Mark
 each sentence checked-vs-carried. Name what you could not establish either way. If a prior report is
 wrong, say so: four lanes have corrected their briefs today and all four were right.
+
+## Request
+
+file and dispatch whatever you can also fix the "The board is stale (/99, /102, /103, /104, /105, /107 all shipped today but still read todo because nobody advanced them). Here's the true state:" update from todo to done not only these but everything else that is not updated, we are running after our tail all the time - stop it. also "The capability repair introduced 15 new false" then you told me it was error and there is not 15 so decide which and in general work sequentially until you close all the documentation actions except the hebrew then it will be the last and final - i do not want to continue mess with this so do a deterministic mechanism to close them on by on and report me when it's done

@@ -1,8 +1,9 @@
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../../core/command-flags.ts';
 import { skippedKeyNotice } from '../../core/config.ts';
+import { auditReadFailureNote } from '../../core/audit.ts';
 import { computeDecay } from '../../core/decay.ts';
-import { Ledger, type Usage } from '../../core/ledger.ts';
+import { Ledger, ledgerReadFailureNote, type Usage } from '../../core/ledger.ts';
 import { topUpLedger } from '../../core/ledger-replay.ts';
 import type { MutationContext } from '../../core/mutate.ts';
 import type { Item } from '../../core/types.ts';
@@ -82,34 +83,96 @@ export function reviewQueueDrafts(ctx: MutationContext): Item[] {
 interface LedgerView {
   usage: Usage[];
   recentlyUsed: string[];
-  sessionsRecorded: number;
+  /**
+   * How many sessions the ledger holds — or `null` when the ledger could not
+   * be read at all, so no count was ever taken.
+   *
+   * **It is nullable so that the zero is unrepresentable**, which is what
+   * `TASK-nine-sites-report-a-measured-zero-for-something-they-could` (M9)
+   * asks for at this exact site. This used to be a plain `number`, and the
+   * `catch` below returned `0` for a ledger that would not open — which is the
+   * number that drives *"usage: no sessions recorded yet"*, the sentence a
+   * brand-new workspace correctly gets. A damaged `.index.db` and a fresh
+   * corpus read identically, and the reader is told the more reassuring of the
+   * two. `0` is still a true and printable answer for a ledger that opened and
+   * holds nothing; `null` is the answer for one nobody could count.
+   */
+  sessionsRecorded: number | null;
+  /**
+   * Why the ledger could not be brought up to date from the audit log, or
+   * `null` when it was. Never `''` and never absent: a reader must be able to
+   * tell "checked, nothing wrong" from a build that does not report this.
+   *
+   * `auditReadFailureNote`'s sentence, composed at the point of failure rather
+   * than at the point of printing, so the `--json` field and the text line are
+   * the same string and cannot drift.
+   */
+  logUnreadable: string | null;
 }
 
 /** A report must never crash on a ledger Plan 2 has not populated yet. */
 function readLedger(root: string, dbPath: string): LedgerView {
   let ledger: Ledger | null = null;
+  let logUnreadable: string | null = null;
   try {
     ledger = Ledger.open(dbPath);
     // The ledger is a projection of the audit log (see ledger-replay.ts);
     // hooks stopped writing it directly, so aggregate readers catch it up
     // first. Best-effort: an unreadable log must not take down status — the
-    // answer is then computed from the projection as-is, which is the
-    // pre-existing behaviour. Know what that degradation looks like: an
-    // unreadable audit TREE is indistinguishable from an empty log
-    // (`auditSegments` swallows the readdir error), so this catch rarely
-    // even fires — the top-up quietly applies nothing and the report
-    // under-counts. NOTHING surfaces that today; no doctor check exists
-    // for audit-log readability (review I-2 corrected an earlier claim
-    // here that one did).
-    try { topUpLedger(root, ledger); } catch { /* aggregate from what is there */ }
+    // answer is then computed from the projection as-is.
+    //
+    // **And the degradation is now SAID, which is the whole of this catch's
+    // history.** It used to be bare, under a comment explaining that it barely
+    // ever fired because `auditSegments` swallowed the `readdir` error and
+    // handed back an empty list — so the top-up quietly applied nothing, the
+    // report under-counted, and nothing surfaced anywhere. That swallow was
+    // ended by `TASK-one-unreadable-directory-makes-the-audit-projection-look`
+    // (the same `readdir` failure was also making `syncProjection` DELETE the
+    // whole audit projection), which turned this into the opposite defect: a
+    // refusal raised at the source and then dropped here. Both halves are the
+    // one `INV-nothing-is-dropped-silently` violation, and the second is the
+    // more misleading, because by then something did know.
+    //
+    // Every reason is disclosed, not just that one: any failure to top up
+    // leaves the counts exactly as short, and a catch that reported one cause
+    // while swallowing the rest would be this defect with a smaller mouth.
+    try {
+      topUpLedger(root, ledger);
+    } catch (err) {
+      logUnreadable = auditReadFailureNote(err);
+    }
     const recent = ledger.recentSessions(DECAY_WINDOW);
     return {
       usage: ledger.allUsage(),
       recentlyUsed: ledger.itemsUsedIn(recent),
       sessionsRecorded: ledger.sessionCount(),
+      logUnreadable,
     };
-  } catch {
-    return { usage: [], recentlyUsed: [], sessionsRecorded: 0 };
+  } catch (err) {
+    // **The outer catch is the OTHER half of the same defect, and it was the
+    // half left open.** The inner catch above covers a ledger that opened and
+    // could not be topped up; this one covers the ledger not answering at all
+    // — `Ledger.open` throwing on a corrupt or half-built `.index.db`, or any
+    // of the four reads below it throwing. It used to return
+    // `sessionsRecorded: 0` and a `logUnreadable` that is still `null` on this
+    // path, which is *exactly* the pair a brand-new workspace produces, so the
+    // report said "no sessions recorded yet" over a ledger nobody could count
+    // (`TASK-nine-sites-report-a-measured-zero-for-something-they-could`, M9).
+    //
+    // `usage` and `recentlyUsed` stay empty because there is genuinely nothing
+    // to hand back; what changed is that `null` now says the emptiness is an
+    // absence of MEASUREMENT, and `ledgerReadFailureNote` says why in the same
+    // words the MCP `status_report` prints. The report itself still renders:
+    // a ledger is one measurement in it, never the reason to withhold health.
+    //
+    // `logUnreadable ??` and not a bare assignment: if the top-up already
+    // failed and a read then threw, the top-up's reason is the earlier and
+    // more specific one, and overwriting it would drop a disclosure to make
+    // room for a disclosure.
+    return {
+      usage: [], recentlyUsed: [], sessionsRecorded: null,
+      logUnreadable: logUnreadable ?? ledgerReadFailureNote(err),
+    };
   } finally {
     try { ledger?.close(); } catch { /* nothing to close */ }
   }
@@ -223,7 +286,13 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
       usage: ledger.usage,
       recentlyUsed: ledger.recentlyUsed,
       window: DECAY_WINDOW,
-      sessionsRecorded: ledger.sessionsRecorded,
+      // `?? 0` and NOT a widening of `DecayInput`: `computeDecay` uses this
+      // number only for its own "the window has not filled up yet" hedge, and
+      // the unmeasured fact is carried past it by `logUnreadable`, which this
+      // report prints ABOVE everything derived from the ledger. Nothing below
+      // reads `report.sessionsRecorded`; the report prints
+      // `ledger.sessionsRecorded`, which stays `null`.
+      sessionsRecorded: ledger.sessionsRecorded ?? 0,
     });
 
     const findings = runChecks({
@@ -351,6 +420,11 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
         // build does not say".
         stagedRulesSkipped: staged.skipped,
         usage: {
+          // `null`, never `0`, when the ledger could not be read at all — the
+          // piped reader gets the same three-state vocabulary the text report
+          // prints, and `logUnreadable` below carries the reason. A script
+          // that ranks by `cold` over a `sessionsRecorded: 0` it cannot tell
+          // from an unmeasured one is the consumer M9 is about.
           sessionsRecorded: ledger.sessionsRecorded,
           window: DECAY_WINDOW,
           cold: decay.cold.length,
@@ -358,6 +432,15 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
           // `DecayReport.unrestricted`.
           unrestricted: decay.unrestricted.length,
           caveat: USAGE_CAVEAT,
+          // A FIELD of the document, beside the counts it qualifies, on this
+          // command's own standing rule for `loadErrors` and
+          // `stagedRulesSkipped`: `--json` exists to be piped, and a count
+          // that silently left records out is the same defect as a load error
+          // that did. `null` when the top-up succeeded, never absent, so a
+          // script can tell "nothing was left out" from "this build does not
+          // say" — the distinction `STD-a-measured-zero-is-drawn-and-named-an-
+          // unmeasured-thing-is` turns on.
+          logUnreadable: ledger.logUnreadable,
         },
         health: counts,
         // `health` is the FINDINGS tally and nothing else, which is not what
@@ -509,9 +592,25 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     }
 
     out('');
+    // **BEFORE the counts, and at every detail level.** Same placement and
+    // same reason as the skipped-staging-files block above: a number a reader
+    // has already read is a number they have already believed, and the one
+    // reading this refusal makes impossible is "no sessions recorded yet" over
+    // a log holding thousands. `--summary` may drop rows; it may not drop the
+    // fact that the row below is a floor.
+    if (ledger.logUnreadable !== null) {
+      say(out, ledger.logUnreadable);
+      out('');
+    }
     say(
       out,
-      ledger.sessionsRecorded === 0
+      // Three states, not two, and the middle one is the whole of M9: a
+      // ledger that could not be read is UNMEASURED, and must never borrow
+      // the sentence a brand-new workspace correctly gets.
+      ledger.sessionsRecorded === null
+        ? 'usage: NOT MEASURED — the usage ledger could not be read (see the note above), so ' +
+          'there is no session count and nothing below it rests on injection history.'
+        : ledger.sessionsRecorded === 0
         ? 'usage: no sessions recorded yet — decay reporting starts once items begin to be injected.'
         : `usage: ${ledger.sessionsRecorded} session(s) recorded. ` +
           `${decay.cold.length} normative item(s) not injected in the last ${DECAY_WINDOW} session(s) ` +
@@ -523,7 +622,8 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     // abandoned one until the window has actually filled up. Printed at every
     // detail level, `--summary` included: a shorter report may drop rows,
     // never the reason its own headline number might mislead.
-    if (ledger.sessionsRecorded > 0 && ledger.sessionsRecorded < DECAY_WINDOW) {
+    if (ledger.sessionsRecorded !== null
+      && ledger.sessionsRecorded > 0 && ledger.sessionsRecorded < DECAY_WINDOW) {
       say(out, `(only ${ledger.sessionsRecorded} session(s) recorded so far, so "cold" mostly means "new")`, '  ');
     }
     // A cost line, not a finding. Scope is a restriction, so an item with none
@@ -543,7 +643,14 @@ function cmdStatus(ws: Workspace, args: string[], out: Emit): number {
     // the section that was supposed to have learned from both.
     if (detail === 'full' && decay.cold.length) {
       out('');
-      if (ledger.sessionsRecorded === 0) {
+      // `null` is folded in beside `0` deliberately, and this is the one place
+      // the two belong together: with no injection history at all — whether
+      // because none was ever recorded or because none could be read — every
+      // active normative item lands in `cold`, and the one thing that list
+      // must not do is read as a recommendation. So both take the sentence
+      // instead of the table, and the unmeasured case additionally carries the
+      // `logUnreadable` note printed above.
+      if (ledger.sessionsRecorded === null || ledger.sessionsRecorded === 0) {
         say(
           out,
           // "injectable" covers the whole cold list, and now that is every

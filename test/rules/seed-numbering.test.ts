@@ -1,4 +1,4 @@
-// @basis TASK-seed-the-store-and-migrate-the-rules-that-already-exist, CONST-evidence-must-cite-a-captured-record-id
+// @basis TASK-seed-the-store-and-migrate-the-rules-that-already-exist, CONST-evidence-must-cite-a-captured-record-id, TASK-release-phase-1-the-repository-tells-the-truth
 /**
  * **The first seed entry's DETECTIVE check, and the number it produced.**
  *
@@ -119,12 +119,53 @@ test('an enumerator that is not the standard shape is counted apart, not silentl
   assert.equal(verdict.enumerated, 2);
 });
 
-test('the real archive is readable and the standard is measurable over it', () => {
+/**
+ * **Gated on the archive actually existing.** `ownerTurns` reads session
+ * transcripts this machine wrote (`transcriptDir`) — real on the owner's own
+ * machine, and simply absent on a fresh checkout or CI runner, which has never
+ * run a session here. Fewer than two turns is that "no archive" state rather
+ * than a thin one, and the honest answer is to say so and skip, not to lower
+ * `> 1000` until an empty archive satisfies it.
+ */
+test('the real archive is readable and the standard is measurable over it', (t) => {
   const turns = [...ownerTurns(process.env, process.cwd())];
+  if (turns.length < 2) {
+    t.skip('no owner archive on this machine');
+    return;
+  }
   assert.ok(turns.length > 1000, `the archive yielded ${turns.length} assistant turns`);
   const report = checkAskNumbering(turns);
   assert.ok(report.asked > 0, 'no question to the owner was found in the whole archive');
   assert.equal(report.held + report.violations.length, report.asked);
+});
+
+/**
+ * **Portable form of the same claim, unconditional.** The test above can only
+ * prove "the standard is measurable" where a real archive exists; this one
+ * proves it everywhere, over a ten-turn fixture built right here from the
+ * same `turn`/`OBEYED`/`UNNUMBERED` shapes the tests above already use —
+ * three held, two violating, five statements the standard has no opinion on.
+ */
+test('the standard is measurable over a ten-turn fixture', () => {
+  const turns: Turn[] = [
+    turn(OBEYED, 0),
+    turn(UNNUMBERED, 1),
+    turn('Both lanes landed. Committed as `5515ed2`.', 2),
+    turn(OBEYED, 3),
+    turn('Ran the suite, 8956 passed.', 4),
+    turn(UNNUMBERED, 5),
+    turn(OBEYED, 6),
+    turn('Filed as TASK-x.', 7),
+    turn('Done.', 8),
+    turn('Nothing further to report.', 9),
+  ];
+  assert.equal(turns.length, 10);
+  const report = checkAskNumbering(turns);
+  assert.equal(report.examined, 10);
+  assert.ok(report.asked > 0, 'no question in the fixture — the standard has nothing to measure');
+  assert.equal(report.held + report.violations.length, report.asked);
+  assert.equal(report.held, 3);
+  assert.equal(report.violations.length, 2);
 });
 
 /**

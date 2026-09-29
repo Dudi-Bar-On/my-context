@@ -18,9 +18,9 @@ tags:
   - archive
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/archive-skew-body.md"
+source_file: null
 source_anchor: null
-source_checksum: 199abfac0d3ee1cf
+source_checksum: null
 valid_from: 2026-09-11
 valid_until: null
 checksum: 2f7fd97adae348e1

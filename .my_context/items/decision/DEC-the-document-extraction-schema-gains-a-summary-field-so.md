@@ -14,9 +14,9 @@ tags:
   - capture
   - owner-ruling
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7/scratchpad/r6a.md"
+source_file: null
 source_anchor: null
-source_checksum: 4f0c8716abcaf57a
+source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
 checksum: da3408e286a900b3

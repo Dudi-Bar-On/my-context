@@ -829,21 +829,33 @@ const FLAGS_NOT_OFFERED: Record<string, Record<string, string>> = {
     unlink: '--unlink <relation> <target> takes TWO operands. This model is one value per flag, '
       + 'so a def advertising it would compose `--unlink rel` and lose the target silently — '
       + 'the one failure the whole composed-and-shown design exists to prevent.',
+    // Added 2026-09-22 with the outside-repository guard (`escapesRoot`,
+    // paths.ts) and the corpus repair it made possible to detect.
+    'detach-source': '--detach-source clears source_file and source_checksum, both, through '
+      + 'the ordinary edit write path. Not offered for `summary-unchanged`\'s reason, directly '
+      + 'above: it is a switch that must be a DELIBERATE act, and a checkbox beside a body '
+      + 'textarea is the least deliberate control there is. It is also refused outright '
+      + 'alongside `--body` and `--unlink` in the same call (`cmdEdit`, edit.ts), which this '
+      + 'flag-list model has no way to express. When the palette does offer it, it belongs on '
+      + 'its own narrow "detach this item\'s source" control, and this row must move rather '
+      + 'than stand over the opposite.',
   },
   'lesson-accept': {
     // 2026-09-12: `lesson-accept` became the fifth AUTHORED surface of the
     // summary gate, so it now accepts the same two flags `add` does
     // (`TASK-lesson-accept-creates-a-rule-with-no-summary-so-the-accept`).
-    summary: '--summary is now REQUIRED on lesson-accept, and the palette does not offer it '
-      + 'for the same lane reason it does not offer it on `add` and `edit` directly above: '
-      + '`src/ui/public/lib/palette-defs.js` belongs to the web shell. The consequence here is '
-      + 'sharper than there, and is stated rather than softened — a `lesson-accept` line '
-      + 'composed by the palette today carries no summary and is REFUSED by the gate when the '
-      + 'user runs it. The Composer still checks what it composes against the real parser, '
-      + 'which accepts the line; it is the gate one step further in that declines. So this row '
-      + 'is not an excuse for a missing convenience, it is a record of a composed command that '
-      + 'cannot succeed, and the `excused && offered` branch below fails the moment the palette '
-      + 'adds the field — which is the point at which this sentence has to go.',
+    //
+    // `summary` ITSELF LEFT THIS LEDGER 2026-09-22, exactly the way the
+    // sentence that used to stand here said it would: `lib/palette-defs.js`
+    // now offers it (`{ name: 'summary', input: 'text' }`, added the same
+    // day), so the `excused && offered` branch below would fail if this row
+    // still named it. A `lesson-accept` line composed by the palette used to
+    // carry no summary and be refused by the gate on every run — measured
+    // directly, and the regression test for it is
+    // `e2e/composer-write-execute.spec.ts`'s "the six writes that need a
+    // queue run" case. `summary-omitted` stays excused below: nothing added
+    // a control for it, so a candidate accepted with no summary at all is
+    // still a composed command this screen cannot produce.
     'summary-omitted': '--summary-omitted is the named opt-out the gate offers instead of the '
       + 'sentence, and it is not offered for the lane reason --summary above gives, plus one of '
       + 'its own, the '

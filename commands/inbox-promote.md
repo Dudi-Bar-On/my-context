@@ -22,9 +22,16 @@ What the user typed: $ARGUMENTS
    one. Add `--title "<better wording>"` when the capture's own wording would make a poor
    item title; everything else — the body, the tags and who authored the capture — travels
    unchanged.
+
+   The promotion also needs `--summary "<one plain sentence>"` (Task 3.11): what the
+   item IS and why it matters, for a reader who does not know this codebase — not how it
+   was found, and not a restatement of the capture's own title. It is required because an
+   item created with no summary can never afterwards be asked for one. If the capture
+   genuinely has nothing to say beyond its own title, use `--summary-omitted` in its
+   place and say in your report that you did.
 2. Run it WITHOUT `--yes`, exactly as written:
 
-   `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" inbox-promote <id> --to <category>`
+   `node "${CLAUDE_PLUGIN_ROOT}/src/cli/index.ts" inbox-promote <id> --to <category> --summary "<one plain sentence>"`
 
    It prints the real preview — what the item is, what would change, and what
    governs before and after — and then refuses, because stdin here is not a terminal.

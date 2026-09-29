@@ -6,7 +6,7 @@ status: active
 severity: soft
 always: false
 summary: Work you accept out of the queue arrives without an address, so it is the one thing in the corpus that cannot be scheduled, cited or depended on.
-summary_of: a019f9b89e1b021d
+summary_of: 48b5497697d8b933
 scope:
   - src/cli/commands/review.ts
   - src/review/**
@@ -23,7 +23,7 @@ source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: f49563d2d169969f
+checksum: e06727318999ed7e
 plan: review
 seq: "10"
 state: todo
@@ -82,3 +82,5 @@ by `mycontext ready --plan <p>` — i.e. that the promoted item is SCHEDULABLE, 
 is active. Every existing promote test asserts status, and one now asserts location
 (`review/8`); none asserts that the thing can be found again by the route work is actually
 dispatched through.
+
+Owner ruling G, recorded 2026-09-22: option 1 - review promote asks --plan and --seq. Lands in release phase 5. See DEC-review-promote-asks-for-plan-and-seq-so-a-promoted-task.

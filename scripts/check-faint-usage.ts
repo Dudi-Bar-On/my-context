@@ -75,20 +75,75 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { skipLines, walkTracked, type Skip } from './tracked-walk.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 
 /**
- * Everything that may apply an ink token to text. The shipped stylesheet is
- * listed while it is still a placeholder, on purpose: the rule belongs to the
- * design system rather than to the mockup, and a gate that starts guarding a
- * file only once that file has content is a gate that misses its first draft.
+ * Where `--faint` is DECLARED, and the anchor the anti-vacuity check reads: if
+ * the token block is not parsed, this checker is policing a name it never saw.
  */
-export const SCANNED_FILES = [
-  'docs/design/web-ui-mockup.html',
-  'src/ui/public/index.html',
-  'src/ui/public/styles.css',
+export const TOKEN_BLOCK_FILE = 'docs/design/web-ui-mockup.html';
+
+export type { Skip };
+
+/**
+ * **The trees this rule does not govern, named and counted rather than left
+ * out of a list of three.**
+ *
+ * `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan` named
+ * this file for a `SCANNED_FILES` literal of three paths: *"any new stylesheet
+ * applying `--faint` to small text"* was unscanned, and measured, so was
+ * `src/ui/public/screens/watch.js`, which uses the token in a shipped screen.
+ * So the population is now every tracked `.html`, `.css` and `.js`, and these
+ * are the only removals.
+ */
+export const SKIPPED_TREES: ReadonlyArray<{ prefix: string; why: string }> = [
+  {
+    prefix: 'reports/',
+    why: 'history — design explorations and captured prototypes, kept as they were on the day; '
+      + 'this rule governs what ships and the design system it ships from, not the record of how '
+      + 'either was arrived at',
+  },
 ];
+
+/** Why a file with no stylesheet-bearing extension is out of range. */
+export const NOT_A_STYLESHEET =
+  'not a stylesheet or a page — no `.html`, `.css` or `.js` to carry a rule or a token';
+
+/** Why a vendored file is out of range: it is not ours to restyle. */
+export const SKIP_REASON_VENDOR =
+  'vendored third-party CSS, pinned by checksum in VENDOR.md — restyling it would break its own gate';
+
+/**
+ * Everything that may apply an ink token to text: every tracked file that can
+ * carry CSS or reference a token, minus the declared skips above, each of
+ * which comes back carrying the reason it was left out.
+ *
+ * Fails CLOSED — `git ls-files` failing throws rather than yielding an empty
+ * list, because "0 files, no offenders" is the sentence this gate must never
+ * be able to print while blind.
+ */
+export function scannedFiles(root: string = REPO): { scanned: string[]; skipped: Skip[] } {
+  return walkTracked(root, (file) => {
+    // Not a candidate at all — no extension that can carry CSS or reference a
+    // token. Returning `null`-worthy files here would flood the disclosure with
+    // the whole corpus, so they are dropped from the population rather than
+    // skipped from it; what remains is every file that COULD break this rule.
+    if (!/[.](html|css|js)$/.test(file)) return NOT_A_STYLESHEET;
+    if (file.includes('/vendor/')) return SKIP_REASON_VENDOR;
+    const tree = SKIPPED_TREES.find((t) => file.startsWith(t.prefix));
+    return tree === undefined ? null : tree.why;
+  });
+}
+
+/** What was read and what was declined, in one line that is true either way. */
+export function summariseScan(scanned: readonly string[], skipped: readonly Skip[]): string {
+  return [
+    `${scanned.length} file(s) scanned, ${skipped.length} skipped.`,
+    ...skipLines(skipped),
+  ].join('\n');
+}
 
 /** 18pt in CSS reference pixels. WCAG 2.2, SC 1.4.3. */
 export const LARGE_TEXT_PX = 24;
@@ -769,11 +824,11 @@ export function analyse(sources: Source[]): Report {
 
   if (report.declaredAs.length === 0) {
     report.problems.push({
-      file: SCANNED_FILES[0]!,
+      file: TOKEN_BLOCK_FILE,
       line: 0,
       detail: `nothing declares \`${TOKEN}\`. Either the token block moved out of the scanned files or `
         + 'the token was renamed, and a rule cannot be enforced against a name that no longer exists. '
-        + 'Point SCANNED_FILES at the token block, or retire this checker deliberately.',
+        + 'Check `scannedFiles` still reaches the token block, or retire this checker deliberately.',
     });
   }
   return report;
@@ -792,7 +847,7 @@ function outsideStylesheet(source: Source): Unjudged[] {
   return out;
 }
 
-export function readSources(files: string[] = SCANNED_FILES): Source[] {
+export function readSources(files: string[] = scannedFiles().scanned): Source[] {
   const out: Source[] = [];
   for (const file of files) {
     const abs = path.join(REPO, file);
@@ -818,7 +873,8 @@ export function describe(use: Use): string[] {
 }
 
 function main(argv: string[]): number {
-  const report = analyse(readSources());
+  const { scanned, skipped } = scannedFiles();
+  const report = analyse(readSources(scanned));
   const failed = report.offenders.length > 0 || report.problems.length > 0;
 
   if (argv.includes('--json')) {
@@ -839,6 +895,10 @@ function main(argv: string[]): number {
     + `${TOKEN} (${report.legal.length} large enough, ${report.offenders.length} not), and `
     + `${report.nonTextUses} non-text use(s), which owe 3:1 and are fine.\n`,
   );
+  // What was NOT read, named with its reason — `STD-a-measured-zero-is-drawn-
+  // and-named`. A file count with no denominator reads the same whether this
+  // gate covered the UI or the three paths it used to name.
+  process.stdout.write(`${summariseScan(scanned, skipped)}\n`);
   for (const hit of report.unjudged) {
     process.stdout.write(`not judged: ${hit.what}, ${hit.file} line ${hit.line}.\n`);
   }

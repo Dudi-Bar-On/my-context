@@ -104,6 +104,61 @@ test('a server whose module graph moved says so plainly, and says how to fix it'
   } finally { removeTree(root); }
 });
 
+/**
+ * **A server that could not examine its own sources says THAT, and it is not
+ * the same sentence as "your code is stale"** —
+ * `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`.
+ *
+ * `staleCodeNote` opened with `if (code === null || !code.isStale()) return '';`
+ * and `isStale()` answers `false` when the boot walk never happened, so the two
+ * reasons for silence were the same line of code: "I looked and nothing moved"
+ * and "I never managed to look". The first is a measurement a reader may rely
+ * on. The second is the absence of one, and the 2026-08-27 outage in this
+ * module's own header is what it costs — an MCP server holding drifted code and
+ * reporting 719 healthy items as damaged, with nothing anywhere saying the
+ * process might not be current.
+ *
+ * **The identity is a real `stampCodeIdentity` result, not a stub.** It is given
+ * an asset half that cannot be walked, which is the cheapest arrangement that
+ * produces the state on this platform. The MCP server's own scope carries no
+ * asset half at all (`src/mcp/server.ts` passes `{ entry }` alone), so IT
+ * reaches this only through an error `sourceOf` does not swallow — EACCES, a
+ * held handle, a network mount — which is rarer than the UI's case and is
+ * exactly why the note has to exist rather than be argued away.
+ */
+test('a server that could not walk its own sources says so, and does not claim staleness', () => {
+  const root = codeTree();
+  try {
+    const wall = path.join(root, 'assets-that-are-a-file');
+    writeFileSync(wall, 'a file where the directory must be\n', 'utf8');
+    const code = stampCodeIdentity({ entry: path.join(root, 'server.ts'), assets: wall });
+    assert.equal(code.freshness(), 'unmeasured', 'the fixture must actually produce the state');
+    const note = staleCodeNote(code);
+
+    assert.notEqual(note, '', 'silence here is the defect: nothing else can tell the reader');
+    // What it must SAY: that the question is open, which directory, which error,
+    // and the remedy — the same four beats the stale line has.
+    assert.match(note, /could not examine its own source files/);
+    assert.ok(note.includes(wall), 'which directory');
+    assert.ok(note.includes('ENOTDIR'), 'which error');
+    assert.match(note, /unmeasured/i, 'the state is named, not implied');
+    assert.match(note, /restarting the MCP server/, 'the remedy, in one clause');
+
+    // What it must NOT say. This is not a claim that the code IS stale — no
+    // reading was taken — and it is not damage. Reproducing the outage's own
+    // register is the mistake the stale line was written flat to avoid.
+    assert.doesNotMatch(note, /has changed on disk since/,
+      'a walk that never ran cannot report that anything changed');
+    assert.doesNotMatch(note, /lost|corrupt|damaged|mismatch/i);
+
+    // And it is a real footer: the splitter must be able to find where an
+    // answer carrying only this line ends.
+    const framed = `an answer\n\n${note}`;
+    assert.equal(splitProvenance(framed).answer, 'an answer');
+    assert.equal(splitProvenance(framed).provenance, note);
+  } finally { removeTree(root); }
+});
+
 test('the stale line rides on the tool result itself, not on a second call', () => {
   const root = codeTree();
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-prov-'));

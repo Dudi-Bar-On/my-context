@@ -3,7 +3,7 @@ import { recordAudit, type AuditRecord, type HookOp } from '../core/audit.ts';
 import { relPosix } from '../core/paths.ts';
 import { findProjectRoot } from '../core/workspace.ts';
 import {
-  hookContext, hookParseErrorLine, parseHookInput, readStdin,
+  hookContext, hookParseErrorLine, parseHookInput, readStdin, unrecordedHookLine,
   type HookEventName, type HookInput,
 } from './io.ts';
 
@@ -292,8 +292,11 @@ export function recordObservation(
  * when `config.json` is edited, so the moment a user breaks that file is
  * exactly the moment `resolveWorkspace` would stop this hook from saying so.
  *
- * The audit write's own failure is discarded, as on every hook path — there is
- * no one to tell, and `core/audit.ts` documents that trade where it is made.
+ * The audit write's own failure is DISCLOSED, not discarded
+ * (`TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen`). It
+ * was discarded here until 2026-09-23, on the argument — written into
+ * `core/audit.ts` — that there is no one to tell; there is, and it is the
+ * person whose stderr Claude Code surfaces. See the call site below.
  */
 export function observeAndRecord(
   spec: ObservationSpec, input: HookInput, fallbackCwd: string,
@@ -323,14 +326,31 @@ export function observeAndRecord(
     }
 
     const note = capped(observed.note, NOTE_MAX);
-    recordAudit(root, {
+    const op = observed.op ?? spec.op;
+    const written = recordAudit(root, {
       kind: 'hook',
-      op: observed.op ?? spec.op,
+      op,
       hook: spec.hook,
       ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
       ...(observed.path === undefined ? {} : { path: observed.path }),
       note,
     });
+    // **The row IS this hook's output, so a failed append is the whole firing
+    // lost** — `INV-nothing-is-dropped-silently` — and it cannot be disclosed
+    // in the log, which is the thing that just failed. All ten observation
+    // hooks share this runtime, so one site here covers every one of them, and
+    // `spec.hook` is what makes the line say which event was lost.
+    //
+    // Written HERE and not returned to the binary for `session-start.ts`'s
+    // reason at its own door: a failed append leaves nothing behind to ask a
+    // second time, so this is the only moment the fact exists. `stdout` is
+    // untouched — an observation that spoke to the model still spoke.
+    if (!written.written) {
+      process.stderr.write(unrecordedHookLine(
+        spec.hook, op, written.error ?? 'unknown',
+        `this ${spec.hook} firing is the only trace this event ever had, and it is gone`,
+      ));
+    }
     return { note, stdout };
   } catch {
     // INV-hooks-fail-open. A knowledge base that breaks a session is worse than

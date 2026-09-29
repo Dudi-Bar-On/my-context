@@ -9,7 +9,8 @@ import { isMainEntry } from '../core/paths.ts';
 import { readSeen, restoredFor } from '../core/seen-file.ts';
 import { findProjectRoot } from '../core/workspace.ts';
 import {
-  hookParseErrorLine, parseHookInput, payloadOf, readStdin, type HookPayload,
+  hookParseErrorLine, parseHookInput, payloadOf, readStdin, unrecordedHookLine,
+  type HookPayload,
 } from './io.ts';
 
 /**
@@ -361,10 +362,24 @@ export function recordPostCompact(
     if (askBudget.note !== '') parts.push(askBudget.note);
     const note = parts.join('; ');
 
-    recordAudit(root, {
+    const written = recordAudit(root, {
       kind: 'hook', op: 'post-compact', sessionId, hook: 'PostCompact',
       ...handoverFields(handover.read), note,
     });
+    // The row is the whole of what this hook produces, and everything in the
+    // `note` above — how many ids the compaction captured, how many came back,
+    // whether a snapshot existed at all — exists nowhere else afterwards. A
+    // lost append is that whole measurement gone, and the reader of this
+    // event's stderr is the user: Claude Code folds a PostCompact hook's
+    // output into the message the compaction prints, which is why nothing is
+    // written here on the happy path. `INV-nothing-is-dropped-silently`.
+    if (!written.written) {
+      process.stderr.write(unrecordedHookLine(
+        'PostCompact', 'post-compact', written.error ?? 'unknown',
+        'what this compaction captured and what it restored is not recorded anywhere, and ' +
+        'the window it describes is already gone',
+      ));
+    }
 
     return { trigger, captured, survived, restored, askBudget: askBudget.verdict, note };
   } catch {

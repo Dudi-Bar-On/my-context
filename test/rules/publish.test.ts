@@ -1,4 +1,4 @@
-// @basis TASK-the-maintenance-tool-crud-where-the-form-is-the-template-and
+// @basis TASK-the-maintenance-tool-crud-where-the-form-is-the-template-and, TASK-release-phase-3-the-defects
 /**
  * **PUBLISHING SHOWS A DIFF AND ASKS, BECAUSE IT IS OUTWARD-FACING AND HARD TO
  * REVERSE.**
@@ -22,7 +22,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -199,5 +199,32 @@ test('publishing nothing is refused, so a version never moves for no reason', ()
       'a publish with no changes was accepted, which cuts a store version an install would ' +
       'download to find it already has it',
     );
+  });
+});
+
+/* ══ 4. AN ENTRY THAT DOES NOT PARSE REFUSES THE WHOLE PUBLISH (B12) ═══════ */
+
+/**
+ * `KNOWN-rules-verify-answers-intact-for-an-entry-the-store-s-own`: publishing
+ * an entry the store's own parser cannot read used to succeed — `writeManifest`
+ * sealed it with a checksum of bytes nobody had read as an entry, and the
+ * damage surfaced only later, as a `verify` failure against every install that
+ * had already taken the store. The fix is to refuse HERE, before anything is
+ * written, and to name the file — same shape as the budget refusal, and
+ * checked BEFORE it: an unreadable entry is a correctness problem, not a size
+ * one, and it refuses regardless of whether the product tier is in budget.
+ */
+test('publishing is refused when an entry on disk does not parse, and the file is named', () => {
+  withStore((dir) => {
+    writeFileSync(path.join(dir, 'broken.md'), 'not an entry at all, no frontmatter fence\n', 'utf8');
+    const plan = planPublish(dir);
+    assert.notEqual(
+      plan.refusal, null,
+      'a store holding an unparseable entry planned to publish it anyway',
+    );
+    assert.match(plan.refusal ?? '', /broken\.md/, 'the refusal does not name the file that will not parse');
+
+    const answer = publishStore(dir, { confirm: true });
+    assert.equal(answer.ok, false, 'publishStore went ahead despite an unparseable entry');
   });
 });

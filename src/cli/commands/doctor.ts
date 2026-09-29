@@ -11,6 +11,7 @@ import {
   refuseUnknownFlag, wantsJson, type Detail,
 } from './format.ts';
 import { hasFlag, registerCommand, type Emit } from './registry.ts';
+import { ruleStoreFindings } from '../../doctor/rule-store.ts';
 import { sharedTail } from '../../doctor/shared-tail.ts';
 
 /**
@@ -360,6 +361,20 @@ function cmdDoctor(ws: Workspace, args: string[], out: Emit): number {
       config: ws.config,
     }),
     ...migrationFindings,
+    // **The rule store, asked OUTSIDE `runChecks` and folded in here** —
+    // `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`, and
+    // it is the same arrangement `checkCliOnPath` below has for the same
+    // reason: it answers about the INSTALL rather than about this corpus.
+    // Unlike that one it is folded into `partitionFindings` rather than
+    // carried under its own key, because it already declares `about` and so is
+    // ROUTED — it lands in `disclosures`, prints under its own heading, and
+    // counts toward neither `counts` nor the exit code. `checks.ts` may not
+    // call it at all: `test/rules/isolation.test.ts` requires that module to
+    // reach nothing under `src/rules/` (spec §7), which is why it lives in
+    // `doctor/rule-store.ts` and is listed in that test's `EXCLUDED` map.
+    // Wrapped for the reason every check in `runChecks` is: a check failing
+    // must never crash the command reporting it.
+    ...ruleStoreFindings(ws.projectRoot),
   ]);
 
   // `checkCliOnPath` deliberately runs OUTSIDE `runChecks` — see the long

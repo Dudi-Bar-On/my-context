@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import {
-  appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readSync,
-  truncateSync, writeFileSync,
+  closeSync, mkdirSync, openSync, readFileSync, readSync,
+  truncateSync,
 } from 'node:fs';
 import path from 'node:path';
 import { acquireLock } from './lock.ts';
+import { writePrivateGitignore } from './private-gitignore.ts';
 
 // --- The append-only JSONL log, once ----------------------------------------
 //
@@ -93,9 +94,74 @@ export interface JsonlLogSpec {
  * a missing file is worse than none: it reads as verified.
  */
 export function ensureLogDir(dir: string): string {
+  if (markerIsAsThisProcessLeftIt(dir)) return dir;
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+  // One writer owns this line since the 2026-09-23 incident, in which a
+  // repository's own root `.gitignore` was found truncated to `*`. It refuses
+  // a target that is not a directory this product created, and discloses.
+  const marked = writePrivateGitignore(dir);
+  // **Only a marker this process WROTE is remembered.** A refusal wrote
+  // nothing, so there is nothing whose identity could stand for "still
+  // marked", and remembering one would silence the disclosure
+  // `writePrivateGitignore` puts on stderr for every later append — which is
+  // the one thing `INV-nothing-is-dropped-silently` will not have. A refusing
+  // directory therefore pays the full check on every append, exactly as it
+  // did before this memo existed.
+  const identity = marked.written ? markerIdentity(dir) : null;
+  if (identity === null) markedLogDirs.delete(path.resolve(dir));
+  else markedLogDirs.set(path.resolve(dir), identity);
   return dir;
+}
+
+/**
+ * **What this process last confirmed about a log directory's `.gitignore`** —
+ * `<size>:<mtimeMs>`, keyed by the RESOLVED directory.
+ *
+ * Module-level and never cleared, which is sound because the callers that pay
+ * for this are hooks, and a hook is one process per event: the map is born
+ * empty at every PreToolUse, SessionStart and PreCompact, so the first append
+ * of each event does the full `mkdirSync` + `writePrivateGitignore` and every
+ * disclosure that can come out of it comes out.
+ */
+const markedLogDirs = new Map<string, string>();
+
+/** `<size>:<mtimeMs>` of `dir`'s `.gitignore`, or `null` if it could not be measured. */
+function markerIdentity(dir: string): string | null {
+  try {
+    // `fs.statSync` through the namespace, for `isTorn`'s stated reason.
+    const stat = fs.statSync(path.join(dir, '.gitignore'));
+    return `${stat.size}:${stat.mtimeMs}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * **The memo is CHECKED, not trusted** — one `statSync` against the marker
+ * this process wrote, in place of `mkdirSync` + `existsSync` + `readFileSync`
+ * + `writeFileSync` on every appended line.
+ *
+ * ── WHY A BARE `Set` OF DIRECTORIES WAS NOT TAKEN ──────────────────────────
+ *
+ * `ensureLogDir`'s own contract is that the marker is *"rewritten
+ * unconditionally so an emptied or hand-edited .gitignore self-heals"*, and
+ * `test/core/audit.test.ts` · *an emptied .gitignore self-heals on the next
+ * append* holds it to that IN ONE PROCESS: it records, empties the file, and
+ * records again. A membership test would skip the second write and redden it
+ * — correctly, because the self-heal is a real property and not an accident of
+ * how often the write happened to run. Emptying the file changes its size, and
+ * any edit changes its mtime, so one `stat` sees exactly what the read saw and
+ * the self-heal is unchanged. Deleting the directory answers `ENOENT` here, so
+ * a vanished directory is re-created rather than assumed.
+ *
+ * **What it no longer sees**: an edit that restores BOTH the original size and
+ * the original mtime — which takes a deliberate `utimesSync` after a two-byte
+ * rewrite, and is not the hand edit or the truncation this self-heal is for.
+ * The narrowing is stated here rather than left for a reader to discover.
+ */
+function markerIsAsThisProcessLeftIt(dir: string): boolean {
+  const remembered = markedLogDirs.get(path.resolve(dir));
+  return remembered !== undefined && markerIdentity(dir) === remembered;
 }
 
 /** How much of a torn tail is scanned backwards at a time when healing it. */
@@ -265,8 +331,41 @@ function errnoOf(err: unknown): string {
   return (err as NodeJS.ErrnoException).code ?? (err as Error).message;
 }
 
+/**
+ * The two points `healTornTail`/`appendJsonlLine` let a caller reach in
+ * without a second copy of either function.
+ *
+ * **Why this exists, and why it is a seam rather than a shadow file.**
+ * `test/core/jsonl-heal-race.test.ts` used to prove the heal lock matters by
+ * regex-splicing a COPY of this module with the lock block cut out and
+ * racing that copy in child processes — which could not notice a regression
+ * where THIS file stopped calling `acquireLock`, because the copy never ran
+ * this file's own code at all. `execute.ts`'s `CommandRunner` and
+ * `execute-effect.ts`'s `RunChild`/`CopyTree` are this codebase's existing
+ * shape for the same problem: a trailing, optional dependency that defaults
+ * to the real implementation, so every caller that does not know this exists
+ * — which is all of them but that one test file — gets exactly the
+ * behaviour this file always had.
+ *
+ * `acquireLock` lets a test exercise the unlocked case (a stub that never
+ * excludes anyone) or observe the locked one (the real acquirer, watched from
+ * outside). `beforeTruncate` marks the window the lock exists to close — see
+ * `cutAfterLastNewline`'s own doc comment ("A reads size S ... B heals the
+ * same tear ... A then truncates to L") — so a test can act, or merely look,
+ * at the exact instant between this heal's own read and its write.
+ */
+export interface HealSeams {
+  /** Defaults to the real `acquireLock` (`./lock.ts`) — production behaviour. */
+  acquireLock?: typeof acquireLock;
+  /**
+   * Called once the torn tail's cut point is known, immediately before the
+   * `truncateSync` that acts on it. Defaults to a no-op.
+   */
+  beforeTruncate?: () => void;
+}
+
 /** The heal, with the tear already established and the lock already held. */
-function healUnderLock(file: string): TailHeal {
+function healUnderLock(file: string, beforeTruncate: () => void): TailHeal {
   const read = isTorn(file);
   if (!read.looked) return unreadable(read.error);
   // Healed by whoever held the lock before this call — the ordinary outcome of
@@ -288,6 +387,8 @@ function healUnderLock(file: string): TailHeal {
     closeSync(fd);
   }
 
+  beforeTruncate();
+
   try {
     truncateSync(file, cut);
   } catch (err) {
@@ -296,7 +397,7 @@ function healUnderLock(file: string): TailHeal {
   return { healed: true, droppedBytes: read.size - cut };
 }
 
-export function healTornTail(file: string): TailHeal {
+export function healTornTail(file: string, seams: HealSeams = {}): TailHeal {
   // **The look that decides whether to pay for the lock at all.** An untorn
   // log — every append but the first after a kill — leaves here having done
   // one `stat` and one 1-byte read, exactly what it did before.
@@ -304,9 +405,10 @@ export function healTornTail(file: string): TailHeal {
   if (!first.looked) return unreadable(first.error);
   if (!first.torn) return { healed: false, why: first.size === 0 ? 'empty' : 'intact' };
 
+  const acquire = seams.acquireLock ?? acquireLock;
   let release: () => void;
   try {
-    release = acquireLock({
+    release = acquire({
       file: `${file}.heal.lock`,
       name: 'jsonl-heal',
       otherHolder: 'another process is healing the unfinished write at the end of this log',
@@ -318,7 +420,7 @@ export function healTornTail(file: string): TailHeal {
     };
   }
   try {
-    return healUnderLock(file);
+    return healUnderLock(file, seams.beforeTruncate ?? (() => {}));
   } finally {
     release();
   }
@@ -327,9 +429,11 @@ export function healTornTail(file: string): TailHeal {
 /**
  * Appends one record as one line.
  *
- * One `appendFileSync` call, which does not interleave with a concurrent
- * process's append on either POSIX or Windows for writes this small — the
- * property that lets a writer append without holding a lock.
+ * One append-mode write, which does not interleave with a concurrent process's
+ * append on either POSIX or Windows for writes this small — the property that
+ * lets a writer append without holding a lock. `appendJsonlLines` below is the
+ * same write, N times through one descriptor, and this is the one-record case
+ * of it rather than a second way of appending.
  *
  * **A heal that did not happen stops the append**, and the `TailHeal` is
  * returned rather than discarded. Appending onto an unhealed fragment leaves a
@@ -339,10 +443,63 @@ export function healTornTail(file: string): TailHeal {
  * existing catch and becomes `written: false` with the reason, which
  * `auditFailureNote` already puts in front of a person. Writing anyway wedges
  * the log and says nothing.
+ *
+ * `seams` is forwarded to `healTornTail` verbatim and defaults exactly as it
+ * does there — see `HealSeams`. No production caller passes it.
  */
-export function appendJsonlLine(dir: string, file: string, record: unknown): TailHeal {
+export function appendJsonlLine(
+  dir: string, file: string, record: unknown, seams: HealSeams = {},
+): TailHeal {
+  return appendJsonlLines(dir, file, [record], seams);
+}
+
+/**
+ * **How far a batch got, so a retry resumes instead of repeating.**
+ *
+ * `appendSeen` (core/seen-file.ts) wraps its append in
+ * `retryOnTransientFsError`, and the whole batch is now one call: without this
+ * counter a transient failure part-way through twenty lines would re-append
+ * the ones already on disk. It is carried by the CALLER across the retries
+ * rather than returned, because the attempt that has to report progress is the
+ * one that threw.
+ */
+export interface AppendProgress {
+  /** Records of `records` already durable. The next attempt starts here. */
+  appended: number;
+}
+
+/**
+ * Appends several records, each as its own line, paying the directory check
+ * and the torn-tail heal ONCE for the batch.
+ *
+ * ── WHAT IS PRESERVED, LINE FOR LINE ───────────────────────────────────────
+ *
+ * **Each record is still exactly one append-mode write of `<json>\n`**, which
+ * is the property `appendJsonlLine`'s header rests its lock-free append on:
+ * `appendFileSync(file, data)` IS `openSync(file, 'a')` + `writeSync` +
+ * `closeSync`, so N records through one held `'a'` descriptor issue the same N
+ * writes to the same O_APPEND file, and one concurrent process's append can
+ * still land only BETWEEN two of them. The batch is not joined into a single
+ * write, and deliberately: a 20-line, ~3 KB write is past the size at which
+ * "does not interleave" is safe to claim, and a foreign append landing inside
+ * it would leave a damaged line that is not the final one — which
+ * `readJsonlLog` refuses permanently, for every later reader. What is saved is
+ * 19 opens, 19 closes, 19 `statSync`+1-byte reads of the tail and 19 directory
+ * checks, not the per-line write.
+ *
+ * **A heal that did not happen still stops the append**, with the same two
+ * sentences, before any record is written.
+ *
+ * `progress` lets a retry resume: every increment happens only after the write
+ * for that record returned, so a record is counted when it is on disk and
+ * never before. A caller that does not retry can ignore it.
+ */
+export function appendJsonlLines(
+  dir: string, file: string, records: readonly unknown[], seams: HealSeams = {},
+  progress: AppendProgress = { appended: 0 },
+): TailHeal {
   ensureLogDir(dir);
-  const heal = healTornTail(file);
+  const heal = healTornTail(file, seams);
   if (heal.healed === false && (heal.why === 'unreadable' || heal.why === 'contended')) {
     throw new Error(
       heal.why === 'unreadable'
@@ -354,7 +511,23 @@ export function appendJsonlLine(dir: string, file: string, record: unknown): Tai
           + `make every later read of this log refuse it.`,
     );
   }
-  appendFileSync(file, `${JSON.stringify(record)}\n`, 'utf8');
+  if (progress.appended >= records.length) return heal;
+  // One descriptor for the batch. `'a'` creates the file with the same default
+  // mode `appendFileSync` would, and every write below is the same O_APPEND
+  // write it would have issued.
+  const fd = openSync(file, 'a');
+  try {
+    for (let i = progress.appended; i < records.length; i++) {
+      const line = Buffer.from(`${JSON.stringify(records[i])}\n`, 'utf8');
+      let written = 0;
+      while (written < line.length) {
+        written += fs.writeSync(fd, line, written, line.length - written);
+      }
+      progress.appended = i + 1;
+    }
+  } finally {
+    closeSync(fd);
+  }
   return heal;
 }
 

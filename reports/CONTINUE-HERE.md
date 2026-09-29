@@ -1,3 +1,14 @@
+# CONTINUE HERE — everything left, in the order to do it — RETIRED 2026-09-22
+
+**This document is retired.** `mycontext ready [--plan <p>] [--held]` computes what
+is dispatchable from the corpus' own `needs:` fields and cannot go stale, where a
+hand-kept list can.
+
+Do not read the sections below as current — they are in git history (`git show
+56164fd9:reports/CONTINUE-HERE.md` is the last live version).
+
+---
+
 # CONTINUE HERE — everything left, in the order to do it
 
 ## ⏭ CURRENT STATE — 2026-09-03 15:23Z, written after a session restart

@@ -17,9 +17,9 @@ tags:
   - "seq:111"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/collapse.md"
+source_file: null
 source_anchor: null
-source_checksum: c7de387c5b4a3601
+source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
 checksum: 3e9750c511b14dbb

@@ -8,7 +8,8 @@ import { isMainEntry, managedSplit, matchesAnyGlob, relPosix, toPosix } from '..
 import { configLoadFailure, findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
 import { capped, NOTE_MAX, subjectFor, SUBJECT_MAX } from './observe.ts';
 import {
-  configUnreadableLine, hookContext, payloadOf, readStdinAsync, type HookPayload,
+  configUnreadableLine, hookContext, payloadOf, readStdinAsync, unrecordedHookLine,
+  type HookPayload,
 } from './io.ts';
 
 /**
@@ -110,7 +111,7 @@ export function nudgeFor(input: HookInput, fallbackCwd: string): string {
     // `recordAudit` never throws, so this cannot break the fail-open contract
     // this whole function is written to. The nudge TEXT is not recorded: it is
     // a fixed sentence, and `path` is the only part that varies.
-    recordAudit(ws.projectRoot, {
+    const written = recordAudit(ws.projectRoot, {
       kind: 'hook',
       op: 'post-tool-use',
       hook: 'PostToolUse',
@@ -118,6 +119,20 @@ export function nudgeFor(input: HookInput, fallbackCwd: string): string {
       path: relative,
       note: `${input.tool_name} on a watched document — capture nudge emitted`,
     });
+    // **The nudge still goes out; only its record was lost.** This is the
+    // moment my_context ASKED the model to capture something, which is the one
+    // thing about this hook worth auditing, and a lost row makes "how often
+    // does the nudge fire and how often is it acted on" unanswerable in a way
+    // no later read can distinguish from "it never fired"
+    // (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`). The
+    // catch below already argues why the smallest loss here is disclosed
+    // rather than argued into silence; the same argument covers this one.
+    if (!written.written) {
+      process.stderr.write(unrecordedHookLine(
+        'PostToolUse', 'post-tool-use', written.error ?? 'unknown',
+        `the capture nudge for ${relative} was raised and nothing recorded that it was`,
+      ));
+    }
 
     return (
       `You edited ${relative}. If it set a new requirement, decision or ` +
@@ -199,13 +214,26 @@ export function agentDispatchNote(input: HookInput, fallbackCwd: string): void {
       NOTE_MAX,
     );
 
-    recordAudit(root, {
+    const written = recordAudit(root, {
       kind: 'hook',
       op: 'agent-dispatched',
       hook: 'PostToolUse',
       ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
       note,
     });
+    // **One row per dispatch means a lost row is a whole lane with no
+    // beginning.** The dispatch title and `agentId` are on THIS firing and
+    // nowhere else — a subagent's own payload carries no memory of how it was
+    // dispatched — so nothing downstream can reconstruct this row, and the
+    // `agent-step` and `subagent-stop` rows either side of it are left joining
+    // on an id that was never introduced.
+    if (!written.written) {
+      process.stderr.write(unrecordedHookLine(
+        'PostToolUse', 'agent-dispatched', written.error ?? 'unknown',
+        'this Agent dispatch happened and nothing recorded it, so the steps and stop rows ' +
+        'beside it join on an id the log never introduces',
+      ));
+    }
   } catch {
     // INV-hooks-fail-open. A knowledge base that breaks a session is worse
     // than one that says nothing.
@@ -262,13 +290,27 @@ export function agentStepNote(input: HookInput, fallbackCwd: string): void {
     const subject = capped(subjectFor(input.tool_input), SUBJECT_MAX);
     const note = capped(`${tool}: ${subject} agent=${agentId}`, NOTE_MAX);
 
-    recordAudit(root, {
+    const written = recordAudit(root, {
       kind: 'hook',
       op: 'agent-step',
       hook: 'PostToolUse',
       ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
       note,
     });
+    // **Once per lane tool call is loud, and that is the correct volume** —
+    // `buildJitOutput`'s own ruling on the same question, for the same reason.
+    // It fires only while the log is unwritable, and the alternative is a
+    // watch screen that goes quiet on a running lane with nothing anywhere
+    // saying why. A lane's steps are written live and read live; there is no
+    // backfill behind them any more (see the duplication decision in
+    // `subagent-stop.ts`), so a dropped row is not recovered later.
+    if (!written.written) {
+      process.stderr.write(unrecordedHookLine(
+        'PostToolUse', 'agent-step', written.error ?? 'unknown',
+        'this lane step was not recorded as it happened, so the watch screen is missing it ' +
+        'and nothing backfills it afterwards',
+      ));
+    }
   } catch {
     // INV-hooks-fail-open. A knowledge base that breaks a session is worse
     // than one that says nothing.
@@ -335,7 +377,45 @@ export function reviewCount(input: HookInput, fallbackCwd: string): void {
     }
     if (!review.enabled) return;
 
-    bumpCounter(root, input.session_id);
+    const counted = bumpCounter(root, input.session_id);
+    /**
+     * **`written` is READ here rather than dropped, and deliberately not
+     * printed** — `TASK-d70-closed-all-five-instances-and-never-built-the-gate-the`.
+     *
+     * The flag was discarded at this line while `core/review-counter.ts`
+     * listed *"a discarded write is DISCLOSED, never swallowed"* among the
+     * three properties that matter. It is bound now, and what it is worth is
+     * this sentence rather than a line on stderr, because the same file's
+     * header has already ruled on the channel: *"that failure is silent to the
+     * USER by construction — there is nowhere on the `PostToolUse` path to say
+     * it — so `hooks/stop.ts` puts its own verdict in the audit row it was
+     * already writing, which is the one durable sink that is not the
+     * casualty."*
+     *
+     * **THE FACT REACHES THE READER, BY A ROUTE THAT IS BUILT AND TESTED.** A
+     * counter that cannot be written is FROZEN, and `review/trigger.ts` says
+     * exactly that, once per turn, in the `because` that travels into the
+     * audit row: *"the review counter at <path> cannot be written, so this
+     * count is FROZEN at N rather than low … no pass can become due in this
+     * session until that file is writable again"*. `counterWritable` is the
+     * probe behind it and `CounterState.unread` carries the read half of the
+     * same fault on the same string. That is a better sentence than this site
+     * could write — it names the path, the threshold and the consequence —
+     * and it is the one `unread/3` closed this subject with.
+     *
+     * **So printing here would say the same thing again, 85 times.** Measured
+     * in this file's own header: this hook fired 85 times in one turn, and the
+     * fault is a persistent one, so a line per firing would bury the turn's
+     * single accurate account of it under eighty-five copies. The project's
+     * standing economy — *"a line on every tool call is a line nobody reads"*
+     * — is the reason the disclosure sits at `Stop` and not here.
+     *
+     * There is nothing left for this hook to do with the answer, and saying so
+     * is the honest end of the path rather than a shrug: the count returned is
+     * still correct for THIS call (see `bumpCounter`), and only the next
+     * process is affected by the loss.
+     */
+    if (!counted.written) return;
   } catch {
     // INV-hooks-fail-open. A knowledge base that breaks a session is worse
     // than one that says nothing.

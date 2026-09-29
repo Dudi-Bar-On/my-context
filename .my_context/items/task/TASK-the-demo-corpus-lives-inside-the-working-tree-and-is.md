@@ -2,11 +2,11 @@
 id: TASK-the-demo-corpus-lives-inside-the-working-tree-and-is
 type: task
 title: the demo corpus lives inside the working tree and is underfoot in every search and screen
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: A generated fixture sits in the project directory where it is mistaken for project content by people and tools alike.
-summary_of: 8bd88b08d50ceba0
+summary_of: 7b24087da7962b55
 scope:
   - scripts/demo-corpus.ts
   - test/**
@@ -24,8 +24,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-04
-valid_until: null
-checksum: 02257b2055d23c4d
+valid_until: 2026-09-22
+checksum: 10a92692cdecba2b
 plan: rulings
 seq: "63"
 state: todo
@@ -64,3 +64,5 @@ What must be true at the end: the generator writes to the new place, every test 
 reads it passes unchanged in meaning, the fixture rule is honest about where fixtures live,
 and a developer who has never run the generator sees a clear message rather than a confusing
 absence.
+
+Retired 2026-09-22 (release phase 2, owner ruling H, runbook §7.2): .demo-corpus was retired on 2026-09-07 (scripts/demo-corpus.ts:2-10); the premise is gone.

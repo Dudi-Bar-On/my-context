@@ -1,7 +1,8 @@
 // @basis TASK-the-archive-shows-what-is-on-disk-now-because-nothing-has,
 // TASK-the-archive-is-opt-in-which-was-decided-and-never-built,
 // INV-nothing-is-dropped-silently,
-// REQ-every-anchor-capability-is-reachable-from-the-screen-and-a
+// REQ-every-anchor-capability-is-reachable-from-the-screen-and-a,
+// TASK-nine-sites-report-a-measured-zero-for-something-they-could
 /**
  * **`Stop` is what keeps the conversation index current, and this is where it
  * is decided that it may** — `plan:archive seq:14`.
@@ -711,7 +712,12 @@ test('the row says what the anchor pass marked, and says nothing on the ordinary
     bytesRead: 900, read: ['s1'], readFrom: [0], deferred: 0, stale: [], ms: 4,
   };
   const anchors: AutoAnchorReport = {
-    probed: 12, found: 2, marked: 0, dropped: 0, relabelled: 0, capped: false, ms: 9,
+    probed: 12, found: 2, marked: 0, dropped: 0, relabelled: 0, capped: false,
+    // `null` because this fixture's `probed: 12` is a MEASUREMENT — the probes
+    // ran over an index that covers the archive
+    // (`TASK-nine-sites-report-a-measured-zero-for-something-they-could`).
+    unsearchable: null,
+    ms: 9,
     // The three fields the first-run disclosure added on 2026-09-16
     // (`TASK-a-user-who-installs-mycontext-mid-project-has-conversations`).
     // Zeroed and empty here on purpose: this fixture is the ORDINARY turn,
@@ -883,5 +889,109 @@ test('the probe turn leaves room for the anchor pass and the restart turn does n
     + '2026-09-12: boot 200 ms, that upkeep 1450 ms, the refresh 225 ms and the pass up to '
     + '1000 ms is past the 3-second timeout — and a hook killed at its timeout is killed with '
     + '`taskkill /T` and loses the audit row for the turn.',
+  );
+});
+
+/**
+ * **TWO THINGS THE ROW STILL COULD NOT SAY** — task 4.6c follow-up, under
+ * `TASK-nine-sites-report-a-measured-zero-for-something-they-could` and
+ * `INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when`.
+ *
+ *   1. **The probes that could not be run at all.** `AutoAnchorReport` gained
+ *      `unsearchable` when `probeCandidates` stopped dropping `searchArchive`'s
+ *      refusal, and for one commit NOTHING read it — which is `capped`'s own
+ *      history repeating, and `capped`'s clause three lines up is the precedent
+ *      this one copies. The prose index the probes read is filled by
+ *      `mycontext conversation rebuild` and not by the Stop hook's own refresh,
+ *      so a turn whose probes searched nothing is not rare; without this clause
+ *      it produces the same row as a turn on which there was no table to find.
+ *
+ *   2. **A stall that names no source.** `refreshNote` called `.reduce()` over
+ *      `stale` with NO initial value, so a `could-not-look` carrying an empty
+ *      list threw a `TypeError` inside the hook. `markAnchorsOnTurn` cannot
+ *      produce that pairing today — it derives `did` from `stale.length` — and
+ *      that is exactly why the guard is worth having: the obvious place for a
+ *      future "could not look" fact is that discriminant, and the next lane to
+ *      widen it would have found out by crashing a turn rather than by a test.
+ *      **This assertion is therefore NOT a proof about `markAnchorsOnTurn`**,
+ *      and it deliberately builds the report by hand where the stall test above
+ *      deliberately refuses to: the claim here is that `refreshNote` is total
+ *      over the type it accepts, which is the only claim a hand-built fixture
+ *      can make honestly.
+ */
+test('the row says the probes could not search, and survives a stall that names no source', () => {
+  const base: RebuildReport = {
+    dir: '/w', found: 1, scanned: 0, appended: 0, skipped: 1, removed: 0,
+    unreadable: null, truncated: [], bytesRead: 0, ms: 2,
+    subagents: {
+      found: 0, scanned: 0, appended: 0, skipped: 0, removed: 0,
+      truncated: [], unlinked: 0, bytesRead: 0,
+    },
+  };
+  const search: SearchBuildReport = {
+    sources: 2, indexed: 0, appended: 1, skipped: 0, removed: 0, spans: 3,
+    bytesRead: 900, read: ['s1'], readFrom: [0], deferred: 0, stale: [], ms: 4,
+  };
+  const anchors: AutoAnchorReport = {
+    probed: 0, found: 0, marked: 0, dropped: 0, relabelled: 0, capped: false,
+    unsearchable: null, ms: 9,
+    byKind: { table: 0, ruling: 0, report: 0 }, samples: [], planned: false,
+  };
+  /** The pass RAN and the grammar recognised nothing — the ordinary quiet turn. */
+  const ran = (over: Partial<AutoAnchorReport>): ConversationRefresh => ({
+    ...base,
+    autoAnchors: {
+      did: 'ran',
+      report: {
+        search, anchors: { ...anchors, ...over }, did: 'marked', stale: search.stale,
+      },
+    },
+  });
+
+  assert.equal(
+    refreshNote(ran({})), '',
+    'the probes ran and found no table: a measured zero, and the ordinary turn stays silent',
+  );
+
+  // The search module's own sentence, carried verbatim from `searchArchive`
+  // through the pass — never re-worded here, so one condition has one wording.
+  const REASON = 'my_context: the prose index covers 1 of the 2 transcript(s) this archive '
+    + 'holds, so this search read part of it and found nothing there.';
+  const blind = refreshNote(ran({ unsearchable: REASON }));
+  assert.match(
+    blind, /the automatic anchor pass could not search for tables/,
+    'a turn on which the probes searched an index that could not answer produced the same row '
+    + 'as a turn on which there was no table to find — and `probed: 0` is printed by nothing, '
+    + 'so the row carried the unmeasured zero silently',
+  );
+  assert.ok(
+    blind.includes(REASON),
+    'the reason is the search module\'s own sentence and reaches the person unchanged, which '
+    + 'is what makes it actionable — it names the command that fills the index',
+  );
+
+  /* ── 2. the stall that names no source ────────────────────────────────── */
+
+  const nameless: ConversationRefresh = {
+    ...base,
+    autoAnchors: {
+      did: 'ran',
+      report: {
+        search: { ...search, read: [], readFrom: [] },
+        anchors: null,
+        did: 'could-not-look',
+        stale: [],
+      },
+    },
+  };
+  const said = refreshNote(nameless);
+  assert.match(
+    said, /READ NOTHING and the archive is behind the files it indexes/,
+    'the clause must still be said — a pass that could not look is the state this row exists '
+    + 'to make findable, and naming no source is not a reason to say nothing',
+  );
+  assert.doesNotMatch(
+    said, /undefined|NaN/,
+    'and it must not invent a worst source out of an empty list',
   );
 });

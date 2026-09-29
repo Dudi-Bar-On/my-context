@@ -120,3 +120,7 @@ because `proseSpans` and `findInDocument` both default to `SAID_KINDS`.
      MB for the same 11,554 spans). `optimize` + `VACUUM` costs 5.6 s, takes the post-change
      index from 320 MB to 241 MB, and makes every query 20-40% faster. Whether
      `conversation rebuild` should do it is its own item.
+
+## Request
+
+what does semantic/4 ?, the next match button - i do not see it goes to the next occurence, more over the current occurence is not highlited differently so i can not observe whic is the current, the scroller is not moving uppon clicking next and previous match and it should and the most irelevant thing that you said is that only 1% of the file is searchable - why ? isn't it a text file ? isn't transcripts text files ? what are the limitations that holds you from searching everithing in aconversation (remind you it's archived)

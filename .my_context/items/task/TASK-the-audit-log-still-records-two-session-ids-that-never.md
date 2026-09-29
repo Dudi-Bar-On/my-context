@@ -15,14 +15,19 @@ scope:
 tags:
   - v2
   - store
-  - "plan:rulings"
+  - "plan:release"
+  - "seq:19"
+  - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/audit-pollution.md"
+source_file: null
 source_anchor: null
-source_checksum: 0997841ecf2666c2
+source_checksum: null
 valid_from: 2026-09-12
 valid_until: null
-checksum: b2ef6aeb3654e3dd
+checksum: fec810efd0571db5
+plan: release
+seq: "19"
+state: done
 ---
 
 # the audit log still records two session ids that never existed

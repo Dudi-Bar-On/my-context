@@ -1,3 +1,4 @@
+// @basis TASK-an-install-whose-sources-cannot-be-walked-reports-its-code, STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is, INV-nothing-is-dropped-silently
 /**
  * **The measurement, performed** — `plan:live seq:12`.
  *
@@ -229,10 +230,32 @@ test('CONTENT decides, not mtime — a checkout of identical bytes raises nothin
   } finally { removeTree(root); }
 });
 
-test('an unreadable root discloses nothing rather than inventing a skew', () => {
+/**
+ * **RETITLED 2026-09-23, and the old title was the defect**
+ * (`TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`).
+ *
+ * It read *"an unreadable root discloses nothing rather than inventing a skew"*
+ * and it asserted only `isStale() === false`. Half of that is still right and is
+ * kept below: no skew is invented, because a `true` here would tell the owner to
+ * restart a server over a reading nobody took. The other half — "discloses
+ * nothing" — was being held as a VIRTUE, and `src/ui/server.ts` was serving that
+ * `false` as `staleCode` to a page whose `noteCodeSkew` clears its banner on
+ * exactly that value. An install that could not examine its own files was
+ * reporting itself current, for ever, on the one channel that exists to say
+ * otherwise.
+ *
+ * So the assertion is kept and the disclosure is added beside it. The three
+ * states are held apart in `test/core/code-identity-unmeasured.test.ts`; what
+ * this one pins is that the OLD reading did not quietly change meaning.
+ */
+test('an unreadable root invents no skew — and says it measured nothing', () => {
   const root = path.join(tmpdir(), 'myctx-code-does-not-exist-58f0');
   const code = stampCodeIdentity(scopeOf(root));
-  assert.equal(code.isStale(), false);
+  assert.equal(code.isStale(), false, 'no skew is invented from a reading nobody took');
+  assert.equal(code.freshness(), 'unmeasured', 'and `false` is no longer the whole answer');
+  assert.equal(code.unmeasured?.code, 'ENOENT');
+  assert.equal(code.unmeasured?.at, path.join(root, 'ui', 'public'),
+    'the finding names which directory, so the reader has something to act on');
 });
 
 /**
@@ -377,6 +400,64 @@ test('the two endpoints cannot disagree — one identity, two readers', async ()
   });
 });
 
+/**
+ * **An install whose sources cannot be walked, served through the real routes**
+ * — `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`, the
+ * reproduction the item demanded.
+ *
+ * The tree has a FILE where `ui/public` must be, so `walk()`'s `readdirSync`
+ * raises ENOTDIR and the boot stamp never happens. Before this landed, both
+ * routes answered `staleCode: false` — the measured good state — and the page
+ * cleared its banner on it.
+ *
+ * `null` rather than a fourth boolean, and it is not a new convention: the same
+ * payload has carried `corpus: { drifted: boolean | null }` since `plan:live
+ * seq:4` for the identical distinction, and `core/ui-server-probe.ts` already
+ * reads anything that is neither `true` nor `false` as `unknown` and leaves the
+ * server alone.
+ */
+test('an install whose sources cannot be walked answers null on BOTH endpoints', async () => {
+  const cwd = project();
+  // Deliberately NOT `codeTree()` with a directory removed afterwards: the
+  // stamp is taken inside `startUiServer`, so the tree has to be wrong BEFORE
+  // the server starts, which is the real install's case and not a race.
+  const broken = mkdtempSync(path.join(tmpdir(), 'myctx-skew-broken-'));
+  mkdirSync(path.join(broken, 'ui'), { recursive: true });
+  writeFileSync(path.join(broken, 'ui', 'server.ts'), 'export const N = 4;\n', 'utf8');
+  writeFileSync(path.join(broken, 'ui', 'public'), 'a file where the directory must be\n', 'utf8');
+  const server = await startSafeUiServer({ cwd, idleMs: 60_000, code: scopeOf(broken) });
+  try {
+    const h: Harness = { server, codeRoot: broken, token: await tokenFor(server) };
+    for (const route of ['/api/ping', '/api/meta']) {
+      const body = await get(h, route);
+      assert.equal(body['staleCode'], null,
+        `${route} answered a measurement for a walk that never happened`);
+      const why = body['codeUnmeasured'] as Record<string, unknown> | null;
+      assert.notEqual(why, null, `${route} must carry the reason, not just the absence`);
+      assert.equal(why?.['code'], 'ENOTDIR', 'which error');
+      assert.equal(why?.['at'], path.join(broken, 'ui', 'public'), 'which directory');
+      assert.ok(String(why?.['reason'] ?? '').includes('ENOTDIR'),
+        'the sentence a surface prints carries the errno');
+      assert.ok(String(why?.['reason'] ?? '').includes(path.join(broken, 'ui', 'public')),
+        'and the path');
+    }
+    // The measured case still carries the key, set to `null` — present either
+    // way, for the reason `git` is present either way on `/api/meta`. Asserted
+    // here rather than in the happy-path test above so the two readings sit in
+    // one place.
+    await withServer(async (ok) => {
+      const body = await get(ok, '/api/ping');
+      assert.equal(body['staleCode'], false, 'a walk that ran answers the measurement');
+      assert.ok('codeUnmeasured' in body, 'the key is present on a measured answer too');
+      assert.equal(body['codeUnmeasured'], null);
+    });
+  } finally {
+    await server.close();
+    removeTree(cwd);
+    removeTree(broken);
+  }
+});
+
 /* -------------------------------------------------------------------------- *
  * The rulings, held as assertions rather than as comments.
  * -------------------------------------------------------------------------- */
@@ -467,6 +548,44 @@ test('the shell reads staleCode from BOTH channels it has', () => {
     'first paint must disclose too, without waiting up to a minute');
   assertMatches(app, /const CODE_SKEW_KEY = 'ex\.codeSkew';/,
     'the pending string key is named in the shell, not left to memory');
+});
+
+/**
+ * **And a `staleCode` of `null` is a THIRD state the shell has to draw** —
+ * `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`.
+ *
+ * Two halves, and they fail differently, so both are asserted.
+ *
+ * **It must not CLEAR.** `noteCodeSkew` clears `codeSkewSeen` on an explicit
+ * `staleCode === false` and that is right — the reader restarted the server and
+ * the next ping came from a current process. `null` is not that. A `=== false`
+ * test already declines to fire on it, which is why this is asserted as the
+ * absence of a truthiness test rather than as a new branch: the way this breaks
+ * is somebody "simplifying" the comparison, and `!answer.staleCode` would clear
+ * a banner on the strength of a walk that never ran.
+ *
+ * **It must DRAW.** `INV-nothing-is-dropped-silently` and
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`: the state
+ * reaches the strip as the `chip unmeas` the corpus-drift disclosure already
+ * established, carrying the server's own sentence as the title. A fact that
+ * arrives on the wire and is drawn nowhere is the defect this task is, one
+ * layer up.
+ */
+test('a staleCode of null neither clears the banner nor goes undrawn', () => {
+  const app = source('ui', 'public', 'app.js');
+  const noteCodeSkew = app.slice(app.indexOf('function noteCodeSkew'),
+    app.indexOf('function noteCorpusDrift'));
+  assert.equal(/!answer\.staleCode|answer\.staleCode !== true/.test(noteCodeSkew), false,
+    'a falsy test would clear the skew on `null` — an unmeasured walk is not a restart');
+  assertMatches(noteCodeSkew, /staleCode === false[\s\S]{0,200}?codeSkewSeen = false/,
+    'only an explicit measured `false` ends the state');
+  assertMatches(noteCodeSkew, /codeUnmeasured/,
+    'the reason the server sent must be kept, not dropped on the floor');
+  // Drawn as the existing unmeasured chip, not as a new visual vocabulary.
+  assertMatches(app, /chip unmeas'[\s\S]{0,400}?strip\.codeUnmeasured/,
+    'the unmeasured code state draws the `unmeas` chip the strip already has');
+  assertMatches(app, /translate\(table\.strings, 'strip\.codeUnmeasured'\)/,
+    'and it names its key as a literal, so the both-tables gate can see it');
 });
 
 /**

@@ -3,21 +3,38 @@
  * for-work-that-has. `test/hooks/pre-tool-use-jit.test.ts`'s sandbox/index
  * pattern is reused rather than re-invented, because the gate reads the same
  * SQLite index the JIT tier does.
+ *
+ * TASK-release-phase-3-the-defects (B11, owner ruling F, 2026-09-21) is the
+ * id token's own second narrowing, extended into this file:
+ * `INV-hooks-fail-open` is the invariant the existing fail-open tests below
+ * already rest on and is carried forward unchanged.
  */
+// @basis TASK-release-phase-3-the-defects,
+// TASK-nothing-stops-a-subagent-being-dispatched-for-work-that-has, INV-hooks-fail-open
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  agentDenyMessage, candidateItemIds, runPreToolUse,
+  agentDenyMessage, buildAgentIdToken, candidateItemIds, runPreToolUse,
 } from '../../src/hooks/pre-tool-use.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { readAudit } from '../../src/core/audit.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
+import { CATEGORIES } from '../../src/core/categories.ts';
 import { removeTree } from '../helpers/tmp.ts';
+
+/**
+ * The token every unit-level `candidateItemIds` test below uses: built from
+ * the shipped category catalogue, the same set a freshly-`init`ed sandbox's
+ * `ws.config.categories` resolves to when nothing overrides it — so a token
+ * this file builds and the token `agentDispatchVerdict` builds at runtime
+ * agree on every prefix.
+ */
+const DEFAULT_TOKEN = buildAgentIdToken(Object.values(CATEGORIES).map((c) => c.prefix));
 
 function sandbox(): string {
   const cwd = mkdtempSync(path.join(tmpdir(), 'myctx-agent-gate-'));
@@ -87,13 +104,75 @@ test('candidateItemIds finds an ALL-CAPS-prefix id and ignores ordinary prose', 
   const text = 'Read TASK-nothing-stops-a-subagent-being-dispatched-for-work-that-has first, ' +
     'then check the well-designed, read-only module and the subagent-driven plan.';
   assert.deepEqual(
-    candidateItemIds(text),
+    candidateItemIds(text, DEFAULT_TOKEN),
     ['TASK-nothing-stops-a-subagent-being-dispatched-for-work-that-has'],
   );
 });
 
 test('candidateItemIds finds nothing in a prompt with no id-shaped token', () => {
-  assert.deepEqual(candidateItemIds('Grep the repo for the well-known pattern and report back.'), []);
+  assert.deepEqual(
+    candidateItemIds('Grep the repo for the well-known pattern and report back.', DEFAULT_TOKEN),
+    [],
+  );
+});
+
+// ── B11 / owner ruling F: the gate requires a lowercase slug ───────────────
+//
+// `SHA-256`, `READ-ONLY`, `UTF-8` and `X-MYCONTEXT-TOKEN` all matched the
+// prior bare-ALL-CAPS grammar and named no item. The four tests below pin the
+// fix at both layers: `candidateItemIds` reports zero candidates for them
+// directly, and the full gate refuses a prompt built only from them by the
+// ZERO-candidate message, never the "not an id this corpus has" one — the
+// two branches of `agentDenyMessage` say different things and a caller that
+// gets the wrong one is told the wrong story about what happened.
+
+test('candidateItemIds treats READ-ONLY, SHA-256, UTF-8 and X-MYCONTEXT-TOKEN as zero ' +
+  'candidates — no category prefix mints an uppercase-led slug', () => {
+  const text = 'This index is READ-ONLY; checksums are SHA-256; the file is UTF-8; ' +
+    'the header is X-MYCONTEXT-TOKEN.';
+  assert.deepEqual(candidateItemIds(text, DEFAULT_TOKEN), []);
+});
+
+test('candidateItemIds finds a real phase item id sitting among the same near-miss tokens', () => {
+  const text = 'TASK-release-phase-3-the-defects is B11; SHA-256 and READ-ONLY name nothing.';
+  assert.deepEqual(candidateItemIds(text, DEFAULT_TOKEN), ['TASK-release-phase-3-the-defects']);
+});
+
+test('candidateItemIds requires a left boundary — XTASK-foo is not TASK-foo wearing a prefix', () => {
+  assert.deepEqual(
+    candidateItemIds('Ignore XTASK-foo here; it is not a real item, unlike TASK-foo.', DEFAULT_TOKEN),
+    ['TASK-foo'],
+  );
+});
+
+test('enabled: a prompt built only from near-miss tokens is refused as naming ZERO ' +
+  'candidates, not "candidate not found"', () => {
+  const cwd = sandbox();
+  try {
+    configure(cwd, { dispatchGate: { enabled: true } });
+    index(cwd);
+
+    const out = runPreToolUse(
+      agentInput(
+        cwd, 's1',
+        'This corpus is READ-ONLY here; checksums are SHA-256; text is UTF-8; the header is ' +
+        'X-MYCONTEXT-TOKEN. None of that names a task.',
+      ),
+      cwd,
+    );
+    const d = decision(out);
+    assert.equal(d.permissionDecision, 'deny');
+    // The ZERO-candidate branch of `agentDenyMessage` — "nothing shaped like
+    // an id appears in the prompt" — not the "named X, which is not an id
+    // this corpus has" branch a false-positive candidate would produce.
+    assert.match(String(d.permissionDecisionReason), /nothing shaped like an id/);
+    assert.doesNotMatch(String(d.permissionDecisionReason), /which is not an id this corpus has/);
+    assert.doesNotMatch(String(d.permissionDecisionReason), /none of which is an id this corpus has/);
+
+    const denies = auditRows(cwd).filter((r) => r.op === 'deny' && r.hook === 'PreToolUse');
+    assert.equal(denies.length, 1);
+    assert.match(String(denies[0].note), /no task item named/);
+  } finally { removeTree(cwd); }
 });
 
 test('agentDenyMessage names what to do, whether or not a candidate was tried', () => {

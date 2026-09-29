@@ -77,3 +77,7 @@ A FAIR WARNING FROM THE LANE THAT WROTE THE STORE DOCUMENT: its best sources wer
 DISTILLED FROM this conversation — and that is also where five of six wrong claims lived,
 "because a distillate freezes counts that keep moving". Treat every count you read in a document
 as a DATE, not a fact, and check anything you put in the table against the tree as it stands.
+
+## Request
+
+docs/the-store.he.md - i read it, it was written very well, what is missing is about the mainenance application some screenshots and the forms aka templates for every item type, also how the developer moves from developemnt to productions. take my comments and improve it, after that i would like you to go over the conversation, transcripts, documents and the code and generate a table for the whole system of subjects like the store we would document them in the same way.

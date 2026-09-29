@@ -38,9 +38,9 @@
  * whose coverage nobody reads.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { isMainEntry } from '../core/paths.ts';
+import { isMainEntry, toPosix } from '../core/paths.ts';
 import { POINT_CATEGORIES, type PointCategory } from '../core/session-summary.ts';
 import { openRebuiltStore } from '../core/open-store.ts';
 import { resolveWorkspace } from '../core/workspace.ts';
@@ -88,10 +88,40 @@ export interface PassReport {
   /** `wholenessLine(input)`. The first thing a reader should read. */
   wholeness: string;
   whole: boolean;
-  /** Where this pass started returning points. The last report's `readTo`. */
+  /** Where this pass started returning points. The last report's `readTo` for THIS transcript. */
   sinceByte: number;
-  /** Where it stopped. The NEXT pass's `sinceByte`. */
+  /**
+   * Where THIS transcript's read stopped. The NEXT pass over this same
+   * transcript's `sinceByte` — via `readToByTranscript`, not this field.
+   *
+   * **Kept for readers of the pre-B8 shape.** B8 replaced the single `readTo`
+   * with `readToByTranscript` below, and a grep of `src/` and `test/` for
+   * `.readTo` turned up exactly one live reader of the field on the report
+   * object itself: `test/review/pass.test.ts` asserts against
+   * `first.readTo`/`second.readTo` in-process, not only against the file on
+   * disk. That reader is why this field stays rather than being dropped — it
+   * is not dead, it is `readToByTranscript[transcriptKey(this pass's own
+   * transcript)]`, flattened for a caller that only ever looks at one
+   * transcript's report at a time. `writeReport` writes both from the same
+   * value, so the two can never disagree within one report.
+   */
   readTo: number;
+  /**
+   * Where the last pass through EACH transcript stopped — B8. One workspace
+   * held a single `readTo` for every transcript that ever passed through it
+   * (`pass.ts:279-283` before this change), so a second session sharing the
+   * workspace inherited the first session's offset into an unrelated file:
+   * it either skipped THIS transcript's head (the inherited offset landed
+   * past where this transcript's own content starts) or re-read what a prior
+   * pass had already returned (the inherited offset landed short of where
+   * this transcript's own tail was last time). Two sessions through one
+   * workspace is the ordinary case, not an edge one — a session id changes
+   * every time a person starts a fresh conversation in the same project.
+   *
+   * Keyed by `transcriptKey(transcriptPath)` — see that function for why the
+   * key is POSIX-normalised rather than the caller's raw string.
+   */
+  readToByTranscript: Record<string, number>;
   sources: string[];
   skipped: SkippedSource[];
   readBytes: number;
@@ -275,11 +305,98 @@ export function readPassReport(stateRoot: string): PassReport | null {
   }
 }
 
-/** The offset the last pass stopped at, or 0 for a workspace with no report. */
-export function lastReadTo(stateRoot: string): number {
+/**
+ * The key `readToByTranscript` is keyed on.
+ *
+ * **`toPosix`, not `normalizePosix`.** These are absolute transcript paths,
+ * not root-relative ones, and `normalizePosix` (`core/paths.ts`) exists to
+ * strip a root prefix this caller never has and would mangle a Windows drive
+ * letter through. `toPosix` only unifies the separator, which is the one
+ * disagreement the two writers of this map can actually have: `runPass` is
+ * handed `options.transcript` (the CLI's `--transcript` flag, or a caller's
+ * literal string in-process) and `trigger.ts` is handed the hook payload's
+ * `transcript_path` — two different origins for what is meant to be the same
+ * path, on the one platform (Windows) where a path can be spelled two ways.
+ * Both call sites route through this function rather than normalising for
+ * themselves, so there is exactly one definition of "the same transcript".
+ */
+function transcriptKey(transcriptPath: string): string {
+  return toPosix(transcriptPath);
+}
+
+/**
+ * The offset the last pass through THIS transcript stopped at, or 0 for a
+ * transcript this workspace has no record of.
+ *
+ * **Falls back to the pre-B8 scalar `readTo` only when `readToByTranscript`
+ * is absent entirely** — a report written before this change landed. That
+ * old field named the offset for whatever transcript the last pass happened
+ * to see, and this function has no way to know whether that was THIS
+ * transcript or a different one sharing the workspace.
+ *
+ * **The fallback is bounded by this transcript's own current size, and the
+ * bound is not a convenience — it is what keeps the fallback from committing
+ * the exact defect it exists to migrate away from.** An unbounded fallback
+ * (an earlier draft of this function had one) traded one silent-drop shape
+ * for another: handing a transcript shorter than the legacy offset an offset
+ * past its own end sends `gather` (`input.ts`) into its `shrank` branch,
+ * which returns zero points for that pass — but ALSO stamps `readTo` at the
+ * file's full current size regardless, because `gather` snapshots that size
+ * before it ever looks at `sinceByte`. The next pass then sees
+ * `sinceByte === readTo` and reads nothing further. So the transcript's own
+ * head — everything up to where the pass should have started — is never
+ * read, not for one pass but permanently, and nothing in `whole` or
+ * `skipped` says so past that first pass. That is
+ * `INV-nothing-is-dropped-silently` failing in exactly B8's own shape: an
+ * offset that belongs to a DIFFERENT transcript silently consuming this
+ * one's content, just laundered through one migration pass instead of
+ * straight through the old scalar.
+ *
+ * So: a legacy offset larger than `statSync(transcriptPath).size` (0 for a
+ * transcript that cannot be stat'd — a fresh or already-gone file) cannot
+ * possibly BE this transcript's own offset, and the honest answer is 0 —
+ * read the whole file, exactly as for a transcript this workspace has never
+ * seen, rather than hand `gather` a number that trips its shrink guard and
+ * loses the head for good. An offset that DOES fit within the file may still
+ * belong to a different transcript that happens to be at least as long, and
+ * there is no way to tell — but applying it in that case costs at most a
+ * re-read of bytes already seen, never a loss, which is the trade `gather`'s
+ * own `sinceByte` already makes elsewhere. This asymmetry — reading twice is
+ * recoverable, skipping the head is not — is the actual conservative
+ * direction; "assume the legacy value" was not conservative on its own, only
+ * on the half of the failure mode that does not also depend on file size.
+ *
+ * The fallback is paid at most once per transcript either way: whatever a
+ * pass writes back becomes THIS transcript's own correctly-keyed entry in
+ * `readToByTranscript`, so every later pass over the same transcript reads
+ * the real map and this function's legacy branch is never consulted for it
+ * again.
+ *
+ * A present-but-empty map (a workspace that has migrated but never seen this
+ * particular transcript before) does NOT fall back to the legacy scalar at
+ * all, size-bounded or not — that would silently reintroduce the exact
+ * cross-transcript bug this function exists to close. Only a wholly absent
+ * map reaches the fallback.
+ */
+export function lastReadTo(stateRoot: string, transcriptPath: string): number {
   const previous = readPassReport(stateRoot);
-  const value = previous?.readTo;
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+  const map = previous?.readToByTranscript;
+  if (map !== null && map !== undefined && typeof map === 'object' && !Array.isArray(map)) {
+    const value = (map as Record<string, unknown>)[transcriptKey(transcriptPath)];
+    return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+  }
+  const legacy = previous?.readTo;
+  if (typeof legacy !== 'number' || !Number.isFinite(legacy) || legacy < 0) return 0;
+  let size = 0;
+  try {
+    size = statSync(transcriptPath).size;
+  } catch {
+    // Missing or unreadable: 0, same as `gather`'s own `snapshotBytes` reads
+    // this case, so a legacy offset above 0 is refused here for the same
+    // reason it would be refused as `sinceByte` a moment later.
+    size = 0;
+  }
+  return legacy <= size ? legacy : 0;
 }
 
 /**
@@ -397,7 +514,7 @@ export interface PassOptions {
  * verdict could never show it.
  */
 export async function runPass(options: PassOptions): Promise<PassReport> {
-  const sinceByte = lastReadTo(options.workspace);
+  const sinceByte = lastReadTo(options.workspace, options.transcript);
   const input = gather({
     transcript: options.transcript,
     sinceByte,
@@ -407,6 +524,57 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
     ...(options.capBytes === undefined ? {} : { capBytes: options.capBytes }),
   });
 
+  // The previous report's own map, carried forward for every transcript
+  // OTHER than this pass's — a pass over transcript B must not erase what a
+  // prior pass recorded for transcript A sharing this workspace, which is
+  // the whole point of keying by transcript rather than overwriting one
+  // scalar. A pre-B8 report has no map to carry forward, so this starts
+  // empty rather than seeding itself from the legacy scalar: seeding it
+  // would assign that scalar to THIS transcript's key permanently, which is
+  // exactly the unproven cross-transcript assumption `lastReadTo` above
+  // already declines to make anywhere else.
+  //
+  // ── DISCLOSED, NOT FIXED: THIS READ-THEN-`writeReport`-RENAME CAN RACE ────
+  //
+  // Two passes over two DIFFERENT transcripts, sharing this workspace, can
+  // interleave: both read this same prior report before either has written,
+  // both merge their own transcript's key into the map they read, and
+  // whichever `writeReport` renames its temp file into place second wins —
+  // carrying only its own transcript's key forward and silently dropping the
+  // other pass's just-written entry. `writeReport`'s tmp-then-rename makes
+  // each WRITE atomic; it does nothing about two reads racing ahead of it.
+  //
+  // **Checked, not assumed: the trigger does not serialise this.**
+  // `review-counter.ts`'s `CounterState` is one record per workspace, holding
+  // whichever session's `calls`/`fires` last touched it (`forSession` resets
+  // it wholesale for a new session id) — that bounds how many times ONE
+  // session's `Stop` may fire, and `resetCounter` spends the ration before the
+  // spawn so a session that cannot spawn does not retry forever. Neither is a
+  // lock: nothing here stops a SECOND session, working the same workspace at
+  // the same moment, from crossing its own gates and calling `spawnPass` while
+  // the first session's child is still running. Two sessions open on one
+  // project is the ordinary case B8's own header names, not a rare one.
+  //
+  // **Tolerated because the loss lands where `lastReadTo` already lands a
+  // transcript it has never seen: at 0.** A dropped entry costs the NEXT pass
+  // over that transcript a redundant re-read from its own start — bounded by
+  // that transcript's current size, per `lastReadTo`'s own fallback — never a
+  // skipped head, because nothing here can make an offset read LARGER than
+  // what a prior pass actually recorded. Wasted work, not lost coverage.
+  //
+  // If this window ever costs more than a re-read — two sessions on one
+  // workspace becoming the common case rather than the occasional one — the
+  // fix is a lock (a lockfile beside `REPORT_FILE`, held across the read and
+  // the rename) rather than a cleverer merge, because a merge still has to
+  // answer what happens when the SAME transcript's key differs between the
+  // two racing reads, and a lock makes that question not arise.
+  const priorMap = readPassReport(options.workspace)?.readToByTranscript;
+  const readToByTranscript: Record<string, number> = {
+    ...(priorMap !== null && priorMap !== undefined && typeof priorMap === 'object'
+      && !Array.isArray(priorMap) ? priorMap : {}),
+    [transcriptKey(options.transcript)]: input.readTo,
+  };
+
   const report: PassReport = {
     at: new Date().toISOString(),
     sessionId: options.sessionId,
@@ -415,6 +583,7 @@ export async function runPass(options: PassOptions): Promise<PassReport> {
     whole: input.whole,
     sinceByte,
     readTo: input.readTo,
+    readToByTranscript,
     sources: input.sources,
     skipped: input.skipped,
     readBytes: input.readBytes,
@@ -653,6 +822,28 @@ function flag(argv: string[], name: string): string | null {
   return value === undefined || value.startsWith('--') ? null : value;
 }
 
+/**
+ * `--ceiling`'s parse, split from `flag`'s own truthiness — B9.
+ *
+ * `Math.max(0, Number(flag(argv, '--ceiling') ?? 0) || NO_QUEUE_CEILING)` read
+ * ABSENCE off `??`'s `0` and then ran that `0` back through `||`, so a
+ * PRESENT `--ceiling 0` produced the identical `0` that absence did and `||`
+ * turned both into `NO_QUEUE_CEILING` — `0` is falsy, and `0 || X` is `X`
+ * whether the `0` came from a real flag or from nothing being there at all.
+ * The two cases were never distinguishable past that point.
+ *
+ * `flag` already answers presence directly — `null` for absent, a string for
+ * present, including `"0"` — so presence is read from THAT rather than
+ * re-derived from whether the parsed number happens to be truthy. Absent
+ * still means NO ceiling; present means what it says, and that now includes
+ * zero, which `core/config.ts`'s own doc comment on `queueCeiling` calls out
+ * as legal: "the queue is full at empty," not a second kill switch.
+ */
+function parseCeiling(argv: string[]): number {
+  const raw = flag(argv, '--ceiling');
+  return raw === null ? NO_QUEUE_CEILING : Math.max(0, Number(raw) || 0);
+}
+
 if (isMainEntry(import.meta.filename, process.argv[1])) {
   const argv = process.argv.slice(2);
   const workspace = flag(argv, '--workspace');
@@ -668,10 +859,12 @@ if (isMainEntry(import.meta.filename, process.argv[1])) {
       // child never infers a ration from the config: the parent read the
       // config, and a second reader is a second answer.
       maxProposals: Math.max(0, Number(flag(argv, '--max') ?? 0) || 0),
-      // Absent or unparseable means NO ceiling — see `spawnPass`. `--max` is
-      // the flag whose absence must cost a write; this one's absence must not
-      // cost a report.
-      queueCeiling: Math.max(0, Number(flag(argv, '--ceiling') ?? 0) || NO_QUEUE_CEILING),
+      // Absent means NO ceiling — see `spawnPass`. `--max` is the flag whose
+      // absence must cost a write; this one's absence must not cost a report.
+      // Present means what it says, including a present `0` — `parseCeiling`
+      // reads presence off `flag`'s own `null`/string answer rather than off
+      // truthiness, which is what let a present `0` read as absent — B9.
+      queueCeiling: parseCeiling(argv),
       // Absent means NO model, which is `--max`'s direction and for `--max`'s
       // reason: the argument that decides whether a detached process spends
       // tokens must cost nothing when it is lost.

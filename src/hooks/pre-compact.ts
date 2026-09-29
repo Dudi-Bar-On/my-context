@@ -4,7 +4,9 @@ import { readOccupancy } from '../core/context-occupancy.ts';
 import {
   checkHandoverAsk, discloseIgnoredAsk, type HandoverAskVerdict,
 } from '../core/handover-ask.ts';
-import { scanTranscriptIds, writeSnapshot } from '../core/ledger.ts';
+import {
+  scanTranscript, writeSnapshot, type KnownIds, type TranscriptScan,
+} from '../core/ledger.ts';
 import { isMainEntry } from '../core/paths.ts';
 import { reviewNote, reviewTrigger, type TriggerVerdict } from '../review/trigger.ts';
 import { readSeen, seenIds } from '../core/seen-file.ts';
@@ -13,7 +15,7 @@ import { configLoadFailure, resolveWorkspace } from '../core/workspace.ts';
 import { assertDoor } from '../rules/deliver.ts';
 import {
   configUnreadableLine, hookParseErrorLine, parseHookInput, payloadOf, readStdin,
-  type HookPayload,
+  transcriptShortfallLine, unrecordedHookLine, type HookPayload,
 } from './io.ts';
 
 /**
@@ -223,9 +225,24 @@ export function buildRestoreSnapshot(
      * that ruling.
      */
     const missedStore = assertDoor(ws.projectRoot, sessionId);
-    const storeClause = missedStore === ''
+    // **The row, and now whether the row landed.** `assertDoor` returns
+    // `DoorAssertion` since `TASK-d70-closed-all-five-instances-and-never-
+    // built-the-gate-the`: `assertDelivered` was dropping `recordDelivery`'s
+    // answer, so an assertion whose `missed` row was refused looked exactly
+    // like one that never needed to write.
+    //
+    // **It goes in the note and NOT on stderr**, which is this hook's standing
+    // ruling three paragraphs up and is unchanged by a new fact arriving —
+    // *"the row carries it for whoever goes looking, which is what this record
+    // is for"*. `pre-tool-use.ts` is the door with the person's channel and
+    // says it there, in `unrecordedMissLine`'s words.
+    const storeClause = (missedStore.text === ''
       ? ''
-      : 'PRODUCT RULE STORE NOT DELIVERED to this session — no door recorded one; ';
+      : 'PRODUCT RULE STORE NOT DELIVERED to this session — no door recorded one; ')
+      + (missedStore.recorded
+        ? ''
+        : 'and the missed-door row for this key could NOT be written, so this check has no '
+          + 'latch and §8.2\'s count of missed doors is a floor; ');
 
     // seen set ← the per-session file (parent-keyed: PreCompact is a
     // parent-only event by measurement — E2). Unreadable → empty set,
@@ -244,23 +261,44 @@ export function buildRestoreSnapshot(
     // refresh lag into suppression, the one direction this design forbids.
     // The filter's whole purpose (do not resurrect deleted/renamed ids)
     // only means anything when the index actually knows something.
-    let known: Set<string> | null = null;
-    let knownSkipReason: string | null = null;
+    //
+    // **The two skips are two values now, not one `null` and a string beside
+    // it** (task 4.7 review, round 1). They were `known = null` plus a
+    // `knownSkipReason` the scan never saw, so the scan could not say why its
+    // count was unchecked and the row said it in a clause of its own, detached
+    // from the number it qualifies. `KnownIds` carries the reason INTO the
+    // scan, which is the same rule this task enforces on every other count
+    // here: the fact and the reason travel together or they drift apart.
+    let known: KnownIds = { unfiltered: 'index unavailable' };
     let store: Store | null = null;
     try {
       store = Store.openReadOnly(ws.dbPath);
       const ids = store.ids();
-      if (ids.length === 0) knownSkipReason = 'index empty';
-      else known = new Set(ids);
+      known = ids.length === 0 ? { unfiltered: 'index empty' } : { ids: new Set(ids) };
     } catch {
-      knownSkipReason = 'index unavailable';
+      // `known` stays `index unavailable` — the value it was declared with.
     } finally {
       try { store?.close(); } catch { /* fail open */ }
     }
+    const knownSkipReason = 'unfiltered' in known ? known.unfiltered : null;
 
-    const fromLedger = known === null ? fromSeen : fromSeen.filter((id) => known.has(id));
-    const fromTranscript = scanTranscriptIds(input.transcript_path, known);
+    const fromLedger = 'ids' in known
+      ? fromSeen.filter((id) => known.ids.has(id))
+      : fromSeen;
+    // The scan reports HOW MUCH of the transcript its answer rests on, and
+    // the row below prints that rather than a bare count — see
+    // `transcriptClause` for the three facts one number used to stand for.
+    const transcript = scanTranscript(input.transcript_path, known);
+    const fromTranscript = transcript.ids;
     const itemIds = [...new Set([...fromLedger, ...fromTranscript])].sort();
+
+    // Before the snapshot write, for the ignored-ask disclosure's reason: the
+    // write below can fail and take its own line with it, and this fact is
+    // about what was CAPTURED, which is true either way. Silent for the three
+    // states that cost the user nothing they could act on — see
+    // `transcriptShortfallLine` for why only these two speak.
+    const shortfall = transcriptShortfall(transcript, itemIds.length);
+    if (shortfall !== '') process.stderr.write(shortfall);
 
     // `writeSnapshot` retries the rename against transient Windows sharing
     // violations (an antivirus or indexer holding the target open makes
@@ -289,8 +327,8 @@ export function buildRestoreSnapshot(
         handoverAsk: measured.handoverAsk,
         note: measured.note + storeClause +
           `SNAPSHOT WRITE FAILED (${reason}). ${itemIds.length} captured id(s) ` +
-          `(${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
-          `transcript) were NOT persisted — this session's restore state will not survive ` +
+          `(${fromLedger.length} from the seen file, ${transcriptClause(transcript)}` +
+          `) were NOT persisted — this session's restore state will not survive ` +
           `the coming compaction.` + reviewClause(review),
       });
       process.stderr.write(
@@ -317,7 +355,7 @@ export function buildRestoreSnapshot(
     // separately-recorded `compact-restore` at the next SessionStart, and
     // conflating the two would make `ledgerRows` replay a delivery that never
     // happened.
-    recordAudit(ws.projectRoot, {
+    const written = recordAudit(ws.projectRoot, {
       kind: 'hook',
       op: 'pre-compact',
       sessionId,
@@ -327,14 +365,30 @@ export function buildRestoreSnapshot(
       occupancyPercent: measured.occupancyPercent,
       handoverAsk: measured.handoverAsk,
       note: measured.note + storeClause +
-        `${fromLedger.length} from the seen file, ${fromTranscript.length} cited in the ` +
-        `transcript, ${itemIds.length} captured` +
+        `${fromLedger.length} from the seen file, ${transcriptClause(transcript)}, ` +
+        `${itemIds.length} captured` +
         (knownSkipReason === null
           ? ''
           : `; known-id filter skipped (${knownSkipReason} — over-capture is safe)`) +
         (seenState.error === null ? '' : '; seen file unreadable, transcript arm only')
         + reviewClause(review),
     });
+    // **The snapshot survived and its record did not**, which is the mirror of
+    // the branch above: there the FILE failed and the row carried the news;
+    // here the row is what failed, and the file it describes cannot say how
+    // its ids were arrived at — how many came from the seen file, how many
+    // from the transcript, whether the known-id filter ran. That breakdown is
+    // the answer to "what happened at this compaction" and it exists only in
+    // this row. Exit stays 0 and the snapshot is still returned:
+    // `INV-hooks-fail-open`, and a compaction must not be blocked over a log
+    // line.
+    if (!written.written) {
+      process.stderr.write(unrecordedHookLine(
+        'PreCompact', 'pre-compact', written.error ?? 'unknown',
+        `the restore snapshot for this compaction WAS written (${itemIds.length} id(s)) and ` +
+        'nothing recorded what it captured, so the log cannot say what this compaction held',
+      ));
+    }
 
     return { path: snapshotFile, itemIds };
   } catch {
@@ -353,6 +407,88 @@ export function buildRestoreSnapshot(
     }
     return null;
   }
+}
+
+/**
+ * **What the transcript arm contributed, and what that number rests on.**
+ *
+ * `TASK-one-number-means-nothing-cited-could-not-read-and-read-only`. This
+ * clause used to be `${n} cited in the transcript`, and that one figure was
+ * the answer to three different questions: nothing was cited, the transcript
+ * could not be read, and only the last 8 MB of a 65 MB transcript was read.
+ * Measured in this workspace: a real session transcript of 65,046,326 bytes,
+ * against an 8 MB tail bound — 12% — so every id cited in the first 57 MB was
+ * dropped from the restore snapshot while the row printed the same `0` (or the
+ * same small count) a quiet session prints.
+ *
+ * **Only two of the five states print a number at all**, and that is
+ * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is` applied
+ * literally rather than decoratively. A whole read that found nothing genuinely
+ * measured zero and says so; a tail read measured its tail and says how much of
+ * the file that was. The other three measured NOTHING, so they carry no count —
+ * a `0` on any of them would be the unmeasured thing wearing the measured
+ * one's number, which is this item's defect re-introduced in its own repair.
+ */
+function transcriptClause(scan: TranscriptScan): string {
+  // Only where a count was actually printed: "unchecked" qualifies a NUMBER,
+  // and hanging it off "the transcript could not be read" would qualify an
+  // absence, which is the collapse this whole clause exists to stop.
+  const unchecked = scan.unfiltered === null
+    ? ''
+    : ` — UNFILTERED (${scan.unfiltered}), so ids the corpus no longer has may be among them`;
+  switch (scan.state) {
+    case 'whole':
+      return `${scan.ids.length} cited in the transcript ` +
+        `(whole transcript read, ${scan.totalBytes} bytes)${unchecked}`;
+    case 'tail':
+      return `${scan.ids.length} cited in the transcript TAIL ONLY (the last ${scan.bytesRead} ` +
+        `of ${scan.totalBytes} bytes; anything cited before that point is UNMEASURED, ` +
+        `not absent)${unchecked}`;
+    case 'unreadable':
+      return `the transcript could not be read (${scan.why}), so what this session cited is ` +
+        'unmeasured rather than none';
+    case 'absent':
+      return 'no transcript was scanned (no transcript_path on the payload), so what this ' +
+        'session cited is unmeasured rather than none';
+  }
+}
+
+/**
+ * The same three facts on the channel the USER reads, for the two states that
+ * cost the restore something — or `''`.
+ *
+ * The argument for speaking at all, and for the other three staying quiet, is
+ * on `transcriptShortfallLine`: this hook deliberately swallows
+ * `occupancyStandDownLine` rather than compete with Claude Code's own
+ * compaction notice, and makes an exception only where a promise was not kept
+ * at the last moment knowing still helps. A transcript read to 12% of itself is
+ * that; a payload that carried no transcript is not.
+ *
+ * **The percentage is computed here rather than left to the reader**, for
+ * `pinnedSpillLine`'s reason about spelling out the difference: "the last
+ * 8388608 of 65046326 bytes" is arithmetic a reader does at a glance and gets
+ * wrong, and 12% is the number that makes them act.
+ */
+function transcriptShortfall(scan: TranscriptScan, captured: number): string {
+  if (scan.state === 'tail') {
+    const percent = Math.round((scan.bytesRead! / scan.totalBytes!) * 100);
+    return transcriptShortfallLine(
+      `was read only in part — the last ${scan.bytesRead} of ${scan.totalBytes} bytes, ` +
+      `about ${percent}% of it`,
+      'every item id cited before that point was not captured and will not be restored after ' +
+      'this compaction',
+      captured,
+    );
+  }
+  if (scan.state === 'unreadable') {
+    return transcriptShortfallLine(
+      `could not be read (${scan.why})`,
+      'nothing was captured from it, so what comes back after this compaction rests on the ' +
+      'per-session seen file alone',
+      captured,
+    );
+  }
+  return '';
 }
 
 /**

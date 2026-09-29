@@ -1,3 +1,5 @@
+// @basis TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody,
+// INV-nothing-is-dropped-silently
 /**
  * `checkGoverningSpillPressure` (`src/doctor/checks.ts`) — the doctor line the
  * owner asked for 2026-09-04, `TASK-the-injection-budget-drops-governing-
@@ -10,14 +12,23 @@
  * and this test performs on its own behalf, exactly as `test/core/audit-
  * projection.test.ts` does for its own fixtures. The check itself only ever
  * opens the projection READ-ONLY (`openProjectionReadOnlyChecked`).
+ *
+ * **The `@basis` above is about the second half of this file.**
+ * `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody` reversed
+ * the one thing the "no audit projection at all" case used to assert — that a
+ * check which cannot look says nothing at all on the one screen a reader is
+ * on. Every "could not look" test below rests on that item and on
+ * `INV-nothing-is-dropped-silently`, which is the invariant it applies; the
+ * older tests above them rest on the 2026-09-04 ruling quoted above and are
+ * untouched by it.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, appendFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { openProjection, syncProjection } from '../../src/core/audit-db.ts';
-import { recordAudit, type AuditInput } from '../../src/core/audit.ts';
+import { auditDbPath, openProjection, syncProjection } from '../../src/core/audit-db.ts';
+import { auditLogPath, recordAudit, type AuditInput } from '../../src/core/audit.ts';
 import { resolveConfig } from '../../src/core/config.ts';
 import { checkGoverningSpillPressure } from '../../src/doctor/checks.ts';
 import { partitionFindings, summarize } from '../../src/cli/commands/doctor.ts';
@@ -79,16 +90,79 @@ function spills(itemId: string, n: number, tier: string): AuditInput[] {
   return out;
 }
 
-test('no audit projection at all: nothing to disclose', () => {
+/* ══ WHEN THE CHECK CANNOT LOOK ════════════════════════════════════════════
+   `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`. The
+   projection is OPTIONAL infrastructure and this check still may not build it
+   — that decision is untouched. What changed is that a `doctor` run now says
+   the check could not look, on the surface the reader is on, instead of
+   showing nothing at all. Each of the three states
+   `openProjectionReadOnlyChecked` keeps apart is planted here, because a
+   disclosure that collapsed them would be the same defect one level down. */
+
+test('no audit projection at all: the check says it could not look', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-spillpressure-absent-'));
   const corpus = path.join(dir, '.my_context');
   mkdirSync(corpus, { recursive: true });
   try {
     const findings = checkGoverningSpillPressure(corpus, [item()], CONFIG);
-    assert.deepEqual(findings, []);
+    assert.equal(findings.length, 1, 'a check that cannot look says so; it does not go silent');
+    const [f] = findings;
+    assert.equal(f.code, 'governing_spill_coverage');
+    assert.equal(f.about, 'governing_spill_pressure', 'a note about the check, not a worklist row');
+    assert.equal(f.level, 'info');
+    assert.equal(f.item, undefined, 'it names no item, so there is nothing to acknowledge');
+    assert.deepEqual(f.remedy, { route: 'copy', argv: ['mycontext', 'audit'] },
+      'the advertised remedy has to be one the reader can actually run');
+    assert.match(f.message, /never been built/);
+    assert.match(f.message, /mycontext audit/);
+
+    // Still a disclosure: it reaches the reader's screen and the `--json`
+    // findings, and it counts toward nothing.
+    const { findings: worklist, disclosures } = partitionFindings(findings);
+    assert.deepEqual(worklist, []);
+    assert.equal(disclosures.length, 1);
+    assert.deepEqual(summarize(findings), { errors: 0, warnings: 0, infos: 0 });
   } finally {
     removeTree(dir);
   }
+});
+
+test('a projection behind the log is disclosed as behind, and never as an absent one', () => {
+  withRoot(spills('RULE-a', 25, 'jit'), (corpus) => {
+    // Appended straight to the log, past `recordAudit`, which would have kept
+    // the projection current on the way through.
+    appendFileSync(auditLogPath(corpus), `${JSON.stringify({
+      kind: 'injection', op: 'jit', sessionId: 'sX', hook: 'PreToolUse', path: 'src/x.ts',
+      at: '2026-08-30T10:00:00.000Z',
+      spilled: [{ id: 'RULE-a', tier: 'jit', reason: 'budget exceeded' }],
+    })}\n`);
+
+    const findings = checkGoverningSpillPressure(corpus, [item({ id: 'RULE-a' })], CONFIG);
+    assert.equal(findings.length, 1);
+    const [f] = findings;
+    assert.equal(f.code, 'governing_spill_coverage');
+    assert.equal(f.about, 'governing_spill_pressure');
+    assert.equal(f.level, 'info');
+    assert.match(f.message, /behind/);
+    assert.doesNotMatch(f.message, /never been built/,
+      'a stale projection is a different fact from one that was never built');
+    // And the pressure it would have reported is NOT reported from a
+    // projection that cannot vouch for the log.
+    assert.doesNotMatch(f.message, /RULE-a \(25\)/);
+  });
+});
+
+test('a damaged projection is disclosed as damaged, carrying the error the reader needs', () => {
+  withRoot(spills('RULE-a', 25, 'jit'), (corpus) => {
+    writeFileSync(auditDbPath(corpus), 'this is not a SQLite database at all');
+    const findings = checkGoverningSpillPressure(corpus, [item({ id: 'RULE-a' })], CONFIG);
+    assert.equal(findings.length, 1);
+    const [f] = findings;
+    assert.equal(f.code, 'governing_spill_coverage');
+    assert.equal(f.level, 'info');
+    assert.match(f.message, /could not be read/);
+    assert.doesNotMatch(f.message, /never been built/);
+  });
 });
 
 test('a governing item spilled below the repeat threshold draws nothing', () => {

@@ -15,17 +15,17 @@ tags:
   - silent-failure
   - "plan:swallow"
   - "seq:13"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 4c589c16243c9487
+checksum: 7c369d64fbed9de7
 plan: swallow
 seq: "13"
-state: todo
+state: done
 priority: "2"
 ---
 

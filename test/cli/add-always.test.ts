@@ -123,7 +123,17 @@ test('a capture without --always is not pinned, and says so on disk', () => {
   // The pinned tier is finite and shared. A flag that defaulted on would spend
   // that budget on every capture, and the spill is silent to the person who
   // typed the command — it surfaces at the next session start, in a hook.
-  assert.doesNotMatch(out, /pinned/u, 'an unpinned capture reported a pin');
+  //
+  // Narrowed from a bare `/pinned/u` to `alwaysInjection`'s own phrase
+  // (B13, owner ruling D, 2026-09-21): a zero-pinned corpus now also prints
+  // `NOTHING_PINNED_SENTENCE` on every normative capture, --always or not
+  // (`src/core/pin-sentence.ts`), and that corpus-wide sentence legitimately
+  // contains the word "pinned" without claiming THIS item was pinned. What
+  // this test must still refuse is the item's own pin phrase.
+  assert.doesNotMatch(
+    out, /pinned: injected in full at every session start/u,
+    'an unpinned capture reported that this item was pinned',
+  );
   removeTree(cwd);
 });
 

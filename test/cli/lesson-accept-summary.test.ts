@@ -65,7 +65,7 @@ const CANDIDATES = JSON.stringify([
 ]);
 
 function stage(cwd: string): { lessonId: string; keys: string[] } {
-  const created = run(['lesson', 'Migrations deadlock when run during peak traffic'], cwd);
+  const created = run(['lesson', 'Migrations deadlock when run during peak traffic', '--summary-omitted'], cwd);
   const lessonId = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
   writeFileSync(path.join(cwd, 'r.json'), CANDIDATES, 'utf8');
   const staged = run(['lesson-stage', lessonId, '--file', 'r.json'], cwd);
@@ -375,7 +375,7 @@ test('the usage line advertises --summary and --summary-omitted', () => {
  * will refuse them for omitting. */
 test('lesson-stage advertises --summary on the accept line it prints', () => {
   withProject((cwd) => {
-    const created = run(['lesson', 'Migrations deadlock when run during peak traffic'], cwd);
+    const created = run(['lesson', 'Migrations deadlock when run during peak traffic', '--summary-omitted'], cwd);
     const lessonId = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
     writeFileSync(path.join(cwd, 'r.json'), CANDIDATES, 'utf8');
     const staged = run(['lesson-stage', lessonId, '--file', 'r.json'], cwd);

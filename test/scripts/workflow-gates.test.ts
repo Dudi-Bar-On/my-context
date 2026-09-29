@@ -108,8 +108,12 @@ test('the reader finds the steps release.yml already had', () => {
  * act that goes with it.
  */
 test('the reader matches step lines ONLY — not the comments that name the same scripts', () => {
-  assert.equal(CI_STEPS.length, 15, `ci.yml step scripts: ${CI_STEPS.join(', ')}`);
-  assert.equal(RELEASE_STEPS.length, 14, `release.yml step scripts: ${RELEASE_STEPS.join(', ')}`);
+  // 15 → 16 and 14 → 15 on 2026-09-23: `check:swallows` joined both workflows
+  // with task 4.12. Moving these two numbers is the deliberate act this test's
+  // docblock asks for, and it is the reason a step cannot be added to one
+  // workflow and forgotten in the other.
+  assert.equal(CI_STEPS.length, 16, `ci.yml step scripts: ${CI_STEPS.join(', ')}`);
+  assert.equal(RELEASE_STEPS.length, 15, `release.yml step scripts: ${RELEASE_STEPS.join(', ')}`);
 });
 
 test('a comment naming a script is not read as a step', () => {
@@ -264,15 +268,21 @@ test('the one exemption from that superset is actually taken', () => {
 });
 
 /**
- * Two seconds against a twelve-minute suite. `ci.yml` argues this ordering in
- * its own words for the browser suite; the same trade decides this.
+ * `npm test` runs BEFORE `verify:citations`, not after — the reverse of this
+ * file's own ordering before this item. For 27 days (2026-08-21 to
+ * 2026-09-17) the unit suite never ran on master because this
+ * documentation-tier gate was red in front of it, and nobody was looking. The
+ * two-second-first trade still governs every OTHER gate in this file — the
+ * cheap `check:*` steps genuinely do fail faster than a twelve-minute suite
+ * would say the same thing — but a gate that can hide the suite behind it must
+ * never be the one standing in front, so this one alone runs after.
  */
-test('the cheap citation gate runs before the suite in both workflows', () => {
+test('npm test runs before the citation gate in both workflows', () => {
   for (const [name, steps] of [['ci.yml', CI_STEPS], ['release.yml', RELEASE_STEPS]] as const) {
-    const gate = steps.indexOf('verify:citations');
     const suite = steps.indexOf('test');
+    const gate = steps.indexOf('verify:citations');
     assert.ok(gate !== -1 && suite !== -1, `${name}: one of the two steps is missing`);
-    assert.ok(gate < suite, `${name}: verify:citations runs after npm test, so a tag waits twelve minutes to hear a two-second verdict`);
+    assert.ok(suite < gate, `${name}: verify:citations runs before npm test, so a red documentation gate can once again hide 27 days of an unrun suite`);
   }
 });
 

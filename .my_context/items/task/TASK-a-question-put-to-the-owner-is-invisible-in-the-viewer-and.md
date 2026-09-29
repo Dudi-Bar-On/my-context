@@ -21,7 +21,7 @@ tags:
   - "seq:27"
   - "state:todo"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/ask.md"
+source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
@@ -56,3 +56,7 @@ CORRECTED BY THE OWNER WITHIN A MINUTE OF FILING, and the correction narrows the
 > 3. AND THE ANSWER BELONGS IN THE RECORD NEXT TO THE QUESTION. Today "1" or "why 1 and not 2" is a separate turn that a reader must re-associate by position. When the options are rendered, the chosen one should be marked in the same block.
 >
 > WHAT THIS DOES NOT ASK FOR: it does not say stop using the tool. The picker is better for the owner in the terminal than a prose list he has to count. The defect is that the record and the check cannot see what the picker showed him.
+
+## Request
+
+by the way why did you stop to show on the viewer when you ask me a question: the numbered options, your recomendation and the chosen ? why they were removed ?

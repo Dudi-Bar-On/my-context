@@ -4626,8 +4626,31 @@ wa-tree .wa-count{margin-inline-start:var(--sp-2);color:var(--dim);
 .body>section:has(>.tvroot)>details.help{display:none}
 
 .body:has(>section:not([hidden]) .tvroot){display:flex;flex-direction:column}
+/* ── AND THE SCREEN BEING LEFT IS GONE THE MOMENT THE CARD IS, 2026-09-29 ──
+   The navigation crossfade (Task 8, `[data-p]`'s `display … allow-discrete`
+   transition) keeps the OUTGOING screen displayed for `--dur-nav` after its
+   `hidden` is set, and relies on `.body{display:grid}` to stack it OVER the
+   incoming one. The rule above makes `.body` a flex COLUMN, so for that
+   window the outgoing screen is laid out ABOVE the card and pushes it down by
+   its whole height (402 px from Preview at 1280x720). Everything that
+   measures the card in that window measures a card that is about to move: the
+   panels cascade from the well's top (`panelPlace`), so a panel opened then
+   landed ~250 px low, and one opened after the flip landed over its header.
+   That is the ubuntu `[chrome]` red on `e2e/conversations-panels.spec.ts`
+   (the copy panel intercepting the search panel's close button), reproduced
+   here by lengthening `--dur-nav`. `transition:none` CANCELS the running
+   discrete transition, so the hidden screen takes no room from the instant a
+   document is mounted; the incoming screen still fades in.
+   The same transition held the INCOMING section at `display:block` for half
+   of `--dur-nav` (a discrete flip between two non-`none` values lands at 50%)
+   after this rule asked for `flex`, and a `.tvroot` with no flex parent
+   collapses the well to its 200 px floor. `transition-property:opacity`
+   keeps the fade and takes `display` out of it on the document's own
+   section: a `none`→shown flip is immediate anyway. */
+.body:has(>section:not([hidden]) .tvroot)>[data-p][hidden]{display:none;transition:none}
 .body:has(>section:not([hidden]) .tvroot)>section:not([hidden]){
-  display:flex;flex-direction:column;flex:1 1 0;min-block-size:0}
+  display:flex;flex-direction:column;flex:1 1 0;min-block-size:0;
+  transition-property:opacity}
 .body:has(>section:not([hidden]) .tvroot) .tvroot{
   display:flex;flex-direction:column;flex:1 1 0;min-block-size:0}
 /* `flex-basis: 0` AND NOT `auto`, AND IT IS A MEASURED DEFECT rather than a

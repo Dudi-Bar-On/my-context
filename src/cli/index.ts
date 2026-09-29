@@ -48,7 +48,9 @@ import { mkdirSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { COMMAND_FLAGS } from '../core/command-flags.ts';
 import { isJsonAlready, jsonEnvelopeFor, renderJsonError } from './json-envelope.ts';
-import { resolveConfig, scopePolicyFor, type Config } from '../core/config.ts';
+import {
+  resolveConfig, scopePolicyFor, tierForCategory, type Config,
+} from '../core/config.ts';
 import { summaryStalenessNote } from '../core/content-hash.ts';
 import { renderItem } from '../core/item.ts';
 import { alwaysInjection, scopeCell } from '../core/render-item.ts';
@@ -77,9 +79,10 @@ import {
   HELP_TOPICS, docLocale, exampleItem, exampleItemShort, helpTopic, updatableSurface,
 } from '../help/index.ts';
 import { enumError } from '../core/teach.ts';
+import { VERSION } from '../core/version.ts';
 import { renderCollisionReport } from '../pack/collide.ts';
 import {
-  applyImport, planImport, type ImportOutcome, type ImportPlan,
+  applyImport, FULL_EXPORT_REFUSAL, planImport, type ImportOutcome, type ImportPlan,
 } from '../pack/import.ts';
 import { readArtefact } from '../pack/reader.ts';
 import './commands/index.ts';
@@ -98,6 +101,7 @@ import {
 import {
   summaryAtCreateRefusal, summaryOmittedRefusal, summaryRequiredAtCreate,
 } from '../core/summary-gate.ts';
+import { NOTHING_PINNED_SENTENCE, nothingPinned } from '../core/pin-sentence.ts';
 import { confirmAction } from './commands/review.ts';
 
 type Emit = (s: string) => void;
@@ -146,10 +150,16 @@ function usage(config: Config): string {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(line)
     .join('\n');
+  // `--version` is answered before this function is ever reached (see the
+  // intercept in `dispatchCli`, ahead of `resolveWorkspace`) rather than
+  // through a `COMMANDS` registration, so it is listed here by hand — the one
+  // line in this banner that is not derived from the registry.
+  const versionLine = `  ${col('--version', 30)}print the version and exit; -v is the same flag`;
   return `usage: mycontext <command> [args]
 
 ${builtin.join('\n')}
 ${registered}
+${versionLine}
 
 categories: ${enabled.join(', ')}`;
 }
@@ -320,19 +330,39 @@ interface PlannedPack {
 function planPack(cwd: string, source: string): PlannedPack {
   const origin = path.resolve(cwd, source);
   const artefact = readArtefact(origin);
+  // Ruling C (2026-09-21), checked on the artefact itself before `planImport`
+  // runs — the same order `cmdImport` (cli/commands/pack.ts) checks in, and
+  // the same reason: a full export's own unprojected `config.json` would
+  // usually get refused by `planImport` anyway, on the unrelated grounds of
+  // declaring a category twice, and a reader told "a full export is not
+  // importable" must not instead be told that. `FULL_EXPORT_REFUSAL`
+  // (pack/import.ts) is the one sentence every door a full export can reach
+  // shares; this door completes it "Nothing was created", matching `init`'s
+  // own vocabulary rather than `pack import`'s "Nothing was imported".
+  //
+  // **This replaces a refusal that had quietly gone stale.** Before task 3.11
+  // (phase 3 review) this branch did not exist, and `plan.pack === null`
+  // below caught a full export by the side effect of it carrying no pack
+  // name — then pointed the reader at `mycontext init` followed by
+  // `mycontext pack import <path> --name <text>`, the exact `--name` override
+  // this same ruling closed on `cmdImport`'s door the same day. The remedy
+  // `init --pack` printed led straight to a second, freshly-printed refusal
+  // rather than the workspace it promised.
+  if (artefact.manifest.kind === 'export') {
+    throw new Error(`${FULL_EXPORT_REFUSAL} Nothing was created.`);
+  }
   const plan = planImport(artefact, {
     existing: () => null,
     rawConfig: INIT_CONFIG,
     local: resolveConfig(INIT_CONFIG),
   });
+  /* c8 ignore next 7 -- unreachable now: `plan.pack === null` was reached only by a full
+     export (refused above) or by a `kind: 'pack'` artefact with no name, which
+     `refuseMeta` (pack/manifest.ts) already refuses inside `readArtefact`, before this
+     function ever calls `planImport`. Kept only so `name` narrows to `string` for the
+     return below. */
   if (plan.pack === null || plan.pack === '') {
-    throw new Error(
-      `my_context: ${JSON.stringify(source)} is a full export and carries no pack name, so ` +
-      'there is nothing to file its history and its membership list under. `init` has no ' +
-      '--name to give it one, and a name invented on your behalf would be the one ' +
-      '`mycontext pack list` shows you and nobody chose. Run `mycontext init` on its own and ' +
-      'then `mycontext pack import <path> --name <text>`. Nothing was created.',
-    );
+    throw new Error('my_context: a pack plan carried no name — unreachable.');
   }
   return { plan, name: plan.pack, source, origin };
 }
@@ -381,6 +411,18 @@ function applyPack(cwd: string, planned: PlannedPack, out: Emit): AppliedPack {
     const outcome = applyImport(ctx, planned.plan, {
       name: planned.name, source: planned.source, origin: planned.origin,
       now: Date.now(), overwriteApproved: false,
+      // **`keepsPartialWrites: false`, and this is the one surface that says
+      // so.** A failure part-way through `applyImport` leaves a changed
+      // `config.json` and a prefix of the pack on disk, and `applyImport`'s
+      // disclosure normally ends by pointing at them: `pack list` names the
+      // pack, `review promote --all --pack` reaches the drafts. Here that
+      // route is false by the time it is read — `cmdInit`'s catch removes the
+      // whole tree two lines later — and it would be printed directly above
+      // this command's own accurate "nothing was created". So the disclosure
+      // is told which kind of caller this is, and prints what was written and
+      // what was not (which is true on every surface) without the route
+      // (which is not).
+      keepsPartialWrites: false,
     });
     return { name: planned.name, outcome, errors };
   } finally {
@@ -520,6 +562,35 @@ function cmdInit(cwd: string, args: string[], out: Emit): number {
   }
 
   out(`my_context: initialized ${root}`);
+  // **B13, owner ruling D (2026-09-21): the first-session sentence.** A fresh
+  // corpus injects nothing at session start — `select`'s pinned tier admits
+  // only `always: true` items — and an empty pinned tier is indistinguishable
+  // from outside a corpus where pinning does not work at all
+  // (`src/core/pin-sentence.ts` owns the sentence and the predicate; both
+  // print sites import it rather than typing it a second time).
+  //
+  // **A bare `init` prints it unconditionally, with no store opened to check.**
+  // `items/` was just created empty a few lines above, so nothing can be
+  // pinned by construction — opening a store here would ONLY confirm what the
+  // write above already guarantees, at the cost of a real side effect: it
+  // creates `.index.db` on disk, which a bare `init` has never done before and
+  // which several tests build their own fixtures on the absence of
+  // (`test/cli/cli.test.ts`, `test/cli/ingest.test.ts` both `mkdirSync` a
+  // directory at that exact path right after `init`, to force `Store.open` to
+  // fail later). `--pack` is the one path that can actually land a pinned
+  // item at `init` time (as a draft — see `nothingPinned`'s own comment on
+  // why that still does not count), so only it pays for the check.
+  if (applied) {
+    const freshWs = resolveWorkspace(cwd);
+    const pinCheck = openStore(freshWs);
+    try {
+      if (nothingPinned(pinCheck.store.all(), freshWs.config)) out(NOTHING_PINNED_SENTENCE);
+    } finally {
+      pinCheck.store.close();
+    }
+  } else {
+    out(NOTHING_PINNED_SENTENCE);
+  }
   if (applied) {
     outcomeLines(out, applied.name, applied.outcome);
     emitLoadErrors(applied.errors, out);
@@ -683,9 +754,14 @@ function addSnapshot(
   input.sourceFile = snapshot.sourceFile;
   input.sourceChecksum = snapshot.checksum;
 
-  const tier = Object.hasOwn(ws.config.categories, input.type)
-    ? ws.config.categories[input.type].tier
-    : 'rationale';
+  // `tierForCategory` (core/config.ts), not a literal. This line used to fail
+  // OPEN to `'rationale'` — the exact default `trust.ts` argues against one
+  // file over, and the third of the three disagreeing answers
+  // `TASK-the-unknown-category-default-is-answered-three-different` measured.
+  // What it decides here is which budget the snapshot's cost is reported
+  // against, so a rationale reading understates what an unlisted capture costs
+  // the injection that follows it.
+  const tier = tierForCategory(ws.config, input.type);
   // Printed on EVERY capture, not only a large one. A snapshot is the one
   // body a user did not type and therefore did not measure, and "accepted
   // without comment" is the outcome this codebase does not permit for a cost
@@ -895,6 +971,27 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
     // `add`'s own help, and the one place a user who has NOT mistyped a flag
     // reads what `--step` is for.
     if (!category || !title) { out(ADD_USAGE); out(STEP_HELP); return 1; }
+
+    // Resolved HERE, before anything about the summary is even read — the
+    // same ordering argument the long comment below makes for `--severity`,
+    // `--step` and `scopeRequirementError`, applied to the one refusal that
+    // used to arrive AFTER all of them: `createItem`'s own `resolveCategory`
+    // (mutate.ts) already refused an unknown type, but only once every check
+    // above it — including the summary gate — had already run, so `mycontext
+    // add nosuchcategory "x"` with no `--summary` told a human to write a
+    // sentence for an item that could never be created. `Object.hasOwn`
+    // guards the prototype-pollution hazard `resolveCategory` and `tierOf`
+    // (trust.ts) document — a category named `constructor` would otherwise
+    // resolve through `Object.prototype.constructor` and read as known. Only
+    // ENABLED names are offered, matching `resolveCategory`'s own list: a
+    // disabled category is a different refusal (reached below, unchanged),
+    // and suggesting one here would invite a retry `createItem` refuses too.
+    if (!Object.hasOwn(ws.config.categories, category)) {
+      const enabledNames = Object.values(ws.config.categories)
+        .filter((c) => c.enabled)
+        .map((c) => c.name);
+      throw new Error(enumError('type', category, enabledNames, 'categories'));
+    }
 
     input = { type: category, title, origin: 'human' };
     const body = scalarFlag(args, 'body');
@@ -1251,6 +1348,21 @@ function cmdAdd(ws: Workspace, args: string[], out: Emit, cwd: string): number {
       // not interactive") would never say WHICH capture it declined — and the
       // non-interactive path is the one a hook or a script takes.
       out(`about to create ${category} "${title}" — active, and governing this project at once.`);
+      // **B13, owner ruling D (2026-09-21): the same first-session sentence
+      // `cmdInit` prints, said again here because a corpus can go a long time
+      // between `init` and its first normative capture.** Checked against
+      // what is on disk NOW, before this capture lands, so a reader deciding
+      // whether to also pass `--always` is told the true state of the corpus
+      // they are about to write to — see `src/core/pin-sentence.ts`, which
+      // both print sites import rather than typing this sentence twice.
+      {
+        const pinCheck = openStore(ws);
+        try {
+          if (nothingPinned(pinCheck.store.all(), ws.config)) out(NOTHING_PINNED_SENTENCE);
+        } finally {
+          pinCheck.store.close();
+        }
+      }
       // The extra sentence a SNAPSHOT earns on a normative capture, and the
       // reason `--file` needs no category restriction of its own. What is
       // being approved is not only this text: it is a rule whose content is a
@@ -1730,6 +1842,21 @@ function dispatchCli(argv: string[], cwd: string, out: Emit): number {
   const [command, ...args] = argv;
 
   try {
+    // `--version`/`-v` answers BEFORE `resolveWorkspace` — `hooks/35`
+    // (`TASK-there-is-no-version-flag-and-the-argued-alternative-refuses`):
+    // the argued substitute, `status --json`, exits 1 ("no workspace here")
+    // in the one directory where a fresh install's first question is asked.
+    // The first fact any bug report needs has to be answerable there too.
+    //
+    // A trailing argument is NOT swallowed: `--version` is a command, not a
+    // prefix, so `--version foo` falls through to the ordinary "unknown
+    // command" dispatch below rather than silently answering for a
+    // mistyped `mycontext --version status`.
+    if ((command === '--version' || command === '-v') && args.length === 0) {
+      out(VERSION);
+      return 0;
+    }
+
     const registered = command === undefined ? undefined : COMMANDS.get(command);
 
     // **`<command> --help` prints that command's help and exits 0** —

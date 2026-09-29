@@ -1235,7 +1235,7 @@ So cross-session continuity needs a *selector and a carry*, not a new store.
 The only in-process timer in the hook layer is `post-tool-use.ts` · `const timer = setTimeout(() => process.exit(0), 2000);` · ~285,
 with `unref()` on the line below it. SessionStart, PreToolUse and PreCompact
 each carry an explicit comment saying they deliberately have none — `readStdin`'s
-`readFileSync(0, 'utf8')` (`io.ts` · `return readFileSync(0, 'utf8');` · ~222) blocks the thread outright, so no timer can preempt it. The only real
+`readFileSync(0, 'utf8')` (`io.ts` · `readFileSync(0, 'utf8')` · ~450) blocks the thread outright, so no timer can preempt it. The only real
 bound is `"timeout": 10` declared in `hooks.json`, which is **Claude Code killing the process**, not
 mycontext failing open.
 
@@ -1342,7 +1342,7 @@ permits them, so the exporter should *project* the fields it emits rather than p
 
 ### ✅ Collision detection is already written
 
-`itemContentHash` (`src/core/content-hash.ts` · `export function itemContentHash(item: Item): string {` · ~166) — the same predicate `createItem` uses — excludes
+`itemContentHash` (`src/core/content-hash.ts` · `export function itemContentHash(item: Item): ContentHash {` · ~171) — the same predicate `createItem` uses — excludes
 `id`, `status` and `origin` and normalizes. That is precisely the three-bucket rule, already
 implemented.
 

@@ -115,7 +115,16 @@ test('the config chip has its own element, beside the drift chip it sits next to
   assertMatches(APP_JS, /drift\.id = 'corpusdrift';/, 'the drift element this chip sits beside');
   assertMatches(APP_JS, /configErr\.id = 'configerr';/,
     'the config chip gets its own element, so filling it can never blank the drift chip or the count');
-  assertMatches(APP_JS, /corpus\.append\(count, drift, configErr, notes\);/,
-    'appended into the corpus group — config governs the whole corpus, the same identity timescale '
-    + 'as the drift chip beside it');
+  // **Loosened 2026-09-23 from the exact four-child tuple, when a FOURTH fact
+  // joined this group** (`TASK-an-install-whose-sources-cannot-be-walked-
+  // reports-its-code` added `#codestate`, the unmeasured-code chip). The old
+  // pattern pinned the whole argument list, so a fifth chip arriving read as
+  // this one leaving — a pin on the punctuation rather than on the ruling, and
+  // the identical loosening `test/ui/code-skew.test.ts` has now recorded three
+  // times against its own heartbeat assertion. What this test is about is that
+  // the config chip is appended into the corpus group, beside the drift chip
+  // and not inside the count, and that is what is asserted.
+  assertMatches(APP_JS, /corpus\.append\((?:[^)]*, )?drift, configErr[,)]/,
+    'appended into the corpus group, beside the drift chip — config governs the whole corpus, '
+    + 'the same identity timescale as the drift chip beside it');
 });

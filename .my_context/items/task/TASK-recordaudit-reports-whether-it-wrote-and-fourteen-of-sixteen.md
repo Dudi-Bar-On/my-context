@@ -17,17 +17,17 @@ tags:
   - silent-failure
   - "plan:rulings"
   - "seq:81"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: e41acdb528845c37
+checksum: 581cef1f012cbf0f
 plan: rulings
 seq: "81"
-state: todo
+state: done
 priority: "2"
 ---
 

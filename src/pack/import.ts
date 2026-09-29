@@ -20,17 +20,41 @@
  * ## Every stage that finds something STOPS the plan
  *
  * There is no partial import here and deliberately no flag to ask for one. A
- * refused config, a screened code point, an item carrying `valid_until` or two
- * files claiming one id each abandon the whole plan, with nothing written —
- * which is only a promise `planImport` can make because it writes nothing on
- * any path.
+ * refused config, a screened code point, an item carrying `valid_until`, two
+ * files claiming one id, or an item whose category cannot hold it each abandon
+ * the whole plan, with nothing written — which is only a promise `planImport`
+ * can make because it writes nothing on any path.
+ *
+ * ## The pre-flight, and why it is the plan's job and not the apply's
+ *
+ * `createItem` refuses several things this module used to discover from inside
+ * the apply loop: an `extra` key the item's own category does not declare
+ * (`unknownExtraFieldError`, core/trust.ts), a type nothing declares, a type
+ * this workspace has switched off. Each of those threw AFTER the merged config
+ * had been written and after an arbitrary prefix of the pack had been created,
+ * and the sentence it threw said "Nothing was written" — which was false of the
+ * workspace by the time a person read it. `preflightCreates` asks the same
+ * questions in the pure half, against the MERGED config (the one the creates
+ * will actually run under), so the common failure is a refusal that names the
+ * item and the field before a single byte moves.
+ *
+ * All three are knowable from the artefact and the catalogue alone, which is
+ * the test for whether a rule belongs here: it is answerable without the corpus
+ * and without a write. The category refusals are re-voiced in `resolveCategory`
+ * (core/mutate.ts)'s own words rather than in new ones — see `categoryRefusal`.
+ *
+ * It cannot be complete, and is not pretended to be: `createItem` holds rules
+ * that depend on the corpus as it is at the moment of the write, and mirroring
+ * all of them here would be a second copy of the creator. What it covers is the
+ * class a pack can carry — a stranger's frontmatter against this workspace's
+ * catalogue. Everything it does not cover is caught by the disclosure below.
  *
  * ## The order `applyImport` writes in, and the one place it departs from the
  * plan document
  *
  * The plan's Task 12 lists the merged config as step 3, after the creates. It
  * cannot be: `createItem` resolves an item's category out of `ctx.config`
- * (`core/mutate.ts` · `function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {` · ~233),
+ * (`core/mutate.ts` · `function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {` · ~339),
  * so a pack that DEFINES a category — the half §6n.1 restored — would have
  * every one of its items refused as an unknown type before the config that
  * declares them was ever written. So the merged config is written and adopted
@@ -47,22 +71,42 @@
  * ordering the passes so that the partial state is the readable one is what
  * this codebase does everywhere else.
  *
+ * ## ...and when a write fails anyway, the wreckage is named and reachable
+ *
+ * The config is written through a temp file and a rename, so no failure can
+ * leave `config.json` half a document: after any crash the file is the old
+ * bytes or the new bytes and nothing between. Everything after that write runs
+ * inside `applyImport`'s one `try`, and a throw from any of it is re-voiced by
+ * `refusePartial`: it says the config was adopted, names the ids that WERE
+ * created and the ids that were not, says whether the history and the record
+ * landed, and carries the original refusal as the last line and as `cause`.
+ *
+ * And before it rethrows it files the import record for what did land. That is
+ * the half the report called unreachable: without a record `pack list` does not
+ * name the pack, and because it does not, `review promote --all --pack <name>`
+ * cannot reach the drafts that were created. A record naming exactly the ids in
+ * the corpus is the route out, and it is written from the same `PackKey` the
+ * successful path uses, so a re-import lands on it rather than beside it.
+ *
  * ## Nothing in `identical` is applied
  *
  * The creator's explicit-id branch already treats identical content as a no-op
- * duplicate (`core/mutate.ts` · `if (itemContentHash(explicitExisting) === hash) return duplicateOf(explicitExisting);` · ~928),
+ * duplicate (`core/mutate.ts` · `if (itemContentHash(explicitExisting) === hash) return duplicateOf(explicitExisting);` · ~986),
  * so re-running an import with nothing approved is idempotent by construction
  * rather than by a flag. Those ids are still MEMBERS of the pack — they are in
  * `imported` and in the import record — because `review promote --all --pack`
  * has to reach them; `created` is the narrower list of what this run wrote.
  */
-import { writeFileSync } from 'node:fs';
+import { renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { resolveConfig, type Config } from '../core/config.ts';
 import {
   createItem, updateItem,
   type CreateInput, type MutationContext, type UpdateInput,
 } from '../core/mutate.ts';
+import { retryOnTransientFsError } from '../core/rebuild.ts';
+import { enumError } from '../core/teach.ts';
+import { unknownExtraFieldError } from '../core/trust.ts';
 import type { Item } from '../core/types.ts';
 import { bucketise, type Buckets } from './collide.ts';
 import { mergePackConfig, refusePackConfig, type RawConfigJson } from './config-io.ts';
@@ -194,6 +238,28 @@ export interface ImportOptions {
    * the day somebody changed the default.
    */
   overwriteApproved: boolean;
+  /**
+   * Whether the caller KEEPS what a failed import managed to write. Default
+   * true, which is what `mycontext pack import` is.
+   *
+   * It exists because the partial-write disclosure ends with a route out —
+   * `pack list` names the pack, `review promote --all --pack <name>` reaches
+   * the drafts that landed — and that route is only real where the workspace
+   * survives. `init --pack` is the surface where it is not: `cmdInit`
+   * (cli/index.ts) removes the whole tree it had just created, so the two
+   * commands would name a corpus that is no longer on disk, printed one line
+   * above init's own accurate "nothing was created". So the caller says which
+   * it is, and `refusePartial` prints the route only where there is one.
+   *
+   * **Required, like `overwriteApproved`.** It was optional for one round
+   * (default: keeps), and the review of that round asked for this: a third
+   * caller added later would inherit "keeps" by omission, and print a route
+   * to a corpus it had just removed, with nobody having decided that. Every
+   * caller says which it is. What is NOT conditional on it is the disclosure
+   * itself: what was written and what was not is printed either way, because
+   * that is the invariant and the route is only a convenience on top of it.
+   */
+  keepsPartialWrites: boolean;
 }
 
 /** What one import did. The four id lists partition `plan.allIds`. */
@@ -275,9 +341,9 @@ function duplicateIds(items: readonly Item[]): string[] {
  * HERE from today and the pack's own history carries the original dates.
  *
  * A ticked step is reported for a harder reason. `normalizeSteps`
- * (`core/validate.ts` · `export function normalizeSteps(steps: string[]): Step[] {` · ~614)
+ * (`core/validate.ts` · `export function normalizeSteps(steps: string[]): Step[] {` · ~722)
  * sets `checked: false` on every entry, and `checked` is part of the content
- * hash (`core/content-hash.ts` · `function canonicalStep(s: Step): Step {` · ~43),
+ * hash (`core/content-hash.ts` · `function canonicalStep(s: Step): Step {` · ~45),
  * so an arriving procedure with a ticked box lands unticked AND buckets
  * `changed` against its own pack on the next import — differing in `steps`,
  * which has no write path, so it is then reported as not overwritable forever.
@@ -295,6 +361,136 @@ function notCarriedFor(buckets: Buckets): NotCarried[] {
     out.push({ field: 'ticked steps', items: ticked, effect: 'unticked' });
   }
   return out;
+}
+
+/**
+ * One refusal's sentence without its prefix, so it can be carried INSIDE
+ * another sentence that names the item it is about.
+ *
+ * `unknownExtraFieldError` is written to be thrown on its own and prefixes
+ * itself; here it is the tail of a line that opens with the id, and a line
+ * reading `my_context: "STD-x" — my_context: extra field …` is exactly what
+ * STD-error-message-conventions forbids. The same re-voicing `refuseByResolver`
+ * (pack/config-io.ts) does, and for the same reason.
+ */
+function bare(message: string): string {
+  return message.replace(/^my_context:\s*/, '');
+}
+
+/** One item's refusal as a line of a `refuseAll`: the id, then the reason. */
+function refusalFor(id: string, reason: string): string {
+  return `my_context: ${JSON.stringify(id)} — ${bare(reason)}`;
+}
+
+/**
+ * Whether this workspace can create an item of `type` at all, worded exactly as
+ * `resolveCategory` (`core/mutate.ts` · `function resolveCategory(ctx: MutationContext, type: string): ResolvedCategory {` · ~339)
+ * words it — the same `enumError` helper for the unknown case, and the disabled
+ * sentence character for character.
+ *
+ * Reproduced rather than called because `resolveCategory` is private to the
+ * creator, and re-voiced rather than re-invented because `init --pack` pins the
+ * "You passed …" wording and a second phrasing for one refusal is the defect
+ * `STD-error-message-conventions` exists about. The two must stay in step;
+ * `test/cli/init-pack.test.ts` is what notices if they do not.
+ *
+ * `null` when the category is fine — the shape every check in this file uses.
+ */
+function categoryRefusal(merged: Config, type: string): string | null {
+  if (!Object.hasOwn(merged.categories, type)) {
+    const enabled = Object.values(merged.categories).filter((c) => c.enabled).map((c) => c.name);
+    return enumError('type', type, enabled, 'categories');
+  }
+  if (!merged.categories[type].enabled) {
+    return `my_context: category "${type}" is disabled in this project, so no new `
+      + `${type} items are accepted. Enable it in .my_context/config.json under `
+      + `categories.${type}.enabled, or pick another type — see mycontext_help("categories").`;
+  }
+  return null;
+}
+
+/**
+ * Whether the `extra` an item arrived carrying belongs to the category it will
+ * be written under — `unknownExtraFieldError` (core/trust.ts), asked of the
+ * MERGED catalogue.
+ *
+ * A type the catalogue does not declare answers `null` here and is the previous
+ * function's question, not this one's: on the create path `categoryRefusal` has
+ * already refused it, and on the overwrite path it is deliberately allowed
+ * through, because that is `updateItem`'s own shape
+ * (`core/mutate.ts` · `  if (input.extra !== undefined && Object.hasOwn(ctx.config.categories, item.type)) {` · ~1483)
+ * — an item whose category was removed after capture is still updatable, and
+ * refusing it here would refuse a write that would have gone through.
+ */
+function ownershipRefusal(
+  merged: Config, type: string, extra: Record<string, string>, surface: 'capture' | 'edit',
+): string | null {
+  if (!Object.hasOwn(merged.categories, type)) return null;
+  return unknownExtraFieldError(merged, merged.categories[type], extra, surface);
+}
+
+/**
+ * Every arriving item this workspace could not create, asked BEFORE anything
+ * is written.
+ *
+ * Against `merged` and never against the local config: the creates run under
+ * the merged one (see `applyImport`), so a pack that DEFINES the category its
+ * items belong to is asked about the category it brought with it, and not about
+ * one this workspace has never heard of.
+ *
+ * Both questions, in `createItem`'s own order — the category first, because the
+ * ownership question cannot be asked without one, and because that is the order
+ * the creator asks them in. Every offending item is reported, not the first:
+ * a pack fixed one refusal at a time is a pack imported one failure at a time.
+ */
+function preflightCreates(source: string, buckets: Buckets, merged: Config): void {
+  const reasons: string[] = [];
+  for (const item of buckets.new) {
+    const refusal = categoryRefusal(merged, item.type)
+      ?? ownershipRefusal(merged, item.type, item.extra, 'capture');
+    if (refusal !== null) reasons.push(refusalFor(item.id, refusal));
+  }
+  if (reasons.length === 0) return;
+  refuseAll(
+    `${JSON.stringify(source)} carries ${reasons.length} item(s) this workspace cannot create, so `
+    + 'nothing was imported and nothing was written — not the merged config.json, and not the '
+    + 'items that would otherwise have landed ahead of these ones:',
+    reasons,
+  );
+}
+
+/**
+ * The same question for the overwrites an approval has just made reachable —
+ * and the reason it is asked in `applyImport` rather than in `planImport`.
+ *
+ * A plan is computed before the user is asked anything and is never told the
+ * answer (see the §6n.7 note at the top of this module), so refusing here from
+ * the plan would refuse an import that was about to succeed with the approval
+ * withheld. `applyImport` is the first place the answer exists, and this runs
+ * at the top of it — still before the config write, so "nothing was written"
+ * stays true.
+ *
+ * `categoryRefusal` is deliberately NOT asked: an overwrite goes through
+ * `updateItem`, which resolves no category at all, so a type this catalogue has
+ * stopped declaring is a write that still lands. The category consulted is the
+ * LOCAL item's, for the same reason — it is the one `updateItem` reads.
+ */
+function preflightOverwrites(plan: ImportPlan, overwriteApproved: boolean): void {
+  if (!overwriteApproved) return;
+  const merged = plan.config.resolved;
+  const reasons: string[] = [];
+  for (const entry of plan.buckets.changed) {
+    if (!entry.overwritable) continue;
+    const refusal = ownershipRefusal(merged, entry.existing.type, entry.incoming.extra, 'edit');
+    if (refusal !== null) reasons.push(refusalFor(entry.incoming.id, refusal));
+  }
+  if (reasons.length === 0) return;
+  refuseAll(
+    `${JSON.stringify(plan.source)} carries ${reasons.length} approved overwrite(s) this `
+    + 'workspace cannot apply, so nothing was imported and nothing was written — not the merged '
+    + 'config.json, and not the new items that would otherwise have landed first:',
+    reasons,
+  );
 }
 
 /**
@@ -376,6 +572,15 @@ export function planImport(artefact: Artefact, against: ImportAgainst): ImportPl
   const untouched = isObject(against.rawConfig)
     ? Object.keys(against.rawConfig).filter((key) => key !== 'categories')
     : [];
+  // Resolved ONCE, here rather than in the literal below, because step 6b asks
+  // its questions of it: a second `resolveConfig` call would be a second answer
+  // to "which catalogue do the creates run under", and the pre-flight has to be
+  // holding the one `applyImport` will use.
+  const resolved = resolveConfig(document);
+
+  // 6b. The create pre-flight. Last of the refusing stages, because it needs
+  //     both the buckets (only `new` is created) and the merged config.
+  preflightCreates(artefact.source, buckets, resolved);
 
   return {
     pack: manifest.name,
@@ -396,7 +601,7 @@ export function planImport(artefact: Artefact, against: ImportAgainst): ImportPl
       merged: packCategories.toSorted(comparePaths),
       untouched: untouched.toSorted(comparePaths),
       document,
-      resolved: resolveConfig(document),
+      resolved,
     },
     // 7. The history split, counted and not written.
     history: { records: artefact.history, unknown: artefact.unknownHistory },
@@ -417,20 +622,19 @@ function isObject(value: unknown): value is Record<string, unknown> {
  * 'ingest'` is the third member of a closed union and no fourth was invented
  * for imports — §6m.5 refused that carve-out.
  *
- * Provenance travels only for a full export. A pack has already had those
- * three fields cleared by the exporter, so passing them would be passing
- * `null` three times; an export is the author's own workspace travelling
- * whole, and dropping them there would lose the link to the file each item was
- * captured from.
+ * **No `kind` parameter, and no provenance fields, any more.** Both used to
+ * exist for a full export: `source_file`/`source_anchor`/`source_checksum`
+ * travelled only when `kind === 'export'`, because a pack has already had
+ * those three fields cleared by the exporter. Ruling C (2026-09-21) closed
+ * the only door a `kind: 'export'` plan could reach this function through —
+ * `cmdImport` (cli/commands/pack.ts) and `planPack` (cli/index.ts) both
+ * refuse on the artefact's `manifest.kind` before `planImport` runs — so the
+ * branch was dead code with a parameter to match. Removed rather than kept
+ * as an unreachable no-op: a function nobody can call with the value it
+ * branches on is not documentation, it is a second place to wonder whether
+ * the branch still matters.
  */
-function createInputFor(item: Item, kind: ArtefactKind): CreateInput {
-  const provenance = kind === 'export'
-    ? {
-      sourceFile: item.sourceFile,
-      sourceAnchor: item.sourceAnchor,
-      sourceChecksum: item.sourceChecksum,
-    }
-    : {};
+function createInputFor(item: Item): CreateInput {
   return {
     id: item.id,
     type: item.type,
@@ -446,7 +650,6 @@ function createInputFor(item: Item, kind: ArtefactKind): CreateInput {
     steps: item.steps.map((s) => s.text),
     observations: item.observations.map((o) => ({ ...o, tags: [...o.tags] })),
     relations: item.relations.map((r) => ({ ...r })),
-    ...provenance,
   };
 }
 
@@ -464,7 +667,7 @@ function createInputFor(item: Item, kind: ArtefactKind): CreateInput {
  * would let pack content govern with no review at all.
  *
  * `extra` MERGES rather than replaces (`core/mutate.ts` ·
- * `  if (update.extra !== undefined) item.extra = { ...item.extra, ...update.extra };` · ~878),
+ * `  if (update.extra !== undefined) item.extra = { ...item.extra, ...update.extra };` · ~2037),
  * so a key the local item carries and the pack does not survives the
  * overwrite. That is `updateItem`'s own semantics and this does not work
  * around them; the consequence is that such an item can still bucket `changed`
@@ -486,52 +689,230 @@ function updateInputFor(item: Item): UpdateInput {
 }
 
 /**
+ * **The one sentence every door a full export reaches says.** Ruling C
+ * (2026-09-21, B10): a full export is an archive to copy back, not something
+ * this product imports; `mycontext export --as-pack` is what writes something
+ * that is.
+ *
+ * Self-contained — one sentence, no artefact path and no "nothing was
+ * imported/created" tail. `cmdImport` (cli/commands/pack.ts), `planPack`
+ * (cli/index.ts) and the MCP `preview_pack_import` tool (mcp/tools.ts) each
+ * refuse on their own artefact's `manifest.kind === 'export'`, before
+ * `planImport` runs, and each of the three completes it differently: an
+ * import says nothing was imported, `init --pack` says nothing was created, a
+ * preview says neither. A constant that tried to say all three would be
+ * wrong on two of them; the path is context each caller already has (the
+ * positional it was given), so repeating it here would be three surfaces
+ * choosing three ways to quote one string instead of sharing one sentence.
+ */
+export const FULL_EXPORT_REFUSAL =
+  'my_context: a full export is an archive to copy back, not something to import — '
+  + '`mycontext export --as-pack` is what makes an importable pack.';
+
+/**
+ * The workspace's `config.json`, written so that no failure can leave it half a
+ * document.
+ *
+ * Write-then-rename, which is what every other durable write in this codebase
+ * does (`writeStagedRestore`, core/restore-store.ts; `writeItem`,
+ * core/rebuild.ts): the bytes land under a name nothing reads, and the rename
+ * is the single step that makes them the config. A crash, a full disk or a
+ * killed process therefore leaves the OLD document or the NEW one, never a
+ * truncated JSON file that the next `resolveConfig` refuses — which would take
+ * the whole workspace down over an import that failed on one item.
+ *
+ * `retryOnTransientFsError` guards the rename for the Windows reason
+ * `core/rebuild.ts` documents: `MoveFileEx` over an existing target fails with
+ * `EPERM`/`EACCES`/`EBUSY` while a scanner or another process holds a handle.
+ * The temp file is removed on failure, so a refused import leaves no litter
+ * beside the config it did not change.
+ */
+function writeWorkspaceConfig(root: string, document: RawConfigJson): void {
+  const file = path.join(root, WORKSPACE_CONFIG);
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    writeFileSync(tmp, `${JSON.stringify(document, null, 2)}\n`, 'utf8');
+    retryOnTransientFsError(() => renameSync(tmp, file));
+  } catch (err) {
+    try { rmSync(tmp, { force: true }); } catch { /* best effort — the rename is what matters */ }
+    throw err;
+  }
+}
+
+/** What `applyImport` had actually done when something below it threw. */
+interface Progress {
+  created: string[];
+  overwritten: string[];
+  historyWritten: boolean;
+  quarantineWritten: boolean;
+  recordWritten: boolean;
+}
+
+/** `none` rather than an empty gap, so a list that is empty still reads. */
+function idsOrNone(ids: readonly string[]): string {
+  return ids.length === 0 ? 'none' : nameIds(ids);
+}
+
+/**
+ * The refusal for an import that stopped after it had already changed the
+ * workspace — `INV-nothing-is-dropped-silently`'s second half, which asks an
+ * import that fails after a write to say exactly what was written and what was
+ * not.
+ *
+ * It files the import record FIRST, and that is the point rather than tidiness.
+ * Without one `pack list` does not name the pack, and because it does not,
+ * `review promote --all --pack <name>` cannot reach the drafts that were
+ * created — a half-applied pack with no command that names it. The record
+ * carries exactly the ids that are in the corpus now, so the route out leads to
+ * what is there and not to what was planned.
+ *
+ * Filing it can itself fail (it is a write, and a write is what just failed),
+ * so it is best-effort and the message says which of the two answers it got.
+ * The original error is the last line AND the `cause`: the sentence a person
+ * reads must still name the rule that refused, and a caller that inspects
+ * errors must still reach it.
+ */
+function refusePartial(
+  ctx: MutationContext, plan: ImportPlan, options: ImportOptions, stamp: string,
+  done: Progress, cause: unknown,
+): never {
+  const imported = [...done.created, ...plan.buckets.identical.map((i) => i.id)];
+  const members = [...imported, ...done.overwritten];
+  // A caller that discards what landed is not offered a record of it, and is
+  // not told one exists: the record would be written inside the tree it is
+  // about to remove — pointless, and on Windows one more open handle in the
+  // way of the `rmSync` that has to succeed for its own message to be true.
+  const keeps = options.keepsPartialWrites;
+  let filed = done.recordWritten;
+  if (keeps && !filed) {
+    try {
+      writeImportRecord(ctx.root, {
+        protocol: IMPORT_RECORD_PROTOCOL,
+        pack: options.name,
+        version: plan.version ?? '',
+        kind: plan.kind,
+        source: options.source,
+        origin: options.origin,
+        importedAt: stamp,
+        manifestFiles: plan.manifest.files,
+        items: members,
+        // What is on disk, not what was planned: a record claiming rows that
+        // were never filed would send `pack list` looking for them.
+        historyRecords: done.historyWritten ? plan.history.records.length : 0,
+        quarantined: done.quarantineWritten ? plan.history.unknown.length : 0,
+      });
+      filed = true;
+    } catch {
+      filed = false;
+    }
+  }
+
+  const unwritten = plan.buckets.new.map((i) => i.id).filter((id) => !done.created.includes(id));
+  const reason = cause instanceof Error ? cause.message : String(cause);
+  const route = filed
+    ? 'my_context: WHERE TO GO: the pack is filed under the name above, so `mycontext pack list` '
+      + `names it and \`mycontext review promote --all --pack ${JSON.stringify(options.name)}\` `
+      + 'reaches the drafts that did land. Re-running the import after fixing the artefact '
+      + 'treats what is already here as identical or changed, and says which.'
+    : 'my_context: WHERE TO GO: the import record could NOT be written either, so `mycontext '
+      + 'pack list` will not name this pack and `review promote --all --pack` cannot reach the '
+      + 'drafts above. They are in the corpus under the ids named here and can be promoted one '
+      + 'at a time.';
+  // The headline says what is true on the surface that is printing it. A caller
+  // that discards what landed prints its own account of the disk one line
+  // below, and "this workspace WAS changed" above "nothing was created" is two
+  // sentences a reader has to reconcile for us.
+  const headline = keeps
+    ? `my_context: this import of ${JSON.stringify(options.name)} stopped part-way, and this `
+      + 'workspace WAS changed — it is not the case that nothing happened.'
+    : `my_context: this import of ${JSON.stringify(options.name)} stopped part-way, after it had `
+      + 'already written. What it had written by then is listed below, so the account of what is '
+      + 'on disk now can be read against it.';
+
+  throw new Error([
+    headline,
+    `my_context: WRITTEN: config.json now holds the merged configuration${plan.config.merged.length > 0
+      ? ` (it declares ${nameIds(plan.config.merged)})` : ''}; `
+    + `${done.created.length} of ${plan.buckets.new.length} new item(s) were created as drafts `
+    + `(${idsOrNone(done.created)}); ${done.overwritten.length} overwrite(s) completed `
+    + `(${idsOrNone(done.overwritten)}); the pack's history was `
+    + `${done.historyWritten ? 'filed' : 'NOT filed'}; its unreadable rows were `
+    + `${done.quarantineWritten ? 'quarantined' : 'NOT quarantined'}`
+    + `${keeps ? `; the import record was ${filed ? 'filed' : 'NOT filed'}` : ''}.`,
+    `my_context: NOT WRITTEN: ${unwritten.length} item(s) the pack carries (${idsOrNone(unwritten)}).`,
+    // The route out, only where there is one to offer.
+    ...(keeps ? [route] : []),
+    `my_context: WHAT REFUSED: ${reason}`,
+  ].join('\n'), { cause });
+}
+
+/**
  * Applies a plan to the workspace `ctx` is open on.
  *
- * The stages are in the order the module comment argues for: the merged config
- * first (because a create cannot resolve a category the config has not
- * adopted), then the creates, then the overwrite pass, then the history and
- * the quarantine, then the import record with the membership list.
+ * The stages are in the order the module comment argues for: the approved
+ * overwrites pre-flighted (before any write, because that is where the approval
+ * first exists), then the merged config (because a create cannot resolve a
+ * category the config has not adopted), then the creates, then the overwrite
+ * pass, then the history and the quarantine, then the import record with the
+ * membership list. Everything from the config write on is inside one `try`, so
+ * that a failure in any of it is disclosed rather than reported as if nothing
+ * had happened.
  */
 export function applyImport(
   ctx: MutationContext, plan: ImportPlan, options: ImportOptions,
 ): ImportOutcome {
   const stamp = new Date(options.now).toISOString();
 
-  writeFileSync(
-    path.join(ctx.root, WORKSPACE_CONFIG),
-    `${JSON.stringify(plan.config.document, null, 2)}\n`,
-    'utf8',
-  );
+  preflightOverwrites(plan, options.overwriteApproved);
+
+  writeWorkspaceConfig(ctx.root, plan.config.document);
   // The caller's own `Config` is left exactly as it was: it was resolved before
   // this pack was heard of, and silently mutating a caller's object is not how
   // this module tells it that the config moved. Every write below goes through
   // the merged one instead.
   const writing: MutationContext = { root: ctx.root, store: ctx.store, config: plan.config.resolved };
 
-  const created: string[] = [];
+  const done: Progress = {
+    created: [], overwritten: [],
+    historyWritten: false, quarantineWritten: false, recordWritten: false,
+  };
+  try {
+    return applyStages(ctx, writing, plan, options, stamp, done);
+  } catch (err) {
+    refusePartial(ctx, plan, options, stamp, done, err);
+  }
+}
+
+/**
+ * The write stages, split out so `applyImport` holds the `try` and this holds
+ * the order. `done` is written as each stage completes and is what the refusal
+ * above reads — a stage that threw has not recorded itself, so the disclosure
+ * cannot claim a write that did not happen.
+ */
+function applyStages(
+  ctx: MutationContext, writing: MutationContext, plan: ImportPlan,
+  options: ImportOptions, stamp: string, done: Progress,
+): ImportOutcome {
+  const created = done.created;
   for (const item of plan.buckets.new) {
-    const result = createItem(writing, createInputFor(item, plan.kind));
     // `createItem` has one path that returns an id other than the one it was
     // given: an item carrying both `source_file` and `source_anchor` whose
     // content already exists here under a different name is reported as
-    // already captured (`core/mutate.ts` · `      message: \`my_context: already captured as ${anchored.id}. Nothing changed.\`,` · ~467).
-    // Reachable only from a full export, and refused rather than absorbed: the
-    // outcome's four lists are keyed on the pack's own ids, so quietly
-    // substituting one would make every count in the report describe an item
-    // the pack does not contain.
-    if (result.id !== item.id) {
-      refuse(`this artefact's ${JSON.stringify(item.id)} is already captured here as `
-        + `${JSON.stringify(result.id)} — the same content, from the same source passage, under `
-        + 'a different id. The two corpora allocated the id family differently and nothing here '
-        + 'can decide which of them names the same item; that is a judgement about meaning. '
-        + `Remove ${JSON.stringify(item.id)} from the artefact, or rename it.`);
-    }
+    // already captured (`core/mutate.ts` · `      message: \`my_context: already captured as ${anchored.id}. Nothing changed.\`,` · ~951).
+    // Those two fields no longer travel through `createInputFor` at all — see
+    // its own comment — because the only plan that ever carried them was a
+    // full export's, and ruling C (2026-09-21) refuses a full export before
+    // it reaches here. So the mismatched-id refusal that used to stand here
+    // — naming the other id and asking which corpus was right about it — no
+    // longer has an artefact that can reach it. Removed rather than left to
+    // rot: INV-nothing-is-dropped-silently is about a live silence, not a
+    // branch nothing can still walk into.
+    createItem(writing, createInputFor(item));
     created.push(item.id);
   }
   const imported = [...created, ...plan.buckets.identical.map((i) => i.id)];
 
-  const overwritten: string[] = [];
+  const overwritten = done.overwritten;
   const overwriteSkipped: string[] = [];
   const overwriteBlocked: string[] = [];
   for (const entry of plan.buckets.changed) {
@@ -558,9 +939,11 @@ export function applyImport(
   const key: PackKey = { name: options.name, origin: options.origin, source: options.source };
 
   writeImportedHistory(ctx.root, key, plan.history.records);
+  done.historyWritten = true;
   const quarantined = quarantine(
     ctx.root, key, plan.history.unknown, HISTORY_NAME, stamp,
   );
+  done.quarantineWritten = true;
 
   writeImportRecord(ctx.root, {
     protocol: IMPORT_RECORD_PROTOCOL,
@@ -578,6 +961,7 @@ export function applyImport(
     historyRecords: plan.history.records.length,
     quarantined,
   });
+  done.recordWritten = true;
 
   return {
     imported,

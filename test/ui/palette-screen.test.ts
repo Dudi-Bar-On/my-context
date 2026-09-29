@@ -1,3 +1,4 @@
+// @basis DEC-run-is-removed-execute-is-the-only-way-to-run-what-the, TASK-release-phase-1-the-repository-tells-the-truth
 /**
  * The Composer screen's decidable half, tested in Node.
  *
@@ -47,10 +48,11 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { matchesAnyGlob } from '../../src/core/paths.ts';
+import { stagingDir } from '../../src/lesson/staging.ts';
 import { UI_HELP_TOPICS } from '../../src/ui/read-model.ts';
 // The endpoint itself, so the two staging sources are asserted against the
 // body the browser will actually receive rather than one this test invented.
@@ -58,7 +60,6 @@ import { apiStaging } from '../../src/ui/read-model-staging.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
 const PUBLIC = path.join(import.meta.dirname, '..', '..', 'src', 'ui', 'public');
-const REPO = path.join(import.meta.dirname, '..', '..');
 
 /** `src/ui/public/x/y.js` as the `file://` URL Node can resolve. */
 const publicUrl = (rel: string): string =>
@@ -494,6 +495,39 @@ test('packOptions offers the paths imports were typed as, once each', async () =
 /* ── `GET /api/staging` → the two vocabularies `lesson-*` needed ────────── */
 
 /**
+ * Write a staging file straight to disk, in the shape `apiStaging` actually
+ * reads (`src/lesson/staging.ts`'s protocol) — `test/ui/staging-endpoint.test.ts`'s
+ * `stage`/`candidate`, restated here rather than imported, because that file's
+ * copies are the endpoint's own test double and this one only needs the shape.
+ */
+function stage(root: string, lessonId: string, candidates: unknown[]): void {
+  writeFileSync(
+    path.join(stagingDir(root), `${lessonId}.json`),
+    JSON.stringify({
+      protocol: 'my_context/lesson-staging@1',
+      lessonId,
+      createdAt: '2026-09-07T00:00:00.000Z',
+      candidates,
+    }, null, 2) + '\n',
+    'utf8',
+  );
+}
+
+const candidate = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+  key: 'aaaa1111',
+  state: 'pending',
+  ruleId: null,
+  candidate: {
+    title: 'Run migrations outside peak hours',
+    directive: 'do',
+    body: 'The lock is held for the whole batch.',
+    scope: ['migrations/**'],
+    severity: 'soft',
+  },
+  ...over,
+});
+
+/**
  * **The `id` and `key` lists, built from the endpoint's OWN answer.**
  *
  * `apiStaging` is imported and called here rather than a hand-written body
@@ -502,17 +536,26 @@ test('packOptions offers the paths imports were typed as, once each', async () =
  * the endpoint answers would re-open exactly the gap that was just closed. The
  * body under test is the one the browser will receive.
  *
- * **Read against a COPY of this repository's staging directory.** The files are
- * read-only inputs here, and `apiStaging` writes nothing, but the copy costs a
- * few kilobytes and removes the question. `projectRoot` is the `.my_context`
- * directory itself and not the repository root — `stagingDir` is
- * `path.join(root, '.staging')`.
+ * **Built in a TEMP staging directory, in the shape `apiStaging` actually
+ * reads — not copied from this repository's own `.my_context/.staging`.**
+ * That directory is real but gitignored, so a fresh checkout that never
+ * staged a lesson has none, and a copy of it (`cpSync`) threw `ENOENT` on
+ * exactly that checkout rather than skipping or failing the assertion below.
+ * Two synthetic files, shaped like `stage`/`candidate` write them, prove the
+ * same claim — the endpoint's own answer drives the two picker lists — on
+ * every machine. `projectRoot` is the `.my_context` directory itself and not
+ * the repository root — `stagingDir` is `path.join(root, '.staging')`.
  */
 test('the staging sources are built from what the endpoint actually answers', async () => {
   const { stagingLessonOptions, stagingKeyOptions } = await screen();
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-staging-'));
   try {
-    cpSync(path.join(REPO, '.my_context', '.staging'), path.join(dir, '.staging'), { recursive: true });
+    mkdirSync(stagingDir(dir), { recursive: true });
+    stage(dir, 'LESSON-alpha', [
+      candidate(),
+      candidate({ key: 'bbbb2222', state: 'accepted', ruleId: 'RULE-a' }),
+    ]);
+    stage(dir, 'LESSON-beta', [candidate({ key: 'cccc3333', state: 'discarded' })]);
     const answer = apiStaging({ projectRoot: dir } as never, new URL('http://x/api/staging'));
     const body = answer.body as {
       lessons: { lessonId: string; pending: number; candidates: number }[];
@@ -540,12 +583,14 @@ test('the staging sources are built from what the endpoint actually answers', as
     assert.deepEqual(keys.map((o) => o.hint), body.candidates.map((c) => c.title));
 
     // **The measurement the `key` field exists to survive**, restated as an
-    // assertion rather than as a comment: this corpus has candidates and NOT
-    // ONE of them is pending, so a list filtered to what either command takes
-    // is empty here. If that ever stops being true the note below stops being
-    // the state a reader sees, and this line says so.
+    // assertion rather than as a comment: the fixture above stages three
+    // candidates across two states, so the two lesson fields have a real
+    // domain to test rather than an accidentally empty one.
     assert.ok(body.counts.pending + body.counts.accepted + body.counts.discarded > 0,
       'no staged candidate at all — the two lesson fields have no domain to test');
+    assert.equal(body.counts.pending, 1);
+    assert.equal(body.counts.accepted, 1);
+    assert.equal(body.counts.discarded, 1);
   } finally {
     removeTree(dir);
   }

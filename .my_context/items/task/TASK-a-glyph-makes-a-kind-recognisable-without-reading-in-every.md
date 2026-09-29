@@ -19,7 +19,7 @@ tags:
   - "seq:26"
   - "state:todo"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/emoji-body.md"
+source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-12

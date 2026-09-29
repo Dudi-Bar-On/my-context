@@ -11,9 +11,24 @@
  * whatever the OS happened to hand out.
  *
  * Two of them do bind real sockets, deliberately and without a loop: a server
- * started on `--port 6669` is a refused port every single time, which turns the
- * once-in-eleven-runs failure into a test that reproduces it on demand and
+ * started on a refused port is a refused port every single time, which turns
+ * the once-in-eleven-runs failure into a test that reproduces it on demand and
  * proves the retry is wired to the real spawn path and not only to a fake.
+ *
+ * **That port is no longer hardcoded as 6669.** It was, until this file was
+ * run on a machine where `netsh interface ipv4 show excludedportrange
+ * protocol=tcp` showed 6669 inside an OS-excluded range (6667-6766 — Hyper-V
+ * and WSL reserve ranges that move between reboots). An excluded port is
+ * refused with `EACCES` before the bind ever completes, so the two real-server
+ * cases were failing on the OS, never reaching the product's unsafe-port
+ * screen at all — a test that depended on one specific port being bindable on
+ * whatever machine runs it. So the two real-server cases below choose their
+ * port at run time: probe `CHROME_UNSAFE_PORTS` with `probeBindable` from
+ * `test/helpers/safe-port.ts` — a throwaway `net.createServer().listen(port,
+ * '127.0.0.1')` that lives in the one module `safe-port-gate.test.ts` allows
+ * to hold that shape — and take the first port the OS actually lets bind. If
+ * the OS refuses every single one, those two cases skip — with the OS's own
+ * last refusal in the message, not a canned excuse.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,7 +39,7 @@ import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { removeTree } from '../helpers/tmp.ts';
 import { spawnUiChild, startUiChild, type UiHarness } from './helpers.ts';
-import { listenOnSafePort } from '../helpers/safe-port.ts';
+import { listenOnSafePort, probeBindable } from '../helpers/safe-port.ts';
 import { startSafeUiServer } from '../helpers/safe-ui-server.ts';
 import type { RunningUiServer } from '../../src/ui/server.ts';
 import {
@@ -194,6 +209,52 @@ test('a nonsensical attempt budget is refused rather than silently doing nothing
 
 // ── The same rule against real processes and real sockets ──────────────────
 
+/**
+ * Probe `CHROME_UNSAFE_PORTS` in order and keep the first one this OS, on this
+ * machine, right now, actually lets a socket bind to — closed again
+ * immediately, so the port is free for the real-server cases below to reuse.
+ *
+ * Not every refused port is bindable everywhere: some sit below 1024, some
+ * collide with a real service already listening, and on this Windows host an
+ * excluded range can swallow several at once. All of that is exactly why this
+ * asks the OS instead of assuming, the same reasoning `startOnSafePort` itself
+ * is built on.
+ *
+ * The actual bind is `probeBindable`, from `test/helpers/safe-port.ts` — the
+ * one module `safe-port-gate.test.ts` allows to hold a raw `.listen(`. This
+ * file used to bind directly, which the gate correctly refused: it is the
+ * file's OWN `fetch(` calls, in the two real-server cases further down, that
+ * make this a file that "reaches a server over HTTP", and the gate's
+ * raw-listen check is coupled per FILE, not per call — it cannot see that the
+ * probe's bind is never the thing `fetch` reaches. Moving the bind to the
+ * wrapper is the honest fix; a comment cannot exempt a line because every
+ * comment is masked before the gate reads anything.
+ */
+async function firstBindableUnsafePort(): Promise<{
+  port: number | null;
+  /** What the OS said about the LAST candidate tried, when none could be bound. */
+  lastRefusal: string | null;
+}> {
+  let lastRefusal: string | null = null;
+  for (const port of CHROME_UNSAFE_PORTS) {
+    const refusal = await probeBindable(port);
+    if (refusal === null) return { port, lastRefusal: null };
+    lastRefusal = refusal;
+  }
+  return { port: null, lastRefusal };
+}
+
+const { port: PINNED_UNSAFE_PORT, lastRefusal: PINNED_UNSAFE_PORT_LAST_REFUSAL } =
+  await firstBindableUnsafePort();
+
+/** Passed as `{ skip }` to the two real-server cases; `undefined` runs them. */
+const PINNED_UNSAFE_PORT_SKIP = PINNED_UNSAFE_PORT === null
+  ? 'the OS refused to bind EVERY port in CHROME_UNSAFE_PORTS on this machine ' +
+    `(last: ${PINNED_UNSAFE_PORT_LAST_REFUSAL ?? 'CHROME_UNSAFE_PORTS is empty'}) — there is no ` +
+    'port left to pin a real refused server on; see the header of this file for why 6669 is no ' +
+    'longer hardcoded'
+  : undefined;
+
 /** The smallest workspace the server will agree to start over. */
 function workspace(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-ui-port-'));
@@ -201,23 +262,27 @@ function workspace(): string {
   return dir;
 }
 
-test('a REAL server on a refused port is killed and reported, not handed to the browser', async () => {
+test('a REAL server on a refused port is killed and reported, not handed to the browser',
+  { skip: PINNED_UNSAFE_PORT_SKIP }, async () => {
+  if (PINNED_UNSAFE_PORT === null) throw new Error('unreachable: skip should have prevented this');
+  const port = PINNED_UNSAFE_PORT;
   const cwd = workspace();
   const started: UiHarness[] = [];
   try {
-    // `--port 6669` instead of `--port 0`: the OS's one-in-820 becomes every
-    // time, so the failure that was seen once now reproduces on demand.
+    // `--port <chosen>` instead of `--port 0`: a port the OS just proved it
+    // will bind AND that a consumer refuses becomes every time, so the failure
+    // that was seen once now reproduces on demand.
     await assert.rejects(
       () => startOnSafePort(async () => {
-        const h = await spawnUiChild(cwd, ['--port', '6669']);
+        const h = await spawnUiChild(cwd, ['--port', String(port)]);
         started.push(h);
         return h;
       }, 2),
-      /2 attempt\(s\) in a row: 6669, 6669/,
+      new RegExp(`2 attempt\\(s\\) in a row: ${port}, ${port}`),
     );
     assert.equal(started.length, 2, 'it really did spawn twice');
     for (const h of started) {
-      assert.equal(h.port, 6669, 'the harness read the port the server actually bound');
+      assert.equal(h.port, port, 'the harness read the port the server actually bound');
       assert.ok(
         h.child.exitCode !== null || h.child.signalCode !== null,
         'the discarded child is gone — a retry that leaves it running holds the port',
@@ -256,26 +321,31 @@ test('the ordinary path still returns a working, browser-openable child', async 
  * `startOnSafePort` makes `isUnusableTestPort(undefined)` answer `false`, so a
  * broken wrapper does not throw — it quietly screens nothing and hands back the
  * first port it drew, which is the exact state the twenty migrated call sites
- * were in before. So the port is forced rather than drawn: `port: 6669` is
- * refused every single time, and a wrapper that screens nothing would resolve.
+ * were in before. So the port is forced rather than drawn: `port` is set to a
+ * port the probe above this section just proved the OS will bind AND that a
+ * consumer refuses every single time, and a wrapper that screens nothing would
+ * resolve.
  *
  * **`idleMs` is THREE SECONDS here, and that is the difference between a red
  * and a hang.** Every broken shape of this wrapper leaks a listening server
  * this test has no handle on — a `stop()` that does not close leaves attempt
- * one holding 6669, a `port` that never reaches the screen leaves the resolved
- * server unclosed — and a live server keeps `node --test`'s event loop open.
- * Measured while proving this file: the broken case ran for ten minutes with no
- * output and had to be killed. A short idle window makes the leak collect
- * itself, so a broken wrapper fails in seconds and SAYS SO. The retry it is
- * testing finishes in well under one second.
+ * one holding the forced port, a `port` that never reaches the screen leaves
+ * the resolved server unclosed — and a live server keeps `node --test`'s event
+ * loop open. Measured while proving this file: the broken case ran for ten
+ * minutes with no output and had to be killed. A short idle window makes the
+ * leak collect itself, so a broken wrapper fails in seconds and SAYS SO. The
+ * retry it is testing finishes in well under one second.
  */
-test('startSafeUiServer screens the port it bound in process, and lets the server go', async () => {
+test('startSafeUiServer screens the port it bound in process, and lets the server go',
+  { skip: PINNED_UNSAFE_PORT_SKIP }, async () => {
+  if (PINNED_UNSAFE_PORT === null) throw new Error('unreachable: skip should have prevented this');
+  const port = PINNED_UNSAFE_PORT;
   const cwd = workspace();
   let leaked: RunningUiServer | null = null;
   try {
     await assert.rejects(
-      async () => { leaked = await startSafeUiServer({ cwd, port: 6669, idleMs: 3_000 }); },
-      /attempt\(s\) in a row: 6669/,
+      async () => { leaked = await startSafeUiServer({ cwd, port, idleMs: 3_000 }); },
+      new RegExp(`attempt\\(s\\) in a row: ${port}`),
       'the in-process port was never checked against the refused list',
     );
     // And every discarded server was CLOSED, which is the other half: a retry

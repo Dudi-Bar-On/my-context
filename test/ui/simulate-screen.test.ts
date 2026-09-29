@@ -388,6 +388,8 @@ async function draw(
   api: (route: string) => Promise<unknown>, lang = 'en',
   interact?: (root: FakeElement, fire: () => void) => void,
   session = 'cold',
+  recorded = 0,
+  ledger: 'ready' | 'not-projected' = 'ready',
 ): Promise<Drawn> {
   const { render } = await simulate();
   const { t, tFlat } = await i18n();
@@ -408,6 +410,14 @@ async function draw(
     tFlat: (key: string, subs: Record<string, string | number> = {}) => tFlat(strings, key, subs),
     api: (route: string) => { routes.push(route); return api(route); },
     session: () => session,
+    // The shell's count of the sessions `/api/sessions` answered — see
+    // `sessionsRecorded` in `app.js`. Zero unless a test says otherwise, which
+    // is the state every `'cold'` render here was always drawn in.
+    sessionsRecorded: () => recorded,
+    // The shell's `LedgerPresence` off `/api/sessions` — see `sessionLedger`
+    // in `app.js`. `'ready'` unless a test says otherwise: a projected ledger,
+    // so a zero above is a MEASURED zero.
+    sessionLedger: () => ledger,
     // The screen registers one; nothing here fires it, and a stand-in that
     // threw would fail on registration rather than on use.
     //
@@ -1255,6 +1265,78 @@ test('a shell with no session draws one button, not an inert second one', async 
   assert.deepEqual(buttons.map((b) => b.dataset['q']), ['cold']);
 });
 
+/** A string table value as it reads once drawn: its `{b:…}` marks are type, not text. */
+const plainOf = (value: string): string => value.replace(/{[a-z]+:([^}]*)}/g, '$1');
+
+/** An element as the screen leaves it: `el()` sets `id` and `hidden` as plain properties. */
+type Noted = FakeElement & { id?: string; hidden?: boolean };
+
+/** The `#simqnone` note, or undefined. */
+const coldNote = (root: FakeNode): Noted | undefined =>
+  all(root, (n) => (n as Noted).id === 'simqnone')[0] as Noted | undefined;
+
+test('a corpus with no recorded session says so under the one button', async () => {
+  const en = (await table('en')).strings;
+  const { root } = await draw(RICH, 'en', undefined, 'cold', 0);
+  const note = coldNote(root);
+  assert.ok(note !== undefined, 'no #simqnone was drawn');
+  assert.notEqual(note.hidden, true, 'a cold shell over no sessions hid the note saying why');
+  assert.equal(flatText(note), plainOf(en['sim.qnone']!),
+    'with zero sessions the note must be the no-session sentence');
+});
+
+test('a cold shell over a corpus WITH sessions does not claim there are none', async () => {
+  // `loadSessions` answers cold for sessions with no default too, and the
+  // reader can pick cold with sessions recorded (review of 8ec298c7).
+  const en = (await table('en')).strings;
+  const { root } = await draw(RICH, 'en', undefined, 'cold', 3);
+  const note = coldNote(root);
+  assert.ok(note !== undefined, 'no #simqnone was drawn');
+  assert.notEqual(note.hidden, true, 'a cold shell hid the note saying why it is cold');
+  assert.equal(flatText(note), plainOf(en['sim.qcold']!),
+    'with sessions recorded the note must be the choose-one sentence');
+  assert.doesNotMatch(flatText(note), /No session is recorded/,
+    'the note said no session is recorded over a corpus that has three');
+});
+
+test('a ledger nobody projected is drawn unmeasured, never as a measured zero', async () => {
+  // `/api/sessions` answers an empty list for a `not-projected` ledger AND for
+  // a projected one holding no rows; only `ledger` says which. Saying "no
+  // session is recorded" over the first is a zero claimed for a ledger nobody
+  // measured (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`).
+  const en = (await table('en')).strings;
+  const { root } = await draw(RICH, 'en', undefined, 'cold', 0, 'not-projected');
+  const note = coldNote(root);
+  assert.ok(note !== undefined, 'no #simqnone was drawn');
+  assert.notEqual(note.hidden, true, 'a cold shell over an unprojected ledger hid the note');
+  assert.doesNotMatch(flatText(note), /No session is recorded/,
+    'the note claimed a measured zero for a ledger that was never projected');
+  const chip = all(note, (n) => (n as FakeElement).className === 'chip unmeas')[0] as
+    FakeElement | undefined;
+  assert.ok(chip !== undefined, 'the unmeasured state is not drawn with the `chip unmeas` primitive');
+  assert.equal(chip.dataset['g'], '◌', 'the unmeasured chip does not carry the ◌ glyph');
+  assert.equal(flatText(note), plainOf(en['sim.qunmeas']!),
+    'with an unprojected ledger the note must be the not-measured sentence');
+});
+
+test('a projected ledger with no rows is still the measured zero', async () => {
+  const en = (await table('en')).strings;
+  const { root } = await draw(RICH, 'en', undefined, 'cold', 0, 'ready');
+  const note = coldNote(root);
+  assert.ok(note !== undefined, 'no #simqnone was drawn');
+  assert.equal(flatText(note), plainOf(en['sim.qnone']!),
+    'a projected, empty ledger IS a measured zero and says so');
+  assert.equal(all(note, (n) => (n as FakeElement).className === 'chip unmeas').length, 0,
+    'a measured zero was drawn as unmeasured');
+});
+
+test('a warm shell hides the cold note', async () => {
+  const { root } = await draw(RICH, 'en', undefined, 'sess-1', 1);
+  const note = coldNote(root);
+  assert.ok(note !== undefined, 'no #simqnone was drawn');
+  assert.equal(note.hidden, true, 'a shell with a session still showed the cold note');
+});
+
 test('the default is cold from the first fetch, before any press', async () => {
   // Nothing clicked here — this is the render `draw()` produces on its own,
   // which is exactly what a reader who never touches the question strip sees.
@@ -1440,9 +1522,15 @@ test('with a window the check is over all FIVE budgets, not the one being dragge
   // overflow the window — the exact failure the check exists to catch.
   const line = notesOf(root).find((t) => t.includes('across all five tiers'));
   assert.ok(line !== undefined, 'the whole-window check drew nothing');
-  assert.equal(line!.trim(), tFlat(en, 'sim.winOk', {
+  // **THE CHIP'S OWN WORD IS PART OF THIS LINE, since 2026-09-23.** It used to
+  // be an empty pill carrying the state in its colour and nothing else —
+  // `TASK-two-browser-gates-are-red-before-any-lane-touches-them-and`'s first
+  // red, and `e2e/chip-hue-authority.spec.ts:403` is what fails on it. The
+  // word is read from the table rather than written here, so a translation
+  // that changes moves both sides together.
+  assert.equal(line!.trim(), `${tFlat(en, 'sim.winOkChip', {})} ${tFlat(en, 'sim.winOk', {
     total: '8,700', win: '1,000,000', pct: '1', left: '991,300', res: '25',
-  }));
+  })}`);
 });
 
 test('a sum that overflows the window is refused as a sum, and the chip says so', async () => {

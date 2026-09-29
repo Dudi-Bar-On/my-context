@@ -1,4 +1,4 @@
-// @basis TASK-the-store-loads-refuses-what-it-cannot-parse-and-proves-it, INV-nothing-is-dropped-silently
+// @basis TASK-the-store-loads-refuses-what-it-cannot-parse-and-proves-it, INV-nothing-is-dropped-silently, TASK-release-phase-3-the-defects
 /**
  * **`mycontext rules` — verify, restore, list, show.**
  *
@@ -12,7 +12,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  appendFileSync, cpSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync,
+  appendFileSync, cpSync, mkdtempSync, readFileSync, readdirSync, statSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -20,6 +20,7 @@ import { runCli } from '../../src/cli/index.ts';
 import { COMMANDS } from '../../src/cli/commands/registry.ts';
 import { SUBCOMMANDS } from '../../src/cli/commands/rules.ts';
 import { entriesDir } from '../../src/rules/store.ts';
+import { RULES_DIR_ENV } from '../../src/rules/deliver.ts';
 import { verifyManifest, writeManifest } from '../../src/rules/manifest.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -44,28 +45,30 @@ function inTemp(fn: (cwd: string) => void): void {
 }
 
 /**
- * Damage the SHIPPED store, run something, and put it back byte for byte.
+ * Damage a COPY of the shipped store, point the CLI at it via
+ * `MYCONTEXT_RULES_DIR`, and clean up — never the shipped directory itself.
  *
- * The store is a checked-in directory of this repository, so a test that
- * damaged it and crashed would leave the working tree wrong. The original text
- * is read first and restored in a `finally`, and the assertion that it came
- * back is part of the helper rather than left to each caller.
+ * `KNOWN-running-the-test-suite-can-leave-the-shipped-rule-store`: this used
+ * to `appendFileSync` the REAL entry under `entriesDir()` and restore it in a
+ * `finally` — a race the concurrent suite occasionally lost, leaving the
+ * shipped store edited and re-sealed with nothing left to detect it. Damaging
+ * a scratch copy and steering `resolveStoreDir()` at it with the same env var
+ * `test/cli/rules-store-directory.test.ts` uses removes the race entirely:
+ * there is no longer anything shipped to put back.
  */
 function whileDamaged(fn: () => void): void {
-  const file = path.join(entriesDir(), `${SEED}.md`);
-  const before = readFileSync(file, 'utf8');
-  const manifest = readFileSync(path.join(entriesDir(), 'manifest.json'), 'utf8');
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-rulescli-damaged-'));
+  const before = process.env[RULES_DIR_ENV];
   try {
-    appendFileSync(file, '\nplanted by test/cli/rules.test.ts\n', 'utf8');
-    assert.equal(verifyManifest(entriesDir()).ok, false, 'the plant did not damage the store');
+    cpSync(entriesDir(), dir, { recursive: true });
+    appendFileSync(path.join(dir, `${SEED}.md`), '\nplanted by test/cli/rules.test.ts\n', 'utf8');
+    assert.equal(verifyManifest(dir).ok, false, 'the plant did not damage the copy');
+    process.env[RULES_DIR_ENV] = dir;
     fn();
   } finally {
-    writeFileSync(file, before, 'utf8');
-    writeFileSync(path.join(entriesDir(), 'manifest.json'), manifest, 'utf8');
-    assert.deepEqual(
-      verifyManifest(entriesDir()), { ok: true },
-      'the shipped store was left damaged by this test',
-    );
+    if (before === undefined) delete process.env[RULES_DIR_ENV];
+    else process.env[RULES_DIR_ENV] = before;
+    removeTree(dir);
   }
 }
 
@@ -77,6 +80,21 @@ test('`rules verify` exits 0 on an intact store and names where it looked', () =
     assert.equal(run.code, 0, run.text);
     assert.match(run.text, /intact/);
     assert.ok(run.text.includes(entriesDir()), 'the report does not say which directory it checked');
+  });
+});
+
+/**
+ * B12 / `KNOWN-rules-verify-answers-intact-for-an-entry-the-store-s-own`: a
+ * checksum only ever proves unchanged-since-sealing, never validity — and the
+ * sentence used to say "matches the checksum that shipped with it", which
+ * reads as a claim about the latter. Pinned so a future edit cannot drift
+ * back toward the stronger, false claim.
+ */
+test('`rules verify` says what it proves — unchanged since sealing, never validity', () => {
+  inTemp((cwd) => {
+    const run = cli(['rules', 'verify'], cwd);
+    assert.equal(run.code, 0, run.text);
+    assert.match(run.text, /matches the checksum it was last sealed with/);
   });
 });
 
@@ -287,9 +305,17 @@ test('the store the command reads is inside the package, not the workspace', () 
       'location is a fact about the installation and never about where the user is standing.',
     );
     // And regenerating it is a no-op on a clean tree, which is what makes the
-    // assertion above testable at all rather than a claim about a path string.
-    const before = readFileSync(path.join(entriesDir(), 'manifest.json'), 'utf8');
-    writeManifest(entriesDir());
-    assert.equal(readFileSync(path.join(entriesDir(), 'manifest.json'), 'utf8'), before);
+    // assertion above testable at all rather than a claim about a path
+    // string. Regenerated on a COPY, never the shipped directory itself —
+    // `KNOWN-running-the-test-suite-can-leave-the-shipped-rule-store` is
+    // exactly a `writeManifest(entriesDir())` racing another test's write to
+    // the same file; a scratch copy has nothing to race.
+    const scratch = mkdtempSync(path.join(tmpdir(), 'myctx-rules-noop-'));
+    try {
+      cpSync(entriesDir(), scratch, { recursive: true });
+      const before = readFileSync(path.join(scratch, 'manifest.json'), 'utf8');
+      writeManifest(scratch);
+      assert.equal(readFileSync(path.join(scratch, 'manifest.json'), 'utf8'), before);
+    } finally { removeTree(scratch); }
   });
 });

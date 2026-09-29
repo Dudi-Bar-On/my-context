@@ -15,13 +15,15 @@ tags:
   - unconfirmed
   - "rec:needs-you"
   - "rec-backfilled:2026-09-15"
+  - "state:done"
 origin: review
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: decbf54e8587d336
+checksum: 3a2c172fdab608ee
+state: done
 ---
 
 # the write must be in contradiction scope and governing (gated, src/core/mutate.ts:1026), and the…

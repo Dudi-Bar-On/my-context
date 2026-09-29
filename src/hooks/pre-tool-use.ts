@@ -16,9 +16,10 @@ import type { Item } from '../core/types.ts';
 import { isUsableId } from '../core/vocabulary.ts';
 import { configLoadFailure, findProjectRoot, resolveWorkspace } from '../core/workspace.ts';
 import { assertDoor } from '../rules/deliver.ts';
+import { unrecordedMissLine } from '../rules/delivered.ts';
 import {
   configUnreadableLine, hookParseErrorLine, ledgerKey, parseHookInput, preToolUseContext,
-  preToolUseDeny, readStdin, payloadOf, type HookPayload,
+  preToolUseDeny, readStdin, payloadOf, unrecordedHookLine, type HookPayload,
 } from './io.ts';
 import { capped, NOTE_MAX } from './observe.ts';
 
@@ -390,7 +391,7 @@ export function buildJitOutput(
         `(first: ${fallbackErrors[0].file})`,
       );
     }
-    recordAudit(ws.projectRoot, {
+    const written = recordAudit(ws.projectRoot, {
       kind: 'injection',
       op: 'jit',
       sessionId,
@@ -403,6 +404,14 @@ export function buildJitOutput(
       ...(selection.spilled.length === 0 ? {} : {
         spilled: selection.spilled.map((s): SpilledRef => ({
           id: s.id, tier: s.tier, reason: s.reason,
+          // The `neverOffered` mark travels here for `core/inject.ts`'s reason,
+          // and as a conditional key for the same one: an ordinary spill's row
+          // stays byte-identical. A JIT event never runs the restore tier
+          // (`tiersRun`), so nothing sets it on this path today — written
+          // anyway, because the two copies of this map are one contract and a
+          // divergence between them would be a field that exists on one door
+          // and not the other.
+          ...(s.neverOffered === true ? { neverOffered: true as const } : {}),
         })),
       }),
       // Counts, not ids — the same reason the session-start record carries
@@ -413,6 +422,28 @@ export function buildJitOutput(
       // dedupe failure rather than as two context windows.
       ...(noteParts.length === 0 ? {} : { note: noteParts.join('; ') }),
     });
+    // **THE LOAD-BEARING ONE.** The append below justifies its own best-effort
+    // posture on the grounds that "the audit record above already holds the
+    // delivery durably" — so when THIS write fails, that sentence is false and
+    // nothing said so
+    // (`TASK-recordaudit-reports-whether-it-wrote-and-fourteen-of-sixteen`).
+    // The items were rendered into the model's context and the only durable
+    // record that they were is gone; the seen file that remains is dedupe
+    // state, not evidence, and it is not read by anything that answers "what
+    // did this session see".
+    //
+    // Stderr and NOT the injected block, for the reason the catch below gives
+    // at length: this tier's output is paid for once per tool call, and the
+    // reader who can fix an unwritable directory is the person, not the model.
+    // The injection itself is untouched — losing the delivery to disclose its
+    // loss would be the worse trade.
+    if (!written.written) {
+      process.stderr.write(unrecordedHookLine(
+        'PreToolUse', 'jit', written.error ?? 'unknown',
+        `${selection.full.length} item(s) were injected for this tool call and nothing ` +
+        'recorded the delivery — the seen file below is dedupe state, not evidence',
+      ));
+    }
     // The dedupe record: an append to the per-session seen file — 0.55 ms
     // measured for the identical machinery (audit-latency.perf.ts) — never
     // SQLite. appendSeen never throws; a failed append is one future
@@ -473,7 +504,7 @@ function recordDeny(input: HookPayload<'PreToolUse'>, cwd: string, abs: string):
   if (!home) return;
   const denied = managedSplit(toPosix(abs)) ?? managedSplit(toPosix(canonicalize(abs)));
   // `recordAudit` never throws; a failure here cannot cost the deny.
-  recordAudit(home, {
+  const written = recordAudit(home, {
     kind: 'hook',
     op: 'deny',
     hook: 'PreToolUse',
@@ -481,6 +512,26 @@ function recordDeny(input: HookPayload<'PreToolUse'>, cwd: string, abs: string):
     ...(denied === null ? {} : { path: denied.rel }),
     note: `${input.tool_name ?? 'unknown tool'} refused`,
   });
+  // **THE LOAD-BEARING ONE, SECOND OF THREE.** This function's own header
+  // calls the deny "the one hook action that CHANGES what a tool call does, so
+  // it is the one that most needs to be in the log: an agent blocked from
+  // writing into `.my_context/` that then tells the user something else
+  // happened is exactly what an audit trail is for." That is the guarantee,
+  // and until it was read the write's failure could void it in silence.
+  //
+  // The deny still stands — the caller returns the envelope whatever happens
+  // here, which is what "a failure here cannot cost the deny" means and stays
+  // true. What this line adds is that the refusal is no longer BOTH unrecorded
+  // and unmentioned.
+  if (!written.written) {
+    process.stderr.write(unrecordedHookLine(
+      'PreToolUse', 'deny', written.error ?? 'unknown',
+      `a ${input.tool_name ?? 'tool'} call into ` +
+      `${denied === null ? 'the managed directory' : denied.rel} WAS refused and nothing ` +
+      'recorded the refusal — an agent that reports something else happened cannot be ' +
+      'checked against the log',
+    ));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -515,10 +566,10 @@ function recordDeny(input: HookPayload<'PreToolUse'>, cwd: string, abs: string):
 // every dispatch, which is worse than silence: a refusal quoting
 // "well-designed" as "not an id this corpus has" teaches nothing about the
 // gate it names, and is exactly the "fires on a quotation" failure a gate
-// like this has to avoid. `AGENT_ID_TOKEN` below additionally requires the
-// shape every id in this corpus already has — an ALL-CAPS run before the
-// first hyphen, which is what `makeId` (slug.ts) mints every category prefix
-// as — before a token is even asked whether it is grammar-valid.
+// like this has to avoid. `buildAgentIdToken` below additionally requires the
+// shape every id in this corpus already has — one of THIS WORKSPACE'S OWN
+// category prefixes, followed by the lowercase-led slug `makeId` (slug.ts)
+// actually mints — before a token is even asked whether it is grammar-valid.
 //
 // **EXISTENCE IS REQUIRED, MEASURED RATHER THAN ASSUMED.** A token shaped
 // like an id is not proof one exists: this corpus's own `TASK-…` grammar
@@ -547,12 +598,51 @@ function recordDeny(input: HookPayload<'PreToolUse'>, cwd: string, abs: string):
 // ---------------------------------------------------------------------------
 
 /**
- * A prompt token shaped like an item id this corpus actually mints:
- * `vocabulary.ts`'s own grammar, narrowed to the ALL-CAPS-prefix-then-hyphen
- * shape every id here has. See the header comment above for why the bare
- * grammar is too wide to scan prose with.
+ * `AGENT_ID_TOKEN`, narrowed a second time — owner ruling F (2026-09-21),
+ * B11. The ALL-CAPS-prefix-then-hyphen shape above (any run of `[A-Z][A-Z0-9]`
+ * before the first hyphen) still let through every ALL-CAPS acronym and
+ * hyphenated capitalised phrase this corpus's own prose writes constantly:
+ * `READ-ONLY`, `SHA-256`, `UTF-8` and `X-MYCONTEXT-TOKEN` all matched it, and
+ * none of them names an item — the bare shape says nothing about what this
+ * WORKSPACE actually mints, or about what follows the prefix. Two narrowings
+ * fix that; the header comment's own argument (a shape check first, existence
+ * measured once) is unchanged by either:
+ *
+ *  1. **The prefix is no longer "any ALL-CAPS run" — it is one of the
+ *     prefixes THIS WORKSPACE'S OWN CATEGORIES actually mint**
+ *     (`ws.config.categories[*].prefix`, already resolved once in
+ *     `agentDispatchVerdict` — built-in categories included even when a
+ *     workspace defines no custom ones, since `resolveConfig` populates every
+ *     shipped category's `prefix` unconditionally). `READ`, `SHA`, `UTF` and
+ *     `X` answer to no category, built-in or custom, so none of the four ever
+ *     reaches the alternation.
+ *  2. **The slug after the prefix must be LOWERCASE-LED**
+ *     (`[a-z0-9][a-z0-9.-]*[a-z0-9]`) — what `makeId` (slug.ts) actually
+ *     mints, and what an ALL-CAPS acronym never is. This is the guard prefix-
+ *     narrowing alone does not give: several of this workspace's own category
+ *     prefixes are also ordinary English words — `ENV`, `RUN`, `REF`, `STD`,
+ *     `PAT`, `PLAN`, `TODO`, `NOTE`, `RISK` among them — so `ENV-VARS`,
+ *     `PLAN-B` or `TODO-LIST` in prose would still read as candidates on
+ *     prefix alone. None of them survive the lowercase requirement.
+ *
+ * A LEFT BOUNDARY (`(?<![A-Za-z0-9-])`) is unchanged from the bare grammar:
+ * `XTASK-foo` must not read as `TASK-foo` wearing a longer word around it.
+ *
+ * `isUsableId` (below, in `candidateItemIds`) still does the final character
+ * check — the `..` exclusion in particular — so this pattern does not have to
+ * re-derive it.
  */
-const AGENT_ID_TOKEN = /[A-Z][A-Z0-9]{0,14}-[A-Za-z0-9._-]*[A-Za-z0-9]/g;
+export function buildAgentIdToken(prefixes: readonly string[]): RegExp {
+  // Built ONCE per `agentDispatchVerdict` call — see the call site — not once
+  // per candidate token: a workspace's categories do not change mid-scan, so
+  // there is nothing to gain and a real cost (one compile per match instead
+  // of one per prompt) to lose by rebuilding it inside `candidateItemIds`'s
+  // loop.
+  return new RegExp(
+    `(?<![A-Za-z0-9-])(?:${prefixes.join('|')})-[a-z0-9][a-z0-9.-]*[a-z0-9]`,
+    'g',
+  );
+}
 
 /**
  * The escape hatch: a phrase written deliberately into the prompt, case
@@ -564,16 +654,18 @@ const NO_ITEM_HATCH = /no-item\s*:\s*(.+)/i;
 
 /**
  * Every id-shaped token in `text`, deduplicated, in the order it appears.
- * Reuses `isUsableId` rather than re-deriving its rule — the `..` exclusion
- * in particular is not restated here.
+ * `token` is `buildAgentIdToken`'s output — a caller's regex, not a module
+ * constant, because the prefix alternation it was compiled from is per-
+ * workspace. Reuses `isUsableId` rather than re-deriving its rule — the `..`
+ * exclusion in particular is not restated here.
  */
-export function candidateItemIds(text: string): string[] {
+export function candidateItemIds(text: string, token: RegExp): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const token of text.match(AGENT_ID_TOKEN) ?? []) {
-    if (seen.has(token) || !isUsableId(token)) continue;
-    seen.add(token);
-    out.push(token);
+  for (const match of text.match(token) ?? []) {
+    if (seen.has(match) || !isUsableId(match)) continue;
+    seen.add(match);
+    out.push(match);
   }
   return out;
 }
@@ -630,7 +722,13 @@ function agentDispatchVerdict(input: HookPayload<'PreToolUse'>, cwd: string): st
 
   const promptValue = input.tool_input?.prompt;
   const prompt = typeof promptValue === 'string' ? promptValue : '';
-  const candidates = candidateItemIds(prompt);
+  // One regex per verdict: the prefix alternation is this workspace's own
+  // categories (built-in and custom alike — `ws.config.categories` already
+  // carries both, resolved by `resolveConfig`), and `buildAgentIdToken` is
+  // called exactly once here rather than once per token `candidateItemIds`
+  // finds.
+  const prefixes = Object.values(ws.config.categories).map((c) => c.prefix);
+  const candidates = candidateItemIds(prompt, buildAgentIdToken(prefixes));
   if (corpusHasAny(ws.dbPath, candidates)) return '';
 
   const hatch = NO_ITEM_HATCH.exec(prompt);
@@ -638,17 +736,30 @@ function agentDispatchVerdict(input: HookPayload<'PreToolUse'>, cwd: string): st
   if (reason !== '') {
     // `recordAudit` never throws; a failure here cannot turn an allowed
     // dispatch into a refused one.
-    recordAudit(ws.projectRoot, {
+    const waived = recordAudit(ws.projectRoot, {
       kind: 'hook',
       op: 'agent-item-waived',
       hook: 'PreToolUse',
       ...(input.session_id === undefined ? {} : { sessionId: input.session_id }),
       note: capped(reason, NOTE_MAX),
     });
+    // The escape hatch's whole price is that the reason is recorded — the deny
+    // message below says so in as many words, *"the dispatch proceeds with the
+    // reason recorded in the audit log"*. A waiver whose row was lost is a
+    // gate that let a dispatch through for free, and the dispatch still
+    // proceeds: turning a waiver into a refusal because a directory would not
+    // take a write is not a trade this gate may make.
+    if (!waived.written) {
+      process.stderr.write(unrecordedHookLine(
+        'PreToolUse', 'agent-item-waived', waived.error ?? 'unknown',
+        'this Agent dispatch was waived through on a `no-item:` reason and the reason was ' +
+        'NOT recorded, which is the whole price the escape hatch charges',
+      ));
+    }
     return '';
   }
 
-  recordAudit(ws.projectRoot, {
+  const refused = recordAudit(ws.projectRoot, {
     kind: 'hook',
     op: 'deny',
     hook: 'PreToolUse',
@@ -660,6 +771,16 @@ function agentDispatchVerdict(input: HookPayload<'PreToolUse'>, cwd: string): st
       NOTE_MAX,
     ),
   });
+  // `recordDeny`'s reason, at the gate's own door: this is the second place a
+  // hook CHANGES what a tool call does, and a refusal that is neither recorded
+  // nor mentioned is the silence this whole phase is about. The refusal below
+  // is returned either way.
+  if (!refused.written) {
+    process.stderr.write(unrecordedHookLine(
+      'PreToolUse', 'deny', refused.error ?? 'unknown',
+      'an Agent dispatch WAS refused by the dispatch gate and nothing recorded the refusal',
+    ));
+  }
   return preToolUseDeny(agentDenyMessage(candidates));
 }
 
@@ -705,7 +826,25 @@ function missedDoorNote(input: HookPayload<'PreToolUse'>, cwd: string): string {
     // record in `hooks/subagent-start.ts`.
     const root = findProjectRoot(cwd);
     if (root === null) return '';
-    return assertDoor(root, key);
+    const assertion = assertDoor(root, key);
+    // **`recorded` is READ here** — `assertDelivered` writes the `missed` row
+    // that both latches this check and supplies spec §8.2's count, and until
+    // now it dropped `recordDelivery`'s answer under a docblock promising the
+    // caller would disclose it. This is that caller.
+    //
+    // **Both sentences, and in this order.** They are two facts: one says the
+    // reader may be missing the constants, the other says the record of that
+    // is missing too. `unrecordedMissLine` is emitted even when the first is
+    // withheld — the first is silent when the applicable set is empty, which
+    // is a statement about the STORE and says nothing about a directory that
+    // refused a write.
+    //
+    // stderr is this hook's channel for exactly this class, and the reader is
+    // the person: see the call site below, and `unrecordedMissLine` for why
+    // this line repeats rather than latching.
+    return assertion.recorded
+      ? assertion.text
+      : assertion.text + unrecordedMissLine(key);
   } catch {
     return '';
   }

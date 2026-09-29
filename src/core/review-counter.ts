@@ -79,6 +79,32 @@ export interface CounterState {
   calls: number;
   fires: number;
   sessionId: string | null;
+  /**
+   * **`null` when these numbers were READ; the reason when they were not** —
+   * `swallow/11` m7, `INV-nothing-is-dropped-silently`.
+   *
+   * The type check below is argued at length and the argument is for the
+   * SHAPE. It was never an argument for the CONFLATION: three zeros for a file
+   * nobody has written yet and three zeros for a file that is THERE and could
+   * not be turned into a state are the same value, and only one of them is a
+   * measurement. `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
+   *
+   * **What the conflation costs is the ration.** `fires: 0` for an unreadable
+   * file restores a session's whole budget — `trigger.ts` step 4 waves the
+   * pass through, `resetCounter` then writes `fires: 1` over whatever was
+   * really on disk, and the row for that turn says *"0 of 25 tool call(s)"*,
+   * which is true about the numbers it holds and silent about the fact that
+   * they are not the session's.
+   *
+   * **Absence is not failure.** No file at all is the ordinary first turn of
+   * every session in the world and reads `null` here — the item's first
+   * question, *is the condition IDENTIFIED*. This is set only for a file that
+   * exists and could not be used.
+   *
+   * It is never written to disk: `writeCounter` serialises the three numbers
+   * by name, so a disclosure can never be mistaken for stored state.
+   */
+  unread: string | null;
 }
 
 /**
@@ -93,10 +119,11 @@ export interface CounterWrite extends CounterState {
   written: boolean;
 }
 
-const FRESH: CounterState = { calls: 0, fires: 0, sessionId: null };
+const FRESH: CounterState = { calls: 0, fires: 0, sessionId: null, unread: null };
 
 /**
- * The state as it stands, or zeros for anything that cannot be read.
+ * The state as it stands, or zeros — with the reason beside them — for
+ * anything that could not be read.
  *
  * Every field is checked by TYPE rather than trusted — `readState`'s posture
  * in `ui-server-upkeep.ts`, for its reason: a half-read state file is worse
@@ -104,26 +131,69 @@ const FRESH: CounterState = { calls: 0, fires: 0, sessionId: null };
  * would obey. A `fires` that arrived as the string `"9"` compares truthily
  * against a numeric cap under one reading and falsily under another.
  *
+ * **And the zeros now say whether they were measured** (`swallow/11` m7). The
+ * three states are told apart here rather than at every reader: no file is
+ * `unread: null` and the honest start of a session; a file that will not open
+ * or will not parse names itself; a file that parsed to something that is not
+ * an object names what it held instead. `CounterState.unread` carries what
+ * each of them costs.
+ *
  * **Never throws.** This is called from `PostToolUse`.
  */
 export function readCounter(stateRoot: string): CounterState {
+  const file = reviewCounterPath(stateRoot);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(reviewCounterPath(stateRoot), 'utf8'));
-  } catch {
-    return { ...FRESH };
+    parsed = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    // **Only `ENOENT` is absence.** Every other errno — a directory where the
+    // file should be, a lock, a permission — is a file that EXISTS and could
+    // not be used, and so is a `SyntaxError` from `JSON.parse`, which carries
+    // no `code` at all.
+    const code = (err as NodeJS.ErrnoException | null)?.code;
+    if (code === 'ENOENT') return { ...FRESH };
+    return {
+      ...FRESH,
+      unread:
+        `the review counter at ${file} could not be read (` +
+        `${err instanceof Error ? err.message : String(err)}), so the count and the session's ` +
+        'spent ration below are UNMEASURED zeros rather than measured ones',
+    };
   }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return { ...FRESH };
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      ...FRESH,
+      unread:
+        `the review counter at ${file} could not be read as a state — it holds ` +
+        `${Array.isArray(parsed) ? 'an array' : `a ${parsed === null ? 'null' : typeof parsed}`} ` +
+        "where an object was expected — so the count and the session's spent ration below are " +
+        'UNMEASURED zeros rather than measured ones',
+    };
+  }
   const value = parsed as Record<string, unknown>;
+  // **A field that is PRESENT and unusable is the same defect one level down.**
+  // The type check stands — `"9"` must never reach a numeric comparison — but
+  // the zero it substitutes is no more measured than the ones above, so the
+  // keys it had to substitute for are named. A key that is simply absent is
+  // not one of them: a state written by an older build legitimately has none.
+  const substituted: string[] = [];
   const count = (key: string): number => {
     const raw = value[key];
-    return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
+    if (raw !== undefined) substituted.push(key);
+    return 0;
   };
+  const calls = count('calls');
+  const fires = count('fires');
   const id = value['sessionId'];
+  if (id !== undefined && !(typeof id === 'string' && id !== '')) substituted.push('sessionId');
   return {
-    calls: count('calls'),
-    fires: count('fires'),
+    calls,
+    fires,
     sessionId: typeof id === 'string' && id !== '' ? id : null,
+    unread: substituted.length === 0 ? null :
+      `the review counter at ${file} carries ${substituted.join(', ')} in a shape this build ` +
+      'cannot use, so those fields below are UNMEASURED zeros rather than measured ones',
   };
 }
 
@@ -152,7 +222,12 @@ function writeCounter(stateRoot: string, state: CounterState): boolean {
   const tmp = `${target}.tmp-${process.pid}`;
   try {
     mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    // **The three numbers, BY NAME.** Not the object it was handed: that one
+    // may carry `unread`, which is this process's reading of a file and not
+    // state — writing it would put a disclosure on disk where the next read
+    // would take it for something it had measured.
+    const stored = { calls: state.calls, fires: state.fires, sessionId: state.sessionId };
+    writeFileSync(tmp, `${JSON.stringify(stored, null, 2)}\n`, 'utf8');
     renameSync(tmp, target);
     return true;
   } catch {
@@ -177,7 +252,11 @@ function writeCounter(stateRoot: string, state: CounterState): boolean {
 function forSession(stored: CounterState, sessionId: string | undefined): CounterState {
   if (sessionId === undefined || sessionId === '') return { ...stored };
   if (stored.sessionId === sessionId) return { ...stored };
-  return { calls: 0, fires: 0, sessionId };
+  // `unread` travels onto the fresh state, and this is the branch it matters
+  // on: an unreadable file has no `sessionId`, so it lands HERE on every turn
+  // that carries one — and this is exactly where the numbers stop being the
+  // session's and nothing else would say so.
+  return { calls: 0, fires: 0, sessionId, unread: stored.unread };
 }
 
 /** The id to store, preferring the one the payload carried. */
@@ -228,6 +307,9 @@ export function bumpCounter(stateRoot: string, sessionId: string | undefined): C
     calls: base.calls + 1,
     fires: base.fires,
     sessionId: idFor(base, sessionId),
+    // Carried, not cleared: this count was built on numbers nobody could read,
+    // and the caller that just counted is the one entitled to know it.
+    unread: base.unread,
   };
   return { ...next, written: writeCounter(stateRoot, next) };
 }
@@ -249,6 +331,7 @@ export function resetCounter(stateRoot: string, sessionId: string | undefined): 
     calls: 0,
     fires: base.fires + 1,
     sessionId: idFor(base, sessionId),
+    unread: base.unread,
   };
   return { ...next, written: writeCounter(stateRoot, next) };
 }

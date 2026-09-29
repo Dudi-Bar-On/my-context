@@ -1,4 +1,6 @@
-// @basis TASK-deliveratdoor-returns-whether-it-recorded-the-delivery-and, INV-nothing-is-dropped-silently, INV-hooks-fail-open
+// @basis TASK-deliveratdoor-returns-whether-it-recorded-the-delivery-and,
+// TASK-d70-closed-all-five-instances-and-never-built-the-gate-the,
+// INV-nothing-is-dropped-silently, INV-hooks-fail-open
 /**
  * **A door that delivered and could not write the record says so.**
  *
@@ -35,6 +37,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runCli } from '../../src/cli/index.ts';
 import { storeAppendix } from '../../src/hooks/session-start.ts';
+import { runPreToolUse } from '../../src/hooks/pre-tool-use.ts';
 import { buildSubagentStartOutput } from '../../src/hooks/subagent-start.ts';
 import { deliveredFile } from '../../src/rules/delivered.ts';
 import { RULES_DIR_ENV } from '../../src/rules/deliver.ts';
@@ -197,4 +200,88 @@ test('a workspace with nowhere to record is silent HERE, because the binary disc
     assert.equal(text, '');
     assert.equal(said, '');
   } finally { removeTree(bare); removeTree(store); }
+});
+
+/* ---------------------------------------------------------------------------
+ * THE OTHER HALF OF THE SAME PROMISE — the ASSERTION's row.
+ *
+ * `TASK-d70-closed-all-five-instances-and-never-built-the-gate-the`. The five
+ * tests above close `deliverAtDoor`'s side; `assertDelivered` was still
+ * calling the same producer as a bare statement, under the same docblock
+ * saying the caller discloses. It has no second route: the `missed` row IS
+ * the latch and IS spec §8.2's count, so a refused write costs both and left
+ * nothing behind to ask a second time.
+ * ------------------------------------------------------------------------- */
+
+/** The empty-but-PUBLISHED store: readable, sealed, and applicable to nothing. */
+function emptyStore(): string {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-rec-empty-store-'));
+  writeManifest(dir);
+  return dir;
+}
+
+function readFile(cwd: string): string {
+  return path.join(cwd, 'src', 'anything.ts');
+}
+
+test('the assertion that could not write its own row says so, on the hook that has a reader', () => {
+  const cwd = workspace();
+  const store = storeFixture();
+  try {
+    blockTheLog(path.join(cwd, '.my_context'));
+    const said = withStore(store, () => captureStderr(() => {
+      runPreToolUse(JSON.stringify({
+        session_id: 's-assert', hook_event_name: 'PreToolUse', cwd,
+        tool_name: 'Read', tool_input: { file_path: readFile(cwd) },
+      }), cwd);
+    }));
+    // BOTH sentences, and they are two facts: one says the reader may be
+    // missing the constants, the other says the record of that is missing too.
+    assert.match(said, /no record of the product rule store being delivered to it/);
+    assert.match(said, /Every door that starts an agent/, 'the missed-door sentence itself');
+    assert.match(said, /the row recording that NO door delivered/);
+    assert.match(said, /key `s-assert`/);
+    // What a refused row actually costs, named rather than implied.
+    assert.match(said, /latches on that row/);
+    assert.match(said, /is a floor rather than a figure/);
+  } finally { removeTree(cwd); removeTree(store); }
+});
+
+test('the unrecorded row is disclosed even when the missed-door sentence is withheld', () => {
+  const cwd = workspace();
+  const store = emptyStore();
+  try {
+    blockTheLog(path.join(cwd, '.my_context'));
+    const said = withStore(store, () => captureStderr(() => {
+      runPreToolUse(JSON.stringify({
+        session_id: 's-empty', hook_event_name: 'PreToolUse', cwd,
+        tool_name: 'Read', tool_input: { file_path: readFile(cwd) },
+      }), cwd);
+    }));
+    // `assertDelivered` withholds the missed-door sentence when nothing could
+    // have applied — a check crying wolf is a check nobody believes. That
+    // silence is about the STORE and says nothing about a directory that
+    // refused a write, so the second fact still has to arrive.
+    assert.doesNotMatch(said, /Every door that starts an agent/);
+    assert.match(said, /the row recording that NO door delivered/);
+    assert.match(said, /key `s-empty`/);
+    assert.match(said, /Nothing was blocked/);
+  } finally { removeTree(cwd); removeTree(store); }
+});
+
+test('an assertion whose row LANDED says nothing about the write', () => {
+  const cwd = workspace();
+  const store = emptyStore();
+  try {
+    const said = withStore(store, () => captureStderr(() => {
+      runPreToolUse(JSON.stringify({
+        session_id: 's-ok-assert', hook_event_name: 'PreToolUse', cwd,
+        tool_name: 'Read', tool_input: { file_path: readFile(cwd) },
+      }), cwd);
+    }));
+    assert.equal(
+      said, '',
+      'a line on the healthy path is how a real warning stops being read',
+    );
+  } finally { removeTree(cwd); removeTree(store); }
 });

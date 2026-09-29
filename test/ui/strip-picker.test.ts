@@ -46,10 +46,14 @@ interface Entry {
   key: string; group: string; subject: string; label: string; urgency: string | null;
 }
 const {
-  CHOICE_KEY, STRIP_PICK, isUrgent, neverForced, pickColumns, pickGroups, pickKeyOf,
-  readChoice, writeChoice,
+  CHOICE_KEY, FIELD_PICK_KEY, STRIP_PICK, isUrgent, neverForced, pickColumns, pickGroups,
+  pickKeyOf, pickKeysOf, pillChoice, readChoice, writeChoice,
 } = (await import(CHOICE)) as {
   CHOICE_KEY: string;
+  FIELD_PICK_KEY: Readonly<Record<string, readonly string[]>>;
+  pickKeysOf: (el: unknown) => string[];
+  pillChoice: (el: unknown, off: Set<string> | null,
+    urgencyOf: (key: string) => string | null | undefined) => 'shown' | 'off' | 'back' | null;
   STRIP_PICK: readonly Entry[];
   isUrgent: (el: unknown, urgency: string | null) => boolean;
   neverForced: () => string[];
@@ -146,6 +150,52 @@ describe('which pill answers to which name', () => {
     // not a strip NAME, so the field id is the handle.
     assert.equal(pickKeyOf(pill({ f: 'injections', ulab: 'strip.inj' })), 'injections');
     assert.equal(pickKeyOf(pill({ f: 'corpus-drift' })), 'corpus-drift');
+  });
+
+  it('answers a nameless state of a named field to the row of THAT field', () => {
+    // Measured 2026-09-28 on a corpus with no recorded session: the shell opens
+    // cold, the context figure prints `cold session …` with no WINDOW name and
+    // the limits group prints `no account windows reported` with no 5H name,
+    // and both answered to ids the dialog had no row for — so unticking WINDOW
+    // left the cold sentence standing where the window figure had been.
+    assert.deepEqual(pickKeysOf(pill({ f: 'context' })), ['window']);
+    // The limits chip is drawn only when NEITHER window reported, so it is the
+    // absence of both and answers to both rows (review of 8ec298c7).
+    assert.deepEqual(pickKeysOf(pill({ f: 'rate-5h' })), ['rate5', 'rate7']);
+    // The named state is unchanged: the printed name still decides first.
+    assert.deepEqual(pickKeysOf(pill({ f: 'context', ulab: 'strip.grp.window' })), ['window']);
+    assert.deepEqual(pickKeysOf(pill({ f: 'rate-5h', ulab: 'strip.grp.rate5' })), ['rate5']);
+    assert.equal(pickKeyOf(pill({ f: 'context' })), 'window');
+    // And every alias lands on rows the dialog really offers — an alias to a
+    // key the table does not hold would be the same hole with a new name.
+    const keys = new Set(STRIP_PICK.map((e) => e.key));
+    for (const [field, targets] of Object.entries(FIELD_PICK_KEY)) {
+      assert.ok(targets.length > 0, `${field} is aliased to no row at all`);
+      for (const key of targets) {
+        assert.ok(keys.has(key), `${field} answers to ${key}, which STRIP_PICK does not name`);
+      }
+      assert.ok(!keys.has(field), `${field} is aliased AND has its own row — one of them is a lie`);
+    }
+  });
+
+  it('hides the no-windows chip only when BOTH window rows are unticked', () => {
+    const none = pill({ f: 'rate-5h', classes: ['chip', 'unmeas'] });
+    const urgency = (k: string) => STRIP_PICK.find((e) => e.key === k)?.urgency ?? null;
+    assert.equal(pillChoice(none, null, urgency), 'shown', 'never chosen: drawn');
+    assert.equal(pillChoice(none, new Set(['rate5']), urgency), 'shown',
+      'unticking 5H alone hid a chip that also stands for 7D, which is still ticked');
+    assert.equal(pillChoice(none, new Set(['rate7']), urgency), 'shown',
+      'unticking 7D alone hid a chip that also stands for 5H, which is still ticked');
+    assert.equal(pillChoice(none, new Set(['rate5', 'rate7']), urgency), 'off',
+      'both window rows are unticked and the chip for their absence is still drawn');
+    // A single-row pill is unchanged by the rule: its one row decides.
+    const cwd = pill({ f: 'cwd', ulab: 'strip.grp.cwd' });
+    assert.equal(pillChoice(cwd, new Set(['cwd']), urgency), 'off');
+    assert.equal(pillChoice(cwd, new Set(['rate5']), urgency), 'shown');
+    // And a loud pill under an unticked row with urgency still comes back.
+    const loud5 = pill({ f: 'rate-5h', ulab: 'strip.grp.rate5', inner: ['critical'] });
+    assert.equal(pillChoice(loud5, new Set(['rate5']), urgency), 'back');
+    assert.equal(pillChoice(pill({}), new Set(['rate5']), urgency), null);
   });
 
   it('answers null for something that is not a pill', () => {

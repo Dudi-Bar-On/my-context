@@ -447,7 +447,8 @@ test('ui --no-open prints a URL that a real request can reach, and opens no brow
     // asked" — is the whole of its contract here. It is not measured against
     // anything six agents could move.
     const body = await ping.json() as {
-      ok: boolean; staleCode: boolean; corpus: { drifted: boolean | null }; occupancy: unknown;
+      ok: boolean; staleCode: boolean | null; codeUnmeasured: unknown;
+      corpus: { drifted: boolean | null }; occupancy: unknown;
     };
     // `session` joined this set on 2026-09-09 with `plan:archive seq:44`, which
     // put the transcript's size and its lane count on the heartbeat's answer so
@@ -459,12 +460,23 @@ test('ui --no-open prints a URL that a real request can reach, and opens no brow
     // derived. The set is asserted whole rather than by membership on purpose —
     // a key ARRIVING unannounced is the thing worth failing over — so the cost of
     // that is precisely this edit, and it is the right cost.
+    // `codeUnmeasured` is the SIXTH key
+    // (`TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`), and
+    // it arrived with `staleCode` becoming `boolean | null`. The two are one
+    // field: `null` means the server never managed to walk its own sources, and
+    // the reason beside it names which directory and which error. A child
+    // started this way CAN walk them, so the measured branch is what is asserted
+    // here — the unmeasured one is driven end to end in
+    // `test/ui/code-skew.test.ts`.
     assert.deepEqual(
       Object.keys(body).sort(),
-      ['corpus', 'occupancy', 'ok', 'session', 'staleCode'],
+      ['codeUnmeasured', 'corpus', 'occupancy', 'ok', 'session', 'staleCode'],
     );
     assert.equal(body.ok, true);
-    assert.equal(typeof body.staleCode, 'boolean');
+    assert.ok(body.staleCode === null || typeof body.staleCode === 'boolean',
+      'the heartbeat must always carry a code finding, even when it is "not known"');
+    assert.equal(body.codeUnmeasured, null,
+      'this child walked its own sources, so there is no reason to give');
     assert.ok(
       body.corpus.drifted === null || typeof body.corpus.drifted === 'boolean',
       'the heartbeat must always carry a corpus finding, even when it is "not known"',

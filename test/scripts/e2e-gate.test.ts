@@ -1,3 +1,4 @@
+// @basis TASK-release-phase-1-the-repository-tells-the-truth, RULE-do-not-accept-a-test-that-passes-in-isolation-and-fails
 /**
  * **`scripts/e2e-gate.ts`'s pure parsing — RULING 2, 2026-09-04.**
  *
@@ -9,14 +10,27 @@
  * retried" — the two facts the gate's own report is built from. `main()` is
  * guarded (`isMain()`) so importing this module for these tests does not
  * itself launch a suite.
+ *
+ * **The cleanup contract, below** — TASK-release-phase-1-the-repository-tells-
+ * the-truth. `runGate` is the orchestration with `runPhase` taken as a
+ * parameter, so it can be driven here with a stub that never spawns
+ * Playwright, the same way the gate's own comment on `runGate` explains. Two
+ * cases exercise the bug that was actually fixed — every `process.exit()`
+ * used to run INSIDE the `try`, which skips `finally`, which leaked the
+ * `mkdtempSync` scratch directory on every run — GREEN (phase 1 passes
+ * outright) and RED (a spec still fails after the serial retry), because a
+ * fix proved on only the path that already worked would have missed the
+ * defect: the real bug was on the paths that end the process early, and a
+ * RED verdict is exactly one of those.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  allSpecFiles, failingSpecFiles, readReport, stopAfterPhaseOne, type JsonReport,
+  allSpecFiles, failingSpecFiles, readReport, runGate, stopAfterPhaseOne,
+  type JsonReport, type RunPhase,
 } from '../../scripts/e2e-gate.ts';
 
 /** A JSON report shaped the way `@playwright/test`'s built-in `json`
@@ -152,4 +166,63 @@ test('a red phase 1 whose report names no spec stops, and says which of the two 
   const stop = stopAfterPhaseOne(1, { suites: [] }, []);
   assert.notEqual(stop, null);
   assert.match(stop!, /naming no spec at all/);
+});
+
+/* ── THE CLEANUP CONTRACT ──────────────────────────────────────────────────
+ *
+ * `runGate` creates its own `mkdtempSync` scratch directory and is the only
+ * thing that knows its path — it is never passed in and never returned. Each
+ * stub below reads it back out of the `jsonPath` argument `runPhase` is
+ * called with (`path.dirname(jsonPath)`, since `runGate` always writes the
+ * per-phase report inside its scratch directory), so the assertion is against
+ * the exact directory `runGate` made, not a directory the test invented.
+ */
+
+test('runGate: GREEN — phase 1 passing outright still removes the scratch directory', () => {
+  let scratchDir: string | null = null;
+  let calls = 0;
+  const stub: RunPhase = (_label, _extraArgs, jsonPath) => {
+    calls += 1;
+    scratchDir = path.dirname(jsonPath);
+    assert.ok(existsSync(scratchDir), 'the scratch directory must exist while runPhase runs');
+    return 0; // phase 1 green — phase 2 must never run
+  };
+
+  const code = runGate([], stub);
+
+  assert.equal(calls, 1, 'a green phase 1 must not trigger phase 2');
+  assert.equal(code, 0);
+  assert.ok(scratchDir !== null);
+  assert.equal(
+    existsSync(scratchDir!), false,
+    'the scratch directory must be gone once runGate has returned',
+  );
+});
+
+test('runGate: RED — a spec still failing after the serial retry still removes the scratch directory', () => {
+  let scratchDir: string | null = null;
+  let calls = 0;
+  const failingReport: JsonReport = {
+    suites: [{ specs: [{ file: 'broken.spec.ts', ok: false }] }],
+  };
+  const stub: RunPhase = (_label, _extraArgs, jsonPath) => {
+    calls += 1;
+    scratchDir = path.dirname(jsonPath);
+    // A real phase writes its own JSON report to this exact path as a side
+    // effect of the spawned `playwright test` process; the stub does the
+    // same so `runGate`'s own `readReport` call exercises the real reading
+    // path instead of being told what it found.
+    writeFileSync(jsonPath, JSON.stringify(failingReport));
+    return 1; // still failing on both the default-worker pass and the serial retry
+  };
+
+  const code = runGate([], stub);
+
+  assert.equal(calls, 2, 'a failing set from phase 1 must be retried by phase 2');
+  assert.equal(code, 1, 'a spec still failing after the serial retry must end the gate RED');
+  assert.ok(scratchDir !== null);
+  assert.equal(
+    existsSync(scratchDir!), false,
+    'the scratch directory must be gone even on a RED verdict',
+  );
 });

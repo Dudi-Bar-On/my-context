@@ -194,7 +194,7 @@ test('a partially-applied ingest session shows the real fraction, not a constant
 
 test('pending rule approvals are surfaced, with the candidate detail row', () => {
   withProject((cwd) => {
-    const lesson = run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
+    const lesson = run(['lesson', 'Migrations deadlock during peak traffic', '--summary-omitted'], cwd);
     const id = /LESSON-[a-z0-9-]+/.exec(lesson.out)![0];
     writeFileSync(path.join(cwd, 'r.json'),
       JSON.stringify([{ title: 'Run migrations off-peak', directive: 'do', body: 'b' }]), 'utf8');
@@ -212,7 +212,7 @@ test('pending rule approvals are surfaced, with the candidate detail row', () =>
 
 test('an accepted rule candidate does not keep counting as awaiting approval', () => {
   withProject((cwd) => {
-    const lesson = run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
+    const lesson = run(['lesson', 'Migrations deadlock during peak traffic', '--summary-omitted'], cwd);
     const id = /LESSON-[a-z0-9-]+/.exec(lesson.out)![0];
     writeFileSync(path.join(cwd, 'r.json'), JSON.stringify([
       { title: 'Run migrations off-peak', directive: 'do', body: 'b' },

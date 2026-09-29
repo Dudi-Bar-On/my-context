@@ -101,7 +101,7 @@ product exists to fill.
     by one UTF-8 byte comparator so the order is a property of the set and not of the call.
     The one value that differs between two exports of an unchanged corpus is
     `manifest.json`'s `createdAt`.
-  - **`mycontext pack import <path>` reads an artefact somebody else wrote, and treats it
+  - **`mycontext pack import <path>` reads a pack somebody else wrote, and treats it
     as hostile.** The format is sniffed rather than guessed from the extension. The
     directory walk refuses a symlink by name before it can be followed, refuses a path by
     name before the file is opened — drive letters, backslashes, colons (an NTFS alternate
@@ -110,7 +110,10 @@ product exists to fill.
     verified against the manifest's full SHA-256 **before anything is parsed**, because a
     parser is the largest attack surface in reach and running one over unverified bytes
     hands a stranger the first move. A manifest disagreement is a refusal, never a warning:
-    there is no partial import and deliberately no flag to ask for one.
+    there is no partial import and deliberately no flag to ask for one. **A full export is
+    refused before any of that runs at all** — ruling C (2026-09-21): it is an archive to
+    copy back, not something this command imports, and `--as-pack` at export time is what
+    makes an importable pack.
   - **A mandatory Unicode screen, with no flag that turns it off.** Eleven ranges are
     refused in every authored field of every item — title, body, observations, tags, scope
     globs, relation targets, `extra` values, steps and the id — plus the pack's own name

@@ -159,6 +159,47 @@
  * hold is stamped `gone`, in both stamps, so a deleted file reads as the change
  * it is. Every other error still propagates to the guard above.
  *
+ * ── AND WHEN THE BOOT WALK ITSELF NEVER HAPPENED ────────────────────────────
+ *
+ * **That paragraph is about a walk that failed while a stamp already existed to
+ * fall back on. There is a second case, and until 2026-09-23 it was answered
+ * with the same `false`, which was a lie** —
+ * `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`.
+ *
+ * If the walk fails at STAMP TIME there is no last answer. Nothing was ever
+ * read, so there is no `bootContent` for any later comparison to differ from,
+ * and the old code set `bootContent = null` and had `isStale()` open with
+ * `return false` for the life of the process. `src/ui/server.ts` serves that
+ * boolean as `staleCode` on `/api/ping` and `/api/meta`; `noteCodeSkew` in
+ * `src/ui/public/app.js` CLEARS the banner on an explicit `false`, and
+ * `freshnessOf` in `core/ui-server-probe.ts` reads `false` as `'fresh'`. So an
+ * install whose sources could not be walked did not merely fail to warn — it
+ * actively reported itself current, on the one channel that exists to say
+ * otherwise, forever.
+ *
+ * **The answer therefore has three values, not two**
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`,
+ * `INV-nothing-is-dropped-silently`). `freshness()` says `fresh`, `stale` or
+ * `unmeasured`, and `unmeasured` carries WHICH path and WHICH errno — because
+ * "this install cannot examine its own files" is a finding with a remedy, and a
+ * reader who is told only that it happened cannot act on it. This is the same
+ * three-valued shape `core/ui-server-probe.ts` already exports as `Freshness`
+ * and `core/corpus-drift.ts` already serves as `drifted: null`; no new
+ * vocabulary is invented for it.
+ *
+ * **`isStale()` stays a boolean and stays `false` there**, and that is not the
+ * defect left in place. Two values cannot carry three, and the value it must
+ * not take is `true`: inventing a skew nobody measured is the same failure
+ * pointing the other way, and it would tell the owner to restart a server over
+ * a reading that was never taken. What changed is that `false` from `isStale()`
+ * is no longer the WHOLE answer — the fact it cannot carry now exists beside
+ * it, in `freshness()` and `unmeasured`, for a surface to read.
+ *
+ * **It does not recover.** A scope that becomes walkable an hour later still
+ * has no boot stamp, so a later walk can establish nothing about what THIS
+ * process loaded. Answering `fresh` at that point would be the original defect
+ * arriving late, and by the time it arrived it would look measured.
+ *
  * ── WHY THIS SITS IN `core/` AND NOT IN `ui/` ───────────────────────────────
  *
  * It was written for the web server and lived beside it, and on 2026-08-27 the
@@ -211,6 +252,40 @@ export interface CodeScope {
   readonly assets?: string;
 }
 
+/**
+ * Why a scope has no identity: **the boot walk did not happen.**
+ *
+ * The three fields are one finding split so that a surface can render it
+ * without parsing a sentence, and `reason` is the sentence itself so that a
+ * surface which only has room for one string does not have to compose one and
+ * get it subtly different from the next surface's.
+ */
+export interface UnmeasuredCode {
+  /**
+   * The path the walk stopped at — the directory that is not there, or the file
+   * sitting where a directory should be. Node's `fs` errors carry it, and it is
+   * taken from the error rather than guessed, because the scope has two halves
+   * and only the error knows which one gave way.
+   */
+  readonly at: string;
+  /** The errno, e.g. `ENOENT`, `ENOTDIR`, `EACCES`. `unknown` when the throw carried none. */
+  readonly code: string;
+  /** The whole finding as one line, path and errno included. */
+  readonly reason: string;
+}
+
+/**
+ * The three answers, and the third is why this is not a boolean.
+ *
+ * `fresh` and `stale` are MEASUREMENTS — a stamp was taken at boot and the disk
+ * was compared against it. `unmeasured` is the absence of one: no stamp exists,
+ * so no comparison is possible, and the honest answer is "cannot say" rather
+ * than either reading. Deliberately the same shape as `Freshness` in
+ * `core/ui-server-probe.ts`, which already draws this exact distinction for the
+ * question one layer out.
+ */
+export type CodeFreshness = 'fresh' | 'stale' | 'unmeasured';
+
 export interface CodeIdentity {
   /** The pair whose freshness this identity answers for. */
   readonly scope: CodeScope;
@@ -227,9 +302,30 @@ export interface CodeIdentity {
    */
   readonly files: number;
   /**
+   * `null` when the scope was walked at boot; the reason when it could not be.
+   *
+   * Non-null is a permanent state for this identity — see the header. It is the
+   * only thing that distinguishes "I looked and the code is current" from "I
+   * never managed to look", and before it existed those two were both `false`.
+   */
+  readonly unmeasured: UnmeasuredCode | null;
+  /**
+   * The whole answer: `fresh`, `stale`, or `unmeasured` with `unmeasured` set
+   * beside it. **Every consumer that decides anything from this identity should
+   * read THIS**, and treat `unmeasured` as "cannot say" — never as a match.
+   */
+  freshness(): CodeFreshness;
+  /**
    * `true` when the source on disk is not the source this process loaded — so
    * the browser may already be running code the server cannot answer for, and
    * the remedy is a restart.
+   *
+   * **`false` here is not the same as `freshness() === 'fresh'`.** Two values
+   * cannot carry three: an identity that was never stamped answers `false`,
+   * because inventing an unmeasured skew would send a reader to restart a
+   * server over a reading nobody took. A caller that renders `false` as "your
+   * code is current" is therefore reading half the answer, and `freshness()` is
+   * the other half.
    */
   isStale(): boolean;
 }
@@ -391,6 +487,28 @@ function contentStamp(files: string[], read: Map<string, Buffer | null>): string
 }
 
 /**
+ * What stopped the boot walk, as the finding a surface prints.
+ *
+ * `err.path` is where the errno was raised, which is the whole value of naming
+ * it: the scope has a module half and an asset half, and only the error knows
+ * which one gave way. Falling back to the scope's own paths keeps the finding
+ * actionable when something without a `path` is thrown.
+ */
+function whyUnmeasured(err: unknown, scope: CodeScope): UnmeasuredCode {
+  const raised = err as NodeJS.ErrnoException | null | undefined;
+  const at = typeof raised?.path === 'string' && raised.path !== ''
+    ? raised.path
+    : (scope.assets ?? scope.entry);
+  const code = typeof raised?.code === 'string' && raised.code !== '' ? raised.code : 'unknown';
+  return {
+    at,
+    code,
+    reason: `the sources this process answers for could not be walked (${code} at ${at}), `
+      + 'so whether this process is running the code on disk is unmeasured',
+  };
+}
+
+/**
  * Stamp what this process is running, NOW, and hand back something that can be
  * asked later whether the disk still agrees.
  *
@@ -408,6 +526,7 @@ export function stampCodeIdentity(scope: CodeScope): CodeIdentity {
   let lastStat: string | null = null;
   let lastAnswer = false;
   let files = 0;
+  let unmeasured: UnmeasuredCode | null = null;
 
   try {
     const found = scopeFiles(scope);
@@ -415,41 +534,59 @@ export function stampCodeIdentity(scope: CodeScope): CodeIdentity {
     files = found.files.length;
     lastStat = statStamp(found.files);
     bootContent = contentStamp(found.files, found.read);
-  } catch {
+  } catch (err) {
     // No readable scope to compare against — an install that hid its sources, a
-    // permission, a path that is not there. `isStale()` stays `false` for the
-    // life of the process rather than claiming a skew it cannot see: a
-    // disclosure that cannot be measured must not be invented.
+    // permission, a path that is not there. Nothing was read, so there is
+    // nothing any later walk could differ FROM, and this identity is
+    // `unmeasured` for the life of the process. It is not `false`: that answer
+    // is a measurement, and reporting one that was never taken is the defect
+    // `TASK-an-install-whose-sources-cannot-be-walked-reports-its-code`
+    // records. It is not `true` either — a disclosure that cannot be measured
+    // must not be invented. See the header for both halves.
     bootContent = null;
+    unmeasured = whyUnmeasured(err, scope);
   }
+
+  /** The measured comparison. Only ever reached when a boot stamp exists. */
+  const measure = (): boolean => {
+    if (bootContent === null) return false;
+    try {
+      // The cheap ask: stat what the last derivation found, and re-walk the
+      // asset directory so a file that APPEARED under it is seen without
+      // reading anything. See the header for why the module half needs no
+      // re-derivation to be gated. A scope with no asset half (the MCP
+      // server) probes the last derivation alone, which is already sorted.
+      const probe = scope.assets === undefined
+        ? lastProbe
+        : [...new Set([...lastProbe, ...walk(scope.assets)])].sort();
+      const stat = statStamp(probe);
+      if (stat === lastStat) return lastAnswer;
+      const found = scopeFiles(scope);
+      lastProbe = found.files;
+      lastStat = statStamp(found.files);
+      lastAnswer = contentStamp(found.files, found.read) !== bootContent;
+      return lastAnswer;
+    } catch {
+      // Mid-flight: a file being rewritten, a rename, a held handle. The last
+      // answer we were sure of, never a flap in either direction. Unlike the
+      // boot failure above this one HAS a measurement to fall back on, which is
+      // exactly why it is allowed to fall back rather than go `unmeasured`.
+      return lastAnswer;
+    }
+  };
 
   return {
     scope,
     startedAt,
     files,
-    isStale(): boolean {
-      if (bootContent === null) return false;
-      try {
-        // The cheap ask: stat what the last derivation found, and re-walk the
-        // asset directory so a file that APPEARED under it is seen without
-        // reading anything. See the header for why the module half needs no
-        // re-derivation to be gated. A scope with no asset half (the MCP
-        // server) probes the last derivation alone, which is already sorted.
-        const probe = scope.assets === undefined
-          ? lastProbe
-          : [...new Set([...lastProbe, ...walk(scope.assets)])].sort();
-        const stat = statStamp(probe);
-        if (stat === lastStat) return lastAnswer;
-        const found = scopeFiles(scope);
-        lastProbe = found.files;
-        lastStat = statStamp(found.files);
-        lastAnswer = contentStamp(found.files, found.read) !== bootContent;
-        return lastAnswer;
-      } catch {
-        // Mid-flight: a file being rewritten, a rename, a held handle. The last
-        // answer we were sure of, never a flap in either direction.
-        return lastAnswer;
-      }
+    unmeasured,
+    // Arrow functions over one shared `measure`, so that a caller which
+    // destructures either one still gets the same reading. Two entry points to
+    // one comparison, never two comparisons.
+    freshness: (): CodeFreshness => {
+      if (unmeasured !== null) return 'unmeasured';
+      return measure() ? 'stale' : 'fresh';
     },
+    isStale: (): boolean => unmeasured === null && measure(),
   };
 }

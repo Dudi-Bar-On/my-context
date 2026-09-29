@@ -16,7 +16,7 @@ tags:
   - v2
   - corpus
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/ruling.md"
+source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13

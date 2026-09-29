@@ -26,7 +26,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { removeTree } from '../helpers/tmp.ts';
@@ -641,31 +641,48 @@ test('a failed completion write still returns 200, discloses it, and leaves the 
   await withServer(async (h) => {
     const root = workspace(h.cwd);
     const run: CommandRunner = () => {
-      // Break the NEXT append without touching the row already on disk:
-      // `ensureLogDir` rewrites `.audit/.gitignore` on every append, so a
-      // DIRECTORY at that path fails the write while `audit.jsonl` — and the
-      // `execute` row inside it — stays exactly as it was. A mode bit would not
-      // do: win32 does not honour it, and this suite runs there.
-      const gitignore = path.join(root, '.audit', '.gitignore');
-      rmSync(gitignore, { force: true });
-      mkdirSync(gitignore, { recursive: true });
+      // Break the NEXT append without touching the row already on disk: the
+      // log file itself is made READ-ONLY, so `appendFileSync` fails EPERM
+      // while `audit.jsonl` — and the `execute` row inside it — stays exactly
+      // as it was. Measured on win32, where this suite runs: a read-only FILE
+      // is honoured there (it is the directory mode bit that is not).
+      //
+      // **This used to plant a DIRECTORY at `.audit/.gitignore`**, on the
+      // ground that `ensureLogDir` rewrites that marker on every append. It no
+      // longer breaks anything, and that is the fix for
+      // TASK-the-product-overwrote-the-repository-s-root-gitignore-with-a: after
+      // the 2026-09-23 incident the marker is written by
+      // `core/private-gitignore.ts`, which DISCLOSES a marker it could not
+      // write and never costs the caller the record it was appending. The
+      // subject of this test is the completion row, so the breakage moved to
+      // the file the row goes in.
+      chmodSync(auditLogPath(root), 0o444);
       return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
     };
     rebind(run);
 
-    const shown = await confirm(h, '/api/execute/confirm?id=doctor');
-    const res = await postRaw(h, { id: 'doctor', values: {}, nonce: shown.nonce });
-    assert.equal(res.status, 200, 'the command RAN; a 500 would deny something that happened');
-    const body = (await res.json()) as RunBody;
-    assert.equal(body.exitCode, 0, 'the page is still told how the run ended');
-    assert.match(body.auditNote ?? '', /execute-done/,
-      'a completion row that could not be written was not disclosed to the caller');
+    try {
+      const shown = await confirm(h, '/api/execute/confirm?id=doctor');
+      const res = await postRaw(h, { id: 'doctor', values: {}, nonce: shown.nonce });
+      assert.equal(res.status, 200, 'the command RAN; a 500 would deny something that happened');
+      const body = (await res.json()) as RunBody;
+      assert.equal(body.exitCode, 0, 'the page is still told how the run ended');
+      assert.match(body.auditNote ?? '', /execute-done/,
+        'a completion row that could not be written was not disclosed to the caller');
 
-    // The first row still stands, unamended and readable.
-    const start = startRow(h.cwd);
-    assert.ok(start !== undefined, 'the execute row was lost with the completion row');
-    assert.equal(start.command?.exitCode, null);
-    assert.equal(doneRow(h.cwd), undefined);
+      // The first row still stands, unamended and readable.
+      const start = startRow(h.cwd);
+      assert.ok(start !== undefined, 'the execute row was lost with the completion row');
+      assert.equal(start.command?.exitCode, null);
+      assert.equal(doneRow(h.cwd), undefined);
+    } finally {
+      // In a `finally`, not after the assertions: a read-only file survives a
+      // tree removal, so a FAILING assertion would leave the fixture undeletable
+      // and turn one red test into a leaked temporary directory as well.
+      // `chmodSync` on a path the runner never made read-only would throw and
+      // mask the real failure, so it is guarded by the write that set it.
+      try { chmodSync(auditLogPath(root), 0o666); } catch { /* never set */ }
+    }
   });
 });
 
@@ -720,12 +737,65 @@ test('a non-zero exit is REPORTED, not swallowed — a refusal is a state to lea
     });
     assert.notEqual(body.exitCode, 0);
     assert.equal(typeof body.exitCode, 'number');
-    assert.match(body.stderr, /./);
+    // Not `body.stderr` — this CLI's `Emit` is one channel (`runCli`,
+    // `src/cli/index.ts`), and `CONST-the-cli-exit-code-contract` rule 7 plus
+    // `src/cli/json-envelope.ts`'s own "WHICH STREAM" ruling (`rulings/72`)
+    // settled that a refusal is prose on STDOUT at a non-zero exit,
+    // deliberately: threading a second, stderr channel through 48 commands
+    // would not even fix anything, since the complaint was stdout being
+    // unparseable, not empty. `src/ui/execute-effect.ts`'s `deriveEffect`
+    // already leans on the same fact ("stdout is where the answer usually
+    // is"). This assertion used to read `body.stderr` matches `/./`, which
+    // passed on this machine only because Node's own `node:sqlite`
+    // `ExperimentalWarning` happened to land on real stderr alongside the
+    // refusal — an incidental runtime notice, not the command speaking, and
+    // one Node 24.20 (CI's Ubuntu job) no longer prints at all
+    // (`test/cli/experimental-warning.test.ts`). A refusal is a state to
+    // leave, so the state itself — the sentence and the exit code — is what
+    // is asserted here now.
+    // @basis TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each
+    assert.match(body.stdout, /no item with id "NOPE"/);
     // The COMPLETION row is where a real exit code lives; the `execute` row beside
     // it still reads null, because it was written before the process existed.
     assert.equal(doneRow(h.cwd)?.command?.exitCode, body.exitCode);
     assert.equal(startRow(h.cwd)?.command?.exitCode, null);
   });
+});
+
+/**
+ * The deterministic stand-in for CI's Ubuntu job, run here on Windows: that
+ * job's Node (24.20.0) no longer prints `node:sqlite`'s `ExperimentalWarning`
+ * at all (`test/cli/experimental-warning.test.ts` measures exactly this), so
+ * its stderr for `show NOPE` was genuinely empty — which is what exposed the
+ * test above pinning the wrong stream. `--disable-warning=ExperimentalWarning`
+ * is the flag `src/cli/index.ts`'s own shebang (line 1) already carries for
+ * every invocation this project starts itself; passed to the child directly
+ * (`execFileRunner` bypasses the shebang, since it runs `node <entry>` rather
+ * than the entry as a script), it silences the same warning without needing
+ * CI's Node. Removing the flag reproduces Windows's incidental pass; the
+ * assertions below hold either way, because they no longer read stderr as the
+ * answer.
+ *
+ * @basis TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each
+ */
+test('show NOPE reports its refusal on stdout even with a warning-free '
+  + 'stderr — the exact condition CI\'s Ubuntu job measured', async () => {
+  const cwd = project();
+  try {
+    const outcome = await execFileRunner(
+      process.execPath,
+      ['--disable-warning=ExperimentalWarning', CLI_ENTRY, 'show', 'NOPE'],
+      { cwd, timeout: RUN_TIMEOUT_MS },
+    );
+    assert.notEqual(outcome.exitCode, 0);
+    // The reproduction proof: stderr is empty here, deterministically, the
+    // same as it was on Ubuntu — not merely "the assertion below does not
+    // need it".
+    assert.equal(outcome.stderr, '', outcome.stderr);
+    assert.match(outcome.stdout, /no item with id "NOPE"/);
+  } finally {
+    removeTree(cwd);
+  }
 });
 
 test('the run is bounded, and the bound is the constant that carries its reasoning', async () => {

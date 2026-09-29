@@ -128,3 +128,7 @@ into `src/ui/public/` until the main session tells you the file is free.**
 DELIVERABLE, phase one: a proposal with a BEFORE/AFTER pixel budget line by line, the reorganized
 layout, where every piece of information went, and a rendered mock-up. Name what you would need to
 change and in which files. THE OWNER APPROVES THE DESIGN BEFORE ANY OF IT IS BUILT.
+
+## Request
+
+i am looking at the conversations card, it refactored well and the viewer is implementd correct including the expansion however because of status bar under it that occupies many rows and the static info on the card above it, it still has small amount of display rows, it's window is too small. i want the window to become bigger from it's top means we need to redesigne the card info so it will become much more compact but without loosing info, it requires reorganization of it's layout and it's content. run a ui ux special subagent to redesign the card as i specified

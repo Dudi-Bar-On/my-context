@@ -265,6 +265,38 @@ export type Upkeep = (
    * is a field beside the act and not a fifth `did`.
    */
   stateWriteDiscarded?: true;
+  /**
+   * **Present exactly when the state file was THERE and could not be read, and
+   * it carries the reason** — `swallow/11` m7,
+   * `INV-nothing-is-dropped-silently`.
+   *
+   * `readState` answered `FRESH` for every failure, and `FRESH` is not a
+   * neutral value here: it is `stoodDown: false`,
+   * `consecutiveSpawnFailures: 0`, every clock `null`. So a workspace that had
+   * stood the mechanism down — the one brake in this module — came back
+   * through the cold path on the next probe and spawned, then did it again on
+   * the next, for as long as the file stayed unreadable. The brake was
+   * released by a `catch` rather than by a decision, and nothing anywhere said
+   * so.
+   *
+   * **The act does not change and must not**: a hook may not throw
+   * (`INV-hooks-fail-open`), and re-deriving a clock costs one extra spawn
+   * attempt, which `writeState` already argues is survivable. What changes is
+   * that the re-derivation is reported — `stateWriteDiscarded`'s shape exactly,
+   * for its reason: a field beside the act, carried into the row `Stop` was
+   * writing anyway, naming the file so the rate is recoverable by counting the
+   * rows that carry it.
+   *
+   * A string rather than `true`, because unlike a discarded write there are
+   * several ways in and the reader's next move differs between them — a file
+   * that will not parse is repaired by deleting it, a directory in its place is
+   * not.
+   *
+   * **Absent for a workspace with no state file**, which is the first turn of
+   * every workspace that ever turns this feature on, and absent when the file
+   * read cleanly. Only a file that exists and could not be used sets it.
+   */
+  stateUnreadable?: string;
 };
 
 /**
@@ -499,6 +531,15 @@ interface UpkeepState {
    * keep in step and a second thing to be wrong.
    */
   lastOutcome: UpkeepOutcome | null;
+  /**
+   * **`null` when this state was read; the reason when it was not** —
+   * `swallow/11` m7. `Upkeep.stateUnreadable` carries the whole argument.
+   *
+   * It never reaches the file: `writeState` serialises the recorded fields by
+   * name, so this process's reading of a file can never be mistaken by the
+   * next process for something the file said.
+   */
+  unread: string | null;
 }
 
 const FRESH: UpkeepState = {
@@ -510,6 +551,7 @@ const FRESH: UpkeepState = {
   stoodDownWhy: null,
   lastFreshnessAt: null,
   lastOutcome: null,
+  unread: null,
 };
 
 /**
@@ -593,20 +635,51 @@ export function upkeepStandDownLine(
 }
 
 /**
- * The state as it stands, or `FRESH` for anything that cannot be read.
+ * The state as it stands, or `FRESH` — with the reason beside it — for
+ * anything that could not be read.
  *
  * Every field is checked by type rather than trusted, `ui-server-record.ts`'s
  * posture for its reason: a half-read state file is worse than no state file,
  * because the half that survives is a clock the mechanism would obey.
+ *
+ * **And `FRESH` now says whether it was measured** (`swallow/11` m7). The type
+ * check was always an argument about a FIELD's shape and never one about the
+ * whole file, and `FRESH` is not neutral: it is `stoodDown: false` and
+ * `consecutiveSpawnFailures: 0`, so answering it for a file nobody could read
+ * releases this module's only brake. The three states are told apart here
+ * rather than at the reader — no file is the ordinary first turn, a file that
+ * will not open or parse names itself, a file that parsed to something other
+ * than an object names what it held. `Upkeep.stateUnreadable` carries what
+ * each costs.
  */
 function readState(root: string): UpkeepState {
+  const file = upkeepStatePath(root);
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(upkeepStatePath(root), 'utf8'));
-  } catch {
-    return { ...FRESH };
+    parsed = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    // **Only `ENOENT` is absence.** A directory in the file's place, a lock, a
+    // permission, and a `SyntaxError` from `JSON.parse` (which carries no
+    // `code` at all) are every one of them a file that EXISTS.
+    if ((err as NodeJS.ErrnoException | null)?.code === 'ENOENT') return { ...FRESH };
+    return {
+      ...FRESH,
+      unread:
+        `the UI server upkeep could not read ${file} (` +
+        `${err instanceof Error ? err.message : String(err)}), so every clock, the spawn ` +
+        'failure count and the stand-down below were re-derived from nothing rather than read',
+    };
   }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return { ...FRESH };
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      ...FRESH,
+      unread:
+        `the UI server upkeep could not read ${file} as a state — it holds ` +
+        `${Array.isArray(parsed) ? 'an array' : `a ${parsed === null ? 'null' : typeof parsed}`} ` +
+        'where an object was expected — so every clock, the spawn failure count and the ' +
+        'stand-down below were re-derived from nothing rather than read',
+    };
+  }
   const value = parsed as Record<string, unknown>;
   const num = (key: string): number | null => (
     typeof value[key] === 'number' && Number.isFinite(value[key]) ? value[key] as number : null
@@ -620,6 +693,7 @@ function readState(root: string): UpkeepState {
     stoodDownWhy: STAND_DOWN_CAUSES.find((known) => known === value['stoodDownWhy']) ?? null,
     lastFreshnessAt: num('lastFreshnessAt'),
     lastOutcome: OUTCOMES.find((known) => known === value['lastOutcome']) ?? null,
+    unread: null,
   };
 }
 
@@ -679,7 +753,21 @@ function writeState(root: string, state: UpkeepState): boolean {
   const tmp = `${target}.tmp-${process.pid}`;
   try {
     mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    // **The recorded fields BY NAME.** Not the object it was handed: that one
+    // may carry `unread`, which is this process's reading of a file rather than
+    // state, and writing it would leave the next process a disclosure it could
+    // mistake for something the file said.
+    const stored = {
+      lastProbeAt: state.lastProbeAt,
+      lastSpawnAt: state.lastSpawnAt,
+      spawnPending: state.spawnPending,
+      consecutiveSpawnFailures: state.consecutiveSpawnFailures,
+      stoodDown: state.stoodDown,
+      stoodDownWhy: state.stoodDownWhy,
+      lastFreshnessAt: state.lastFreshnessAt,
+      lastOutcome: state.lastOutcome,
+    };
+    writeFileSync(tmp, `${JSON.stringify(stored, null, 2)}\n`, 'utf8');
     renameSync(tmp, target);
     return true;
   } catch {
@@ -711,7 +799,11 @@ function writeState(root: string, state: UpkeepState): boolean {
  * argues for the state file's own missing values.
  */
 function recorded(root: string, state: UpkeepState, result: Upkeep): Upkeep {
-  return writeState(root, state) ? result : { ...result, stateWriteDiscarded: true };
+  // `unread` rides out here for `stateWriteDiscarded`'s reason and by the same
+  // route: every path that read a state and then acted on it comes through this
+  // function, so one place attaches it and none of them can forget to.
+  const said = state.unread === null ? result : { ...result, stateUnreadable: state.unread };
+  return writeState(root, state) ? said : { ...said, stateWriteDiscarded: true };
 }
 
 /**

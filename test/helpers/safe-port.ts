@@ -26,6 +26,7 @@
  * refuses to, and a test helper has even less business doing it.
  */
 import type { AddressInfo } from 'node:net';
+import { createServer as createNetServer } from 'node:net';
 import type { Server } from 'node:http';
 import { startOnSafePort } from '../ui/unsafe-ports.ts';
 
@@ -34,6 +35,41 @@ export interface SafeListening {
   port: number;
   /** Close the listener and resolve when it is actually down. */
   stop(): Promise<void>;
+}
+
+/**
+ * Try to bind `port` on loopback, right now, and let it go again immediately.
+ *
+ * This is the raw bind `safe-port-gate.test.ts` names as the deliberate,
+ * un-fetched exception to its own rule — "the four `net.createServer()`
+ * probes reached with `net.connect`... genuinely not exposed to a `bad
+ * port`". Nothing here ever hands the bound socket to `fetch` or a browser;
+ * the whole point is to ask the OS a yes/no question about ONE port and let
+ * go, which is a different question from "start a server a test will talk
+ * to" — `listenOnSafePort` above answers that one, on a port IT draws, never
+ * one a caller names.
+ *
+ * `test/ui/unsafe-ports.test.ts` uses this to find, among the ports Chrome
+ * and node's `fetch` refuse, one this machine will actually let a socket bind
+ * to — so its two real-server cases can pin a port that is both refused by a
+ * consumer and bindable here, instead of a hardcoded number that an OS-level
+ * exclusion (Hyper-V/WSL reservations on Windows, say) can refuse before the
+ * product's own screen ever sees it.
+ *
+ * Resolves `null` when the OS let the bind through, or the OS's own refusal —
+ * `code`/`message`, not a canned string — when it did not, so a caller
+ * sweeping several candidates can report what actually happened.
+ */
+export function probeBindable(port: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const probe = createNetServer();
+    probe.once('error', (err: NodeJS.ErrnoException) => {
+      resolve(`${port}: ${err.code ?? err.message}`);
+    });
+    probe.listen(port, '127.0.0.1', () => {
+      probe.close(() => resolve(null));
+    });
+  });
 }
 
 /** Bind `create()`'s server to an OS-chosen port no consumer refuses. */

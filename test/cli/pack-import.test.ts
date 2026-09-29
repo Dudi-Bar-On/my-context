@@ -42,6 +42,7 @@ import { computeItemChecksum, parseItem, renderItem } from '../../src/core/item.
 import type { Item } from '../../src/core/types.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
 import { writeBundleDirectory } from '../../src/pack/dir-writer.ts';
+import { FULL_EXPORT_REFUSAL } from '../../src/pack/import.ts';
 import { importedDir } from '../../src/pack/imported-audit.ts';
 import {
   comparePaths, CONFIG_NAME, HISTORY_NAME, MANIFEST_NAME, PACK_HISTORY_PROTOCOL,
@@ -535,7 +536,21 @@ test('pack list names every pack imported here, with its version and item count'
   const { code, out } = run(['pack', 'list'], cwd);
   assert.equal(code, 0, out);
   assert.match(out, new RegExp(PACK_NAME));
-  assert.match(out, new RegExp(PACK_VERSION.replace(/\s/g, '\\s')));
+  // Not `PACK_VERSION` against the human table here: measured on CI run
+  // 35715432299 (Ubuntu, this table's `source` column holding a longer
+  // `/tmp/...` path than the fixture ever produces on this machine), the
+  // widened `source` cell left `table()` (src/cli/commands/format.ts) no
+  // room for `version` and it narrowed and wrapped that column onto a
+  // continuation row — "2026-08" on one line, "rev 3" on the next — exactly
+  // as the table's own doc comment says a table that does not fit its
+  // budget behaves. That is not a bug; wrapping under a narrow budget is the
+  // documented, correct behaviour, so a phrase regex pinned to one line is
+  // pinned to a terminal width, not to a fact. See
+  // `pack list wraps the version column under a narrow budget, and the exact
+  // value still comes back whole from --json` below for the deterministic,
+  // width-driven reproduction and why the value assertion belongs on
+  // `--json` instead, which is exact below and never wraps a field.
+  // @basis TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each
 
   const json = run(['pack', 'list', '--json'], cwd);
   // The document carries the record as it was written — the membership list
@@ -548,6 +563,70 @@ test('pack list names every pack imported here, with its version and item count'
     [[PACK_NAME, PACK_VERSION, 2]],
   );
   assert.deepEqual(document.packs[0].items.toSorted(), [LESSON_ID, STANDARD_ID].toSorted());
+});
+
+/**
+ * The deterministic, Windows-runnable reproduction of the Ubuntu failure in
+ * CI run 35715432299 (`test/cli/pack-import.test.ts:538` before this test
+ * existed): a `source` cell wide enough to leave `table()` no room forces it
+ * to narrow and wrap `version` onto a continuation row, and a phrase regex
+ * matched against the human table's `out` then misses. The real machine
+ * detail that widened the cell was the temp directory Ubuntu's runner
+ * happened to mint; `MYCONTEXT_WIDTH` (`src/cli/commands/format.ts`'s own
+ * operator override) reaches the identical code path without needing that
+ * machine, by shrinking the budget the `source` column is squeezed against
+ * instead.
+ *
+ * @basis TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each
+ */
+test('pack list wraps the version column under a narrow budget, and the exact '
+  + 'value still comes back whole from --json', () => {
+  const cwd = project();
+  assert.equal(run(['pack', 'import', artefact({ items: newItems() }), '--yes'], cwd).code, 0);
+
+  const previous = process.env.MYCONTEXT_WIDTH;
+  let out: string;
+  let json: string;
+  try {
+    // First render at a budget nothing on this machine can exceed, to learn
+    // the table's OWN natural (unwrapped) width — the border line's length —
+    // rather than guess it from a path length that differs by machine and
+    // username. Every column here is a single unbroken token (no spaces)
+    // except `version` ("2026-08 rev 3", two words), so `version` is the
+    // only column `table()` (src/cli/commands/format.ts) can ever narrow —
+    // narrowing always picks the widest reducible column, and no other
+    // column here is reducible at all. Six columns short of natural is
+    // `version` narrowed from 14 to 8: still above its 7-character floor
+    // (its longest single word, "2026-08"), and short enough that "rev 3"
+    // (5 characters) cannot share a line with "2026-08" (7 + 1 + 3 = 11 >
+    // 8), which is the exact two-line split CI's Ubuntu job measured.
+    process.env.MYCONTEXT_WIDTH = '2000';
+    const wide = run(['pack', 'list'], cwd).out;
+    const naturalWidth = (wide.split('\n')[1] ?? '').length;
+    assert.ok(naturalWidth > 0, wide);
+
+    process.env.MYCONTEXT_WIDTH = String(naturalWidth - 6);
+    out = run(['pack', 'list'], cwd).out;
+    json = run(['pack', 'list', '--json'], cwd).out;
+  } finally {
+    if (previous === undefined) delete process.env.MYCONTEXT_WIDTH;
+    else process.env.MYCONTEXT_WIDTH = previous;
+  }
+
+  // Proof the narrow budget actually reproduces the Ubuntu condition here,
+  // on Windows: the two halves of the version cell land on separate lines,
+  // so a regex requiring them adjacent (line 538's old assertion) cannot
+  // match. This is the removal check for that old assertion — see the task
+  // report for the red output this line stands in for.
+  const lines = out.split('\n');
+  const versionLine = lines.findIndex((l) => l.includes('2026-08'));
+  assert.notEqual(versionLine, -1, out);
+  assert.equal(lines[versionLine].includes('rev 3'), false, out);
+  assert.match(lines[versionLine + 1] ?? '', /rev\s+3/);
+
+  // The value asserted on the stream that does not wrap a field, ever.
+  const document = JSON.parse(json) as { packs: { version: string }[] };
+  assert.equal(document.packs[0].version, PACK_VERSION);
 });
 
 /**
@@ -817,19 +896,56 @@ test('--name "" is refused as an empty name, not misreported as a full export', 
   nothingImported(cwd);
 });
 
-test('the same gate guards --name on the full-export path, which cannot go without one', () => {
-  const cwd = project();
-  // A whole-workspace export carries no name, so `--name` is not an override
-  // here but the only name there is — and it is the one nothing screened.
-  const source = artefact({
-    items: newItems(), meta: { kind: 'export', name: null, version: null },
-  });
+/**
+ * Rests on TASK-release-phase-3-the-defects and INV-nothing-is-dropped-silently.
+ * (Not an `@basis` file header: this file predates
+ * RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none and is
+ * baselined in `scripts/basis-undeclared.txt`; a header declaration would
+ * claim every other test here too, which this comment does not.)
+ *
+ * Ruling C (2026-09-21, B10): a full export is an archive to copy back, not
+ * something `pack import` reads, and `--as-pack` at export time is what
+ * makes an importable pack. The withdrawn behaviour let `--name` stand in
+ * for the name an export does not carry — this is the replacement, and it
+ * is built against a REAL export projection (`mycontext export --out
+ * <dir>`, run for real below) rather than a hand-shaped
+ * `meta: { kind: 'export' }` object, because the artefact under test is
+ * exactly the one thing a hand-built manifest cannot honestly stand in for.
+ *
+ * Pins `FULL_EXPORT_REFUSAL` (`pack/import.ts`) two ways: it must appear in
+ * the output VERBATIM — the same string `cli/index.ts`'s `init --pack` and
+ * `mcp/tools.ts`'s preview tool import and print, so one drift here is a
+ * drift on all three doors — and it must be ONE sentence, which is the
+ * ruling's own requirement and the reason it exists as a constant at all
+ * rather than three surfaces each writing their own version of it.
+ */
+test('a full export is refused as non-importable, --name included, and points at --as-pack', () => {
+  // One sentence: one terminal period, or splitting on '. ' yields one piece
+  // — either reading agrees the constant is not the three-sentence refusal
+  // it replaced.
+  const sentences = FULL_EXPORT_REFUSAL.split('. ');
+  assert.equal(sentences.length, 1, `not one sentence: ${JSON.stringify(FULL_EXPORT_REFUSAL)}`);
+  assert.equal((FULL_EXPORT_REFUSAL.match(/\./g) ?? []).length, 1, FULL_EXPORT_REFUSAL);
+  assert.match(FULL_EXPORT_REFUSAL, /archive to copy back/);
+  assert.match(FULL_EXPORT_REFUSAL, /--as-pack/);
 
-  const { code, out } = run(['pack', 'import', source, '--yes', '--name', `a${RLO}b`], cwd);
+  const source = project();
+  const exported = path.join(scratchDir('myctx-packcli-export-'), 'export');
+  const exportResult = run(['export', '--out', exported], source);
+  assert.equal(exportResult.code, 0, exportResult.out);
+
+  const cwd = project();
+  // `--name` is supplied anyway — the point is that it no longer rescues a
+  // full export. The old refusal asked for one; this one does not read it.
+  const { code, out } = run(['pack', 'import', exported, '--yes', '--name', 'anything'], cwd);
 
   assert.equal(code, 1, out);
-  assert.match(out, /U\+202E/);
-  assert.equal(out.includes(RLO), false, `the refusal printed U+202E itself`);
+  // `flat`, not raw `out`: at 142 characters the sentence wraps under the
+  // suite's pinned 100-column budget, and a wrap point trades one space for
+  // one newline — `flat` trades it back, so this still asserts the same
+  // bytes rather than tolerating a reworded one.
+  assert.equal(flat(out).includes(FULL_EXPORT_REFUSAL), true, `constant not printed verbatim: ${out}`);
+  assert.equal(/pass --name/i.test(out), false, `still asked for --name: ${out}`);
   nothingImported(cwd);
 });
 

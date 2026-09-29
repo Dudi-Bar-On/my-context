@@ -1,3 +1,8 @@
+// @basis TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the
+// The two board items are what the 2026-09-23 correction to this file rests on:
+// the lever below was re-stated as an EVENT rather than a clock while baselining
+// the browser suite, and the red it was hiding was found by that baseline.
 /**
  * **THE ROUTE RACE: an Execute must refresh the screen the reader is looking
  * at, and not one that merely finished rendering later.**
@@ -127,8 +132,40 @@ test('an Execute refreshes the screen the reader is on, not a route it outlasted
   // produces on a loaded machine, which is where this defect was first seen.
   // Installed after the baseline so the baseline is not slowed, and taken back
   // before the act so the measurement below is not.
+  //
+  // **AND THE LEVER IS HELD UNTIL THE EVENT IT IS WAITING FOR, not for a
+  // number of milliseconds — corrected 2026-09-23 (B4, `ui-gates/1`).**
+  //
+  // It was `setTimeout(resolve, 1_500)`, and 1,500ms is a GUESS about how long
+  // `/api/doctor` takes. On this repository's own 1,116-item corpus it takes
+  // longer than that, so the delayed `/api/simulate` finished FIRST and
+  // precondition 2 failed — the reads landing in the order `injection-history,
+  // select, items, simulate, injection-history, doctor`, with the winning
+  // route's own read last of all.
+  //
+  // It had been passing only because the page was slower than the lever: the
+  // status bar carried a duplicate, unguarded `ResizeObserver` (`d9397803` /
+  // `b4a6301f`, removed in the same round as this fix) which queued a strip fit
+  // on every height change, and that extra layout work delayed preview's fetches
+  // far enough for the guess to hold. A precondition met by a performance defect
+  // is a precondition that disappears the day the defect is fixed, which is
+  // exactly what happened — measured both ways, single-spec, on both projects:
+  // pristine `app.js` green, `app.js` with the second observer removed red,
+  // deterministically.
+  //
+  // So the losing route is now held until the WINNING route's read has actually
+  // finished, which is the ordering precondition 2 asserts, stated as the thing
+  // the lever waits for rather than approximated by a clock. `finished` is the
+  // browser's own ordering (see THE NETWORK LOG above), so this reads the same
+  // fact the assertion will. The bound exists so that a `/api/doctor` which
+  // never answers fails as precondition 1 — a named state — rather than as a
+  // test timeout inside a route handler.
+  const LEVER_BOUND = 20_000;
   const slowSimulate = async (r: Route): Promise<void> => {
-    await new Promise((resolve) => { setTimeout(resolve, 1_500); });
+    const deadline = Date.now() + LEVER_BOUND;
+    while (!finished.some((u) => u.includes(DOCTOR_READ)) && Date.now() < deadline) {
+      await new Promise((resolve) => { setTimeout(resolve, 50); });
+    }
     await r.continue();
   };
   await page.route('**/api/simulate*', slowSimulate);

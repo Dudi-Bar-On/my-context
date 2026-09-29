@@ -17,17 +17,17 @@ tags:
   - restore
   - "plan:walk"
   - "seq:148"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: 4a03a43a40420d21
+checksum: 6f74d304ad6f3a94
 plan: walk
 seq: "148"
-state: todo
+state: done
 priority: "2"
 ---
 

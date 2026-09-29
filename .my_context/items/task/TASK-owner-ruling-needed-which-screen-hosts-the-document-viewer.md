@@ -19,9 +19,9 @@ tags:
   - "seq:2"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-my-context/595db3b1-a481-4553-b4c0-7248c31b2655/scratchpad/docsys/2.md"
+source_file: null
 source_anchor: null
-source_checksum: 6885fd9424038de7
+source_checksum: null
 valid_from: 2026-09-05
 valid_until: null
 checksum: 5151da5299328d76

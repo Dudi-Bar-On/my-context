@@ -846,6 +846,47 @@ export function promoteRevision(
     // in the log from a human typing the same text themselves, which is the
     // one distinction this whole review boundary exists to draw. It also means
     // ONE record, not two — the promotion is not separately audited below.
+    //
+    // **`SUMMARY_OMITTED_NOTE`, recorded the way `updateItem` records it for a
+    // human's own `--summary-unchanged` (mutate.ts, the block right after
+    // `reviseSummary`).** A promotion this proposal does not touch the
+    // summary on, of an item that already carries none, is exactly the state
+    // `summary_absent` reports and no check ever asks about again — the same
+    // fact `add`'s and `lesson`'s `--summary-omitted` records, reached here by
+    // a different door because a promoted revision has no flag of its own to
+    // carry it. `summaryUnchanged: true` is the ANSWER already wired into
+    // `updateItem`'s shared code, not a second note written here.
+    //
+    // **WHICH OF THE FLAG'S TWO MEANINGS THIS IS, NAMED** —
+    // `TASK-promoterevision-reuses-the-summary-unchanged-switch-and`,
+    // 2026-09-23. `summaryUnchanged` carries two assertions and
+    // `core/summary-gate.ts` owns the split: `summaryStandsUnchanged` (the item
+    // has a sentence, and it still stands) and `summaryDeliberatelyOmitted`
+    // (the item has none, and is being left that way on purpose). This call
+    // site means the SECOND, always — `summaryStillOmitted` below is that
+    // predicate's precondition, computed from `onDisk` because `updateItem`
+    // will compute it again from the item it holds.
+    //
+    // It is not a borrow of the first meaning and never was allowed to be, but
+    // for a while it acted as one: `updateItem`'s `meaningHeld` read the bare
+    // flag, so a promotion of a body rewrite told the contradiction gate that
+    // the item's meaning had not moved. That site now asks
+    // `summaryStandsUnchanged` like its three siblings, which is what makes
+    // passing the flag from here honest rather than merely convenient. A
+    // SECOND flag meaning only "omitted" was considered and rejected: the two
+    // meanings are already one flag by design at every surface that accepts it
+    // (`--summary-unchanged`, `summary_unchanged`), and a third spelling
+    // reachable only from this call site would be a second copy of a fact the
+    // gate module already owns. Gated on BOTH halves —
+    // `onDisk` (read before this write) already carries no summary, AND this
+    // revision is not about to give it one — because a revision that DOES
+    // carry a new summary must land it as ordinary content, never be waved
+    // through as "nobody wrote one". `origin: 'human'` on every promote is
+    // also what keeps this safe: the staging-only refusals `updateItem`
+    // raises for `summaryUnchanged` (mutate.ts, `agentEdits: 'review'`) are
+    // gated on `origin !== 'human'` and never see this call.
+    const summaryStillOmitted =
+      onDisk !== null && onDisk.summary === null && pending.changes.summary === undefined;
     const update = updateItem(ctx, {
       id: itemId,
       ...(pending.changes.title === undefined ? {} : { title: pending.changes.title }),
@@ -854,6 +895,7 @@ export function promoteRevision(
       ...(pending.changes.tags === undefined ? {} : { tags: pending.changes.tags }),
       ...(pending.changes.extra === undefined ? {} : { extra: pending.changes.extra }),
       origin: 'human',
+      ...(summaryStillOmitted ? { summaryUnchanged: true } : {}),
     }, 'promote');
 
     const at = new Date().toISOString();

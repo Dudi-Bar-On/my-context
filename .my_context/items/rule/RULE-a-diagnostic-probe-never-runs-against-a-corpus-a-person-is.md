@@ -15,9 +15,9 @@ tags:
   - safety
   - owner-ruling
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/claude/D--Users-UserC-source-repos-test-mycontext-plugin/9e5b6b17-c186-4c93-a0a5-775b4eccd9e7/scratchpad/r6b.md"
+source_file: null
 source_anchor: null
-source_checksum: 8c0a1e0471af5b03
+source_checksum: null
 valid_from: 2026-09-02
 valid_until: null
 checksum: b5f3c749535a8e5f

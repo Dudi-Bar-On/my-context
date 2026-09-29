@@ -1,3 +1,4 @@
+// @basis DEC-the-read-half-of-lesson-derive-ts-is-split-out-so-a-read, TASK-release-phase-1-the-repository-tells-the-truth
 /**
  * `GET /api/staging` — the read the write surface used to make impossible
  * (owner ruling `DEC-the-read-half-of-lesson-derive-ts-is-split-out-so-a-read`).
@@ -449,20 +450,32 @@ test('an unexpected query parameter is refused rather than ignored', () => {
 });
 
 /**
- * Against THIS repository's corpus, read-only: every `.staging/*.json` on disk
- * is either served or named as skipped, and the count is taken from the
- * directory rather than from the function under test.
+ * **Portable form of "nothing on disk is a silent drop".** This used to read
+ * THIS repository's own `.my_context/.staging` — real, but gitignored, so a
+ * fresh checkout that never ran `stage_rule_candidates` has no such directory
+ * and the test could not even list it (`ENOENT`, not a failed assertion).
+ * The claim under test — every `.staging/*.json` file is either served or
+ * named as skipped, with the count taken from the directory rather than from
+ * the function under test — does not need THIS corpus's own files to hold;
+ * it needs SOME files, of a shape the endpoint reads, so a temp workspace
+ * with a served file and an unreadable one (`stage`/`writeFileSync`, the same
+ * helpers the tests above build with) proves it identically on every machine.
  */
-test('on this corpus, every staging file on disk is accounted for', () => {
-  const ws = resolveWorkspace(REPO);
-  assert.ok(ws.projectRoot !== null, 'this repository is a corpus');
-  const onDisk = readdirSync(stagingDir(ws.projectRoot as string)).filter((n) => n.endsWith('.json'));
-  const body = apiStaging(ws, url()).body as StagingBody;
-  assert.equal(
-    body.lessons.length + body.skipped.length, onDisk.length,
-    `${onDisk.length} staging files on disk, ${body.lessons.length} served and ` +
-    `${body.skipped.length} named as skipped. A file that is neither is a silent drop.`,
-  );
-  assert.equal(body.counts.candidates + body.malformed.length,
-    readStagingDir(ws.projectRoot as string).staging.reduce((n, s) => n + s.candidates.length, 0));
+test('every staging file on disk is accounted for', () => {
+  withStaging((root, cwd) => {
+    stage(root, 'LESSON-a', [candidate(), candidate({ key: 'bbbb2222', state: 'accepted' })]);
+    stage(root, 'LESSON-b', [candidate({ key: 'cccc3333', state: 'discarded' })]);
+    writeFileSync(path.join(stagingDir(root), 'LESSON-junk.json'), '{ not json', 'utf8');
+
+    const ws = resolveWorkspace(cwd);
+    const onDisk = readdirSync(stagingDir(root)).filter((n) => n.endsWith('.json'));
+    const body = apiStaging(ws, url()).body as StagingBody;
+    assert.equal(
+      body.lessons.length + body.skipped.length, onDisk.length,
+      `${onDisk.length} staging files on disk, ${body.lessons.length} served and ` +
+      `${body.skipped.length} named as skipped. A file that is neither is a silent drop.`,
+    );
+    assert.equal(body.counts.candidates + body.malformed.length,
+      readStagingDir(root).staging.reduce((n, s) => n + s.candidates.length, 0));
+  });
 });

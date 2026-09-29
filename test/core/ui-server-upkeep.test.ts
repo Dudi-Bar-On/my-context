@@ -1,7 +1,8 @@
 // @basis TASK-the-upkeep-stops-the-ui-server-before-it-knows-a-replacement,
 //        TASK-the-guard-that-excludes-lanes-from-reaping-the-server-rests,
 //        TASK-the-breakaway-launch-shows-a-console-window-it-believes-it,
-//        RULE-anything-you-start-for-a-human-to-look-at-must-outlive-the
+//        RULE-anything-you-start-for-a-human-to-look-at-must-outlive-the,
+//        TASK-a-windows-reaping-test-passes-or-fails-by-the-hosted-runner
 /**
  * **The two floors, the stand-down, and the machine that never asked.**
  *
@@ -544,7 +545,7 @@ test(
       ? 'Windows-only: taskkill /T is the Windows reaper this proof is about'
       : false,
   },
-  async () => {
+  async (t) => {
     // Two parents, one launched each way, each with a long-lived child; then
     // the command Claude Code's hook watchdog runs on a timeout, read off
     // build 2.1.261 (`taskkill.exe /PID <pid> /T /F`). The OLD shape is run
@@ -618,15 +619,43 @@ test(
         execFileSync(TASKKILL, ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
       } catch { /* already gone, which is the goal state */ }
     };
+    // A pid file is read only once it holds a pid. `writeFileSync` creates the
+    // file and then writes into it, and a read that lands between the two sees
+    // an empty file — `Number('')` is 0, and CI run 35847793065 (windows-latest,
+    // commit 1a49343c) then ran `taskkill /PID 0` and failed on it. Empty, or
+    // anything that is not a positive integer, is 'not yet', the same as ENOENT.
     const readPidWhenWritten = async (file: string): Promise<number> => {
       for (let i = 0; i < 120; i += 1) {
-        try { return Number(readFileSync(file, 'utf8')); } catch { /* not yet */ }
+        try {
+          const pid = Number(readFileSync(file, 'utf8').trim());
+          if (Number.isInteger(pid) && pid > 0) return pid;
+        } catch { /* not yet */ }
         await new Promise((r) => { setTimeout(r, 50); });
       }
-      throw new Error(`nothing ever wrote ${file}`);
+      throw new Error(`nothing ever wrote a pid into ${file}`);
+    };
+    // The control arm's precondition — that THIS MACHINE reaps the old
+    // shape's child when its parent is killed — is itself asynchronous on a
+    // hosted runner: CI run 35725630027 attempt 1 (windows-latest, commit
+    // 4c19d8f5) found the child still alive at the single fixed-delay probe
+    // this used to be, and attempt 2 on the identical commit — same code,
+    // same machine class — found it dead. That is not a flaky assertion, it
+    // is a precondition measured with a stopwatch instead of a poll: the OS
+    // reap runs on its own schedule and a fixed 1500ms wait is a bet on how
+    // long that schedule takes, not a measurement of when it finished. Same
+    // pattern and bound as `readPidWhenWritten` above — 120 * 50ms = 6s — so
+    // one runner-timing constant governs both "wrote its pid yet" and "died
+    // yet" instead of two guesses that could drift apart.
+    const waitForDeath = async (pid: number): Promise<boolean> => {
+      for (let i = 0; i < 120; i += 1) {
+        if (!alive(pid)) return true;
+        await new Promise((r) => { setTimeout(r, 50); });
+      }
+      return !alive(pid);
     };
 
     const outcome: Record<string, { parent: boolean; child: boolean }> = {};
+    let oldShapeReaped = true;
     for (const [name, shape] of Object.entries(shapes)) {
       const parentFile = path.join(base, `${name}-parent.mjs`);
       const parentPidFile = path.join(base, `${name}-parent.pid`);
@@ -642,8 +671,19 @@ test(
 
         // The command Claude Code's hook watchdog runs on a timeout.
         execFileSync(TASKKILL, ['/PID', String(parentPid), '/T', '/F'], { stdio: 'ignore' });
-        await new Promise((r) => { setTimeout(r, 1500); });
-        outcome[name] = { parent: alive(parentPid), child: alive(childPid) };
+        if (name === 'old') {
+          // Poll for the death this arm is supposed to measure, rather than
+          // assert against a single probe taken after a fixed sleep — see
+          // `waitForDeath` above for why.
+          oldShapeReaped = await waitForDeath(childPid);
+          outcome[name] = { parent: alive(parentPid), child: !oldShapeReaped };
+        } else {
+          // The survival arm asserts the child is STILL alive; there is no
+          // event to poll for here (silence is the expected outcome), so
+          // this keeps the fixed wait the item says not to weaken.
+          await new Promise((r) => { setTimeout(r, 1500); });
+          outcome[name] = { parent: alive(parentPid), child: alive(childPid) };
+        }
       } finally {
         // In a `finally`, because an assertion that throws above must not leave
         // a never-exiting process behind — and a leaked one holds `node:test`
@@ -662,6 +702,15 @@ test(
         if (childPid !== null && Number.isInteger(childPid)) reap(childPid);
         reap(parentPid);
         launched.unref();
+      }
+      // The old shape's child outlived the bound this machine gets to measure
+      // reaping by. The test's own message already says what that means: the
+      // survival proof below is void without a reaping control, so this is
+      // the honest verdict — never a failure, never a silent pass — and the
+      // breakaway arm is not worth spawning to prove nothing.
+      if (name === 'old' && !oldShapeReaped) {
+        t.skip('this runner does not reap the old shape; the survival proof is void here');
+        return;
       }
     }
 

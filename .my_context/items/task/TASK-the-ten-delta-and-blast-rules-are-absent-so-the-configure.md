@@ -17,9 +17,9 @@ tags:
   - "seq:112"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/blast.md"
+source_file: null
 source_anchor: null
-source_checksum: f00a2b8830cb212e
+source_checksum: null
 valid_from: 2026-08-30
 valid_until: null
 checksum: 96c2cb050198f453

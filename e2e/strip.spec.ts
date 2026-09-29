@@ -385,6 +385,42 @@ async function boot(page: Page, s: Scenario): Promise<void> {
       }),
     }));
   }
+  // ── AND THE SAME SCENARIO ON `/api/ping`, BECAUSE THE PAGE ASKS IT AT BOOT
+  //    AGAIN SINCE 2026-09-23 (`TASK-a-temporarily-disabled-boot-heartbeat-
+  //    carries-no-item-no`).
+  //
+  // The `Scenario` type above has always said it: *"the `corpus` block
+  // `/api/meta` AND `/api/ping` both carry"*. Only one of the two was ever
+  // fulfilled, and that was harmless for as long as `main()`'s first beat was
+  // commented out — `startHeartbeat` schedules its first ask a whole minute
+  // out, which no test here lives long enough to see. Task 4.14 switched that
+  // line back on, so every `boot()` now takes the LIVE server's answer within
+  // milliseconds of the fixture's: `noteCorpusDrift` overwrote a served
+  // `drifted: true` with this repository's own `drifted: false`, and three
+  // tests below went red naming a chip the page had drawn and then replaced.
+  //
+  // So the fixture answers on both channels, with one scenario, exactly as the
+  // server does — the two fields `codeState()` serves together, and `corpus`
+  // only when the scenario has one, so the "a server that carries no corpus
+  // block" case stays the case it is on this request too.
+  //
+  // `occupancy` and `session` are deliberately ABSENT rather than null:
+  // `noteOccupancy` and `noteSessionScale` both return on `undefined`, so the
+  // context group keeps answering from `/api/watch/context`, which is the
+  // channel every assertion in this file reads it on.
+  if (s.git !== undefined) {
+    await page.route('**/api/ping*', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        ok: true,
+        // `boolean | null` since task 4.10, and `codeUnmeasured` beside it on
+        // every answer — a stub that served the boolean alone would be a
+        // payload shape the server no longer produces.
+        staleCode: false, codeUnmeasured: null,
+        ...(s.corpus === undefined ? {} : { corpus: s.corpus }),
+      }),
+    }));
+  }
   if (s.items !== undefined) {
     await page.route('**/api/status*', (route) => route.fulfill({
       status: 200, contentType: 'application/json',

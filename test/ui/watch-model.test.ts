@@ -196,6 +196,29 @@ test('/api/watch/volume: a projection nobody has built is disclosed as absent, n
  * bounds `mycontext statusline` applies, because both surfaces now run the one
  * implementation in `core/context-share.ts` and a reader who has both open must
  * never see them disagree.
+ *
+ * ── EVERY RECORD SHARES ONE `at`, DELIBERATELY (2026-09-22) ─────────────────
+ *
+ * CI's Ubuntu job (run 35715432299) failed this exact assertion — `{tokens:
+ * 6200, injections: 3}` where this expects `{tokens: 2200, injections: 2}` —
+ * because the six `recordAudit` calls below ran back to back with no I/O
+ * between them and landed the SAME millisecond on that runner: `at` is
+ * `Date.toISOString()`, one-millisecond resolution, and nothing about a
+ * synchronous loop promises the clock has ticked between two calls of it.
+ * `RULE-a`'s 4000 tokens — recorded BEFORE the compaction — leaked into the
+ * "since" side of the bound once its timestamp tied the boundary's own
+ * (4000 + 1500 + 700 = 6200, three records), which is `EpochStart`'s `seq`
+ * fix this test now proves (`core/context-share.ts`).
+ *
+ * Rather than hope this machine is fast enough to reproduce that tie by
+ * accident — which is exactly the bet the Ubuntu failure shows does not pay
+ * off the same way on every runner — every record below is given the SAME
+ * explicit `at`. That is the adverse case forced deterministically: if the
+ * bound still rested on `at`, EVERY record sharing it would tie, and a tie
+ * under `>=` is indistinguishable from "after". The two bounds this test
+ * names — the compaction boundary and the `subagent-start` exclusion — must
+ * both still hold under it.
+ * @basis TASK-four-tests-are-red-on-ubuntu-and-green-on-windows-and-each
  */
 test('/api/watch/context: the share is bounded to this window, not to the session’s lifetime', () => {
   const { dir, root, done } = workspace();
@@ -204,15 +227,21 @@ test('/api/watch/context: the share is bounded to this window, not to the sessio
     // pair once per epoch, so a fixture that redelivered one id would measure
     // that dedupe instead of the two bounds this test is about — and would
     // still pass for the wrong reason if either bound broke.
+    //
+    // ONE shared `at` for every record, forcing the millisecond-tie condition
+    // CI's Ubuntu job hit by chance — see the header above.
+    const sharedAt = '2026-09-22T00:00:00.000Z';
     const inject = (op: string, tokens: number, id: string): void => {
       recordAudit(root, {
         kind: 'injection', op, sessionId: 's1', hook: 'SessionStart',
-        injected: [{ id, tier: 'pinned' }], tokens,
+        injected: [{ id, tier: 'pinned' }], tokens, at: sharedAt,
       } as Parameters<typeof recordAudit>[1]);
     };
     inject('session-start', 4000, 'RULE-a');
     inject('subagent-start', 500000, 'RULE-b');
-    recordAudit(root, { kind: 'hook', op: 'pre-compact', sessionId: 's1', hook: 'PreCompact' });
+    recordAudit(root, {
+      kind: 'hook', op: 'pre-compact', sessionId: 's1', hook: 'PreCompact', at: sharedAt,
+    } as Parameters<typeof recordAudit>[1]);
     inject('compact-restore', 1500, 'RULE-c');
     inject('jit', 700, 'RULE-d');
     inject('subagent-start', 900000, 'RULE-e');

@@ -1,5 +1,7 @@
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
-import { auditLogPath, auditSegments, parseAudit, type AuditRecord } from './audit.ts';
+import {
+  AuditLogUnreadableError, auditLogPath, auditSegments, parseAudit, type AuditRecord,
+} from './audit.ts';
 import { readCompleteLines } from './audit-db.ts';
 
 /**
@@ -32,7 +34,10 @@ import { readCompleteLines } from './audit-db.ts';
  * `poll()` throws what `parseAudit` throws: a damaged COMPLETE line means the
  * log cannot be trusted, and the audit read contract (audit.ts, `specFor`)
  * refuses rather than skips. The stream route turns that into a disclosed
- * `fault` event and ends the stream.
+ * `fault` event and ends the stream. It throws `AuditLogUnreadableError` on
+ * the same terms and for the same reason — a log directory that exists and
+ * will not list is a log that cannot be read, not an empty one — and the
+ * CONSTRUCTOR never throws either of them (see it for why).
  */
 export interface TailResult {
   records: AuditRecord[];
@@ -191,12 +196,53 @@ export class AuditTail {
   #backlogCap: number;
   #scanBytes: number;
   #backlog: TailBacklog | null = null;
+  /**
+   * The listing refusal the constructor met, held until a method can raise it.
+   *
+   * See the constructor. `null` is the ordinary case and means the segment
+   * listing succeeded — never "there was nothing to list", which is an empty
+   * `#offsets` and a perfectly good tail.
+   */
+  #unreadable: AuditLogUnreadableError | null = null;
 
+  /**
+   * **The constructor may not throw, and that is a promise `backlog()`'s own
+   * docblock makes two paragraphs below**: `streamHandler` (`ui/watch-model.ts`)
+   * builds the tail AFTER `res.writeHead(200, 'text/event-stream')` and outside
+   * any `try`, so a throw here escapes the handler with the response head
+   * already on the wire — not the disclosed `fault` event, and not even a
+   * bare 500, just a stream that stops.
+   *
+   * That promise used to be kept by accident: `auditSegments` answered `[]` to
+   * every `readdir` failure, which is the silent drop
+   * `TASK-one-unreadable-directory-makes-the-audit-projection-look` ended. Now
+   * that a log directory which exists and will not list RAISES, the listing is
+   * one more thing this constructor must not do unguarded — so the refusal is
+   * CAUGHT AND HELD, and `backlog()` and `poll()` raise it instead. Both are
+   * already wrapped by the stream handler, which turns exactly this into the
+   * `fault` event carrying the error's own sentence, and both are already the
+   * place a damaged log line surfaces, so nothing new had to learn about it.
+   *
+   * Holding it rather than degrading to an empty tail is the point: an empty
+   * `#offsets` means "the log was listed and held nothing", and a tail that
+   * quietly adopted that reading would later see the whole log as new and
+   * replay every record ever written into a live audit view — the one thing
+   * this module's header says it must never do.
+   *
+   * Only `AuditLogUnreadableError` is held. Anything else from this listing is
+   * a fault this class has no account of, and swallowing it here would be the
+   * same defect being repaired.
+   */
   constructor(root: string, options: TailOptions = {}) {
     this.#root = root;
     this.#backlogCap = options.backlog ?? 0;
     this.#scanBytes = options.scanBytes ?? BACKLOG_SCAN_BYTES;
-    for (const file of auditSegments(root)) this.#offsets.set(file, sizeOf(file));
+    try {
+      for (const file of auditSegments(root)) this.#offsets.set(file, sizeOf(file));
+    } catch (err) {
+      if (!(err instanceof AuditLogUnreadableError)) throw err;
+      this.#unreadable = err;
+    }
   }
 
   /**
@@ -215,6 +261,10 @@ export class AuditTail {
    * those were captured at construction.
    */
   backlog(): TailBacklog {
+    // The constructor's refusal, raised here where the stream can disclose it.
+    // NOT memoized into `#backlog`: it is not an answer, and a caller that
+    // asks twice is owed the refusal twice.
+    if (this.#unreadable !== null) throw this.#unreadable;
     if (this.#backlog === null) this.#backlog = this.#readBacklog();
     return this.#backlog;
   }
@@ -271,6 +321,10 @@ export class AuditTail {
   }
 
   poll(): TailResult {
+    // Raised on every poll, not once: the stream handler ends the stream on
+    // the first one, and a tail that fell silent after reporting once would be
+    // back to answering "nothing has landed" over a log it cannot see.
+    if (this.#unreadable !== null) throw this.#unreadable;
     const files = auditSegments(this.#root);
     const present = new Set(files);
     const live = auditLogPath(this.#root);

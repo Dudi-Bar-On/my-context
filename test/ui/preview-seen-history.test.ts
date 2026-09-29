@@ -1,3 +1,6 @@
+// @basis TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the,
+// TASK-injection-preview-rung-4-of-the-gate-ladder-can-never-be
 /**
  * **The three facts the injection preview could not draw**, and the screen
  * module that draws them.
@@ -41,6 +44,7 @@ import { pathToFileURL } from 'node:url';
 import { removeTree } from '../helpers/tmp.ts';
 import { runCli } from '../../src/cli/index.ts';
 import { recordAudit } from '../../src/core/audit.ts';
+import { openProjection } from '../../src/core/audit-db.ts';
 import { readFocus } from '../../src/core/focus.ts';
 import { appendSeen, readSeen, seenIds } from '../../src/core/seen-file.ts';
 import { Store } from '../../src/core/store.ts';
@@ -48,7 +52,7 @@ import { isNormative, matchesScope, select } from '../../src/core/select.ts';
 import { normalizePosix } from '../../src/core/paths.ts';
 import { resolveWorkspace, type Workspace } from '../../src/core/workspace.ts';
 import { apiSimulate, scopeExcludedIds, seenFilteredIds } from '../../src/ui/read-model.ts';
-import { apiInjectionHistory, HISTORY_ROW_CAP } from '../../src/ui/preview-history.ts';
+import { apiInjectionHistory, HISTORY_ROW_CAP, HISTORY_SQL } from '../../src/ui/preview-history.ts';
 import type { Item } from '../../src/core/types.ts';
 
 const REPO = path.join(import.meta.dirname, '..', '..');
@@ -422,6 +426,64 @@ test('/api/injection-history refuses a parameter it would otherwise ignore', () 
   try {
     const result = apiInjectionHistory(f.ws, url('injection-history', 'since=2026-01-01'));
     assert.equal(result.status, 400);
+  } finally { f.done(); }
+});
+
+/**
+ * **What this read COSTS, asserted as a plan rather than as a stopwatch.**
+ *
+ * B4 fix round 3, 2026-09-23. This statement is on the reader's critical path:
+ * the injection preview issues it on every render, and `e2e/settle.ts` gives a
+ * screen 25 x 400 ms to finish drawing. Measured on this repository's own
+ * projection (254,466 `injected`+`spilled` rows in `audit_item`), it was
+ * spending **3,818 ms** — five of those ten seconds on a loaded machine — and
+ * `e2e/app-layout.spec.ts:343` and every `e2e/chip-hue-authority.spec.ts` test
+ * went red reporting `preview never settled`. The same suite is GREEN on CI,
+ * where `.audit/*.jsonl` is gitignored and the runner's projection is
+ * therefore empty: the cost is a function of how much history a corpus has,
+ * which is exactly the axis a browser gate cannot see.
+ *
+ * **A stopwatch here would be a flake**, and a row count would pass over the
+ * defect: the slow plan and the fast plan return byte-identical rows. What
+ * separates them is which structures the engine touches, so that is what is
+ * asserted — the same method `test/ui/strip-observer.test.ts` uses for a
+ * property whose only symptom is a cost.
+ *
+ * Both halves of the fix have their own line, and each fails alone:
+ *   - `idx_audit_item_role_tier` carries `tier`, so the scan stays inside the
+ *     index and the grouping rides the index order (no temp b-tree);
+ *   - `INDEXED BY idx_audit_seq_at` stops the join reaching `audit` by rowid,
+ *     which would fetch and jsonb-decode a whole record per row to read one
+ *     VIRTUAL generated timestamp the index already holds.
+ */
+test('the history statement reads indexes only — no record blob, no temp b-tree', () => {
+  const f = fixture();
+  try {
+    const root = f.ws.projectRoot!;
+    recordAudit(root, {
+      kind: 'injection', op: 'session-start', at: '2026-08-20T10:00:00.000Z', sessionId: 'sess-p',
+      injected: [{ id: 'RULE-pin-me', tier: 'pinned' }],
+      spilled: [{ id: 'RULE-never-log-the-customer-email', tier: 'jit' }],
+    } as Parameters<typeof recordAudit>[1]);
+    assert.equal(runCli(['audit', '--limit', '1'], f.dir, () => {}), 0);
+
+    const db = openProjection(root);
+    try {
+      const plan = (db.prepare(`EXPLAIN QUERY PLAN ${HISTORY_SQL}`).all(HISTORY_ROW_CAP + 1) as
+        { detail: string }[]).map((r) => r.detail);
+      const has = (needle: string): boolean => plan.some((d) => d.includes(needle));
+
+      assert.ok(has('COVERING INDEX idx_audit_item_role_tier'),
+        `the audit_item side must be answered from the index alone: ${plan.join(' | ')}`);
+      assert.ok(has('idx_audit_seq_at'),
+        `the audit side must read \`at\` out of the index: ${plan.join(' | ')}`);
+      assert.equal(has('INTEGER PRIMARY KEY'), false,
+        'a rowid lookup on `audit` decodes the whole record for one timestamp — the 3,818 ms '
+        + `plan this statement was measured taking: ${plan.join(' | ')}`);
+      assert.equal(has('TEMP B-TREE FOR GROUP BY'), false,
+        'with `tier` in the key the index is already in grouping order, so a temp b-tree over '
+        + `every matching row means the covering index was not used: ${plan.join(' | ')}`);
+    } finally { db.close(); }
   } finally { f.done(); }
 });
 

@@ -114,10 +114,17 @@ const TABLE_TURN = [
 ].join('\n');
 
 const jsonl = (rows: unknown[]): string => rows.map((r) => JSON.stringify(r)).join('\n') + '\n';
+/**
+ * **`origin: { kind: 'human' }` ON A USER RECORD IS LOAD-BEARING SINCE
+ * 2026-09-15** — see `e2e/anchors.spec.ts`'s identical helper for the full
+ * argument: `ownerTyped()` (`src/core/anchor-pass.ts`) is the only gate the
+ * `ruling` kind reads, and this fixture's user turns never carried it.
+ */
 const say = (role: 'user' | 'assistant', body: string, at: string): unknown => ({
   type: role,
   message: { role, content: role === 'user' ? body : [{ type: 'text', text: body }] },
   timestamp: at,
+  ...(role === 'user' ? { origin: { kind: 'human' }, promptSource: 'typed' } : {}),
 });
 
 /**

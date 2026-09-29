@@ -428,6 +428,47 @@ export function serveStdio(
   input.on('error', reportStreamError('input'));
   output.on('error', reportStreamError('output'));
 
+  /**
+   * **The rest of "nothing on either side saying why"** (`swallow/11` m21).
+   *
+   * This transport frames on `\n`, so everything after the last newline lives
+   * in `buffer` until one arrives. Neither stream carried an `end` or a
+   * `close` listener, so when the input finished holding a message that never
+   * got its newline, the buffer went out of scope with the closure: never
+   * parsed, never answered, never logged. From the client's side that is
+   * indistinguishable from the hang `mcpsurface/3` was raised about.
+   *
+   * **It is disclosed and not answered, deliberately.** The framing says the
+   * message is not over, so what is in the buffer may be half of one — and
+   * answering a fragment means guessing at both the id and the intent, onto a
+   * stream whose other half has just ended. JSON-RPC's own rule for an
+   * undetectable id is a null id, which is what the parse-error branch already
+   * writes for a line that at least ARRIVED; extending it to a line that did
+   * not arrive would make the two mean different things.
+   *
+   * **The bytes are COUNTED, not echoed.** The text is caller-supplied and
+   * unbounded (up to `MAX_PENDING_LINE_LENGTH`), the sender already knows what
+   * it sent, and a count is the one thing the reader on stderr does not have:
+   * it is what separates a clean close from a message lost at the end.
+   *
+   * On both events because they are not the same event — `close` without `end`
+   * is what a destroyed stream produces — and the buffer is cleared first, so
+   * whichever arrives second reports nothing.
+   */
+  const reportUnframedTail = (): void => {
+    const pending = buffer;
+    buffer = '';
+    if (pending.trim() === '') return;
+    diagnostics(
+      `my_context: MCP input ended with ${pending.length} byte(s) after the last newline — ` +
+      'this transport frames messages on newlines, so that text was never a complete message ' +
+      'and was never parsed, answered or logged. If a request was sent there, nothing is ' +
+      'coming back for it.\n',
+    );
+  };
+  input.on('end', reportUnframedTail);
+  input.on('close', reportUnframedTail);
+
   input.on('data', (chunk: string) => {
     buffer += chunk;
 

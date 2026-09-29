@@ -61,13 +61,23 @@ test('a compact event still emits the index header', () => {
   assert.equal(sel.index.counts.lesson, 1);
 });
 
-test('restore ids that no longer resolve are dropped silently', () => {
+// Was 'dropped silently' until 2026-09-23. It named the defect
+// `TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where` closed —
+// an unresolvable snapshot id now spills at tier 'restored' with
+// `carriedDropReason`'s own word for it. The five reasons and the
+// delivered-or-disclosed identity live in
+// `test/core/select-restore-disclosure.test.ts`; what is kept here is the
+// selection fact this test was always about, which is unchanged.
+test('restore ids that no longer resolve are dropped with a reason, never silently', () => {
   const sel = select(
     [item({ id: 'CONST-a' })],
     { event: 'compact', restore: ['CONST-deleted-since', 'CONST-a'] },
     CONFIG,
   );
   assert.deepEqual(sel.full.map((e) => e.item.id), ['CONST-a']);
+  assert.deepEqual(sel.spilled, [
+    { id: 'CONST-deleted-since', tier: 'restored', reason: 'unknown id', neverOffered: true },
+  ]);
 });
 
 test('a superseded item is not restored — supersession is the pruning mechanism', () => {

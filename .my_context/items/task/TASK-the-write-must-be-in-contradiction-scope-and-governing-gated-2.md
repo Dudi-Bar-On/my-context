@@ -14,13 +14,15 @@ tags:
   - "proposer:deterministic"
   - unconfirmed
   - "rec:promote"
+  - "state:done"
 origin: review
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: 9f833fae4279b637
+checksum: 92066161bab12602
+state: done
 ---
 
 # the write must be in contradiction scope and governing (gated, src/core/mutate.ts:1026), and the…

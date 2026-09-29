@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { acquireLock } from './lock.ts';
+import { writePrivateGitignore } from './private-gitignore.ts';
 import { retryOnTransientFsError } from './rebuild.ts';
 
 // --- The session-name store -------------------------------------------------
@@ -247,7 +248,7 @@ export function setSessionName(root: string, sessionId: string, name: string): S
     // Beside the store, on every write: `state/` may have no `.gitignore` yet
     // if no snapshot has ever been written here, and a name file that reaches
     // git is a session identifier travelling with the corpus.
-    writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+    writePrivateGitignore(dir);
 
     release = acquireLock({
       file: path.join(dir, 'session-names.lock'),

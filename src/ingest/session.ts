@@ -4,6 +4,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { retryOnTransientFsError } from '../core/rebuild.ts';
+import { writePrivateGitignore } from '../core/private-gitignore.ts';
 import { checksum, slugify } from '../core/slug.ts';
 import { chunkDocument, normalizeEol, sourceChecksum, type Chunk } from './chunk.ts';
 
@@ -195,7 +196,9 @@ export function ensureIngestDir(root: string): string {
   // hand-edited .gitignore self-heals on the next open/save, the same way
   // `writeSnapshot` (src/core/ledger.ts) treats its own working-state
   // .gitignore. Cheap: one small, deterministic write every call.
-  writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+  // Through the one owner of this line since 2026-09-23, when a repository's
+  // own root `.gitignore` was found truncated to `*` by one of these writers.
+  writePrivateGitignore(dir);
   return dir;
 }
 

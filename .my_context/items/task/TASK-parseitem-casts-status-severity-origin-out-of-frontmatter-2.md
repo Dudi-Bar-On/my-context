@@ -14,13 +14,15 @@ tags:
   - "proposer:deterministic"
   - unconfirmed
   - "rec:promote"
+  - "state:done"
 origin: review
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-15
 valid_until: null
-checksum: e4424458f578789c
+checksum: 5e85c7e1cc973c43
+state: done
 ---
 
 # parseItem casts Status/Severity/Origin out of frontmatter with no check —…

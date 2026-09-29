@@ -419,8 +419,26 @@ export interface ReadyReport {
   ready: ReadyRow[];
   /** Open work that is not ready, each row carrying the reason. */
   held: HeldRow[];
-  /** Work items considered — open ones only. */
+  /** Work items considered — open ones only. NEVER includes `drafts`. */
   open: number;
+  /**
+   * Work items at `status: draft` — proposals awaiting a person, counted and
+   * in neither list above.
+   *
+   * **Work items only**, because that is all this function walks
+   * (`workItems`). `mycontext review list` lists every project-layer draft of
+   * every type, so it lists at least these and usually more, and a surface
+   * drawing this number says which population it counted rather than letting
+   * a reader assume the two agree.
+   *
+   * A count rather than rows, for the reason `questionReport` gives for
+   * counting the quiet questions: the surface that OWNS them is
+   * `mycontext review list`, and a second listing of the same population here
+   * is the two-lists-that-can-disagree failure. It is carried out of this
+   * function rather than recomputed by each caller so that every surface
+   * drawing a readiness report discloses the same number.
+   */
+  drafts: number;
 }
 
 /**
@@ -485,8 +503,37 @@ export function readyReport(items: Item[], config: Config): ReadyReport {
   const index = buildTaskIndex(items, config);
   const ready: ReadyRow[] = [];
   const held: HeldRow[] = [];
+  let drafts = 0;
 
   for (const item of workItems(items, config)) {
+    // **A DRAFT IS A PROPOSAL, NOT WORK, AND THAT IS ASKED FIRST** —
+    // `TASK-mycontext-ready-counts-a-review-draft-as-open-work-so-the`.
+    // Measured 2026-09-22: the review pass wrote ten task drafts from a
+    // session's own prompts and `ready --json` answered `open: 146` against a
+    // board of 136, every one of the ten listed as READY with `plan: null`.
+    // Nothing had been filed. A draft is indexed, searchable and shown, and
+    // `select` never injects it precisely because its status is `draft`; it
+    // becomes dispatchable work when a person promotes it through
+    // `mycontext review promote`, which is also where it gains a `plan` and a
+    // `seq` to be addressed by. Counting it here let a machine's idea move the
+    // board, which is the one thing the review loop's own design forbids.
+    //
+    // **ABOVE the `done` and `deprecated` clauses, and that ordering is the
+    // fix to a gap the first round left** (2026-09-23): a draft that CLAIMS
+    // `state: done` was skipped as finished work before it was ever read as a
+    // draft, so it appeared in no number on the page while
+    // `mycontext review list` went on listing it — the same silent
+    // disagreement between a count and the command it names that this item is
+    // about, one population over. A draft's own `state` is a claim inside a
+    // proposal nobody has approved; whether it governs at all is the prior
+    // question, so `status` is asked first. `status` is ONE field, so a
+    // deprecated draft does not exist and no ordering can strand one.
+    //
+    // Counted, never dropped: `INV-nothing-is-dropped-silently`. The count
+    // leaves here as `ReadyReport.drafts` and every surface says it out loud —
+    // scoped, on each surface, to the work categories this report walks, since
+    // `mycontext review list` lists every project-layer draft of every type.
+    if (item.status === 'draft') { drafts += 1; continue; }
     const state = taskState(item);
     if (state === DONE_STATE) continue;
     // **A cancelled task is not work, and `state` cannot say so.** The four
@@ -503,9 +550,11 @@ export function readyReport(items: Item[], config: Config): ReadyReport {
     // asking every author to also move a state that cannot express the fact is
     // the held-by-convention failure this project keeps paying for.
     //
-    // `deprecated` only, deliberately. `draft` and `validated` are workable
-    // states of a live task; `superseded` is already gone above. Deprecated is
-    // the one that means "this is not to be done".
+    // `deprecated` here, and `draft` on the clause ABOVE — corrected
+    // 2026-09-23, because this comment used to claim `draft` was a workable
+    // state of a live task and it is not. `validated` is; `superseded` is
+    // already gone above. Deprecated means "this is not to be done" and draft
+    // means "nobody has agreed to do it yet".
     if (item.status === 'deprecated') continue;
     const reading = readNeeds(item, index);
     const row: ReadyRow = { item, reading };
@@ -520,7 +569,7 @@ export function readyReport(items: Item[], config: Config): ReadyReport {
 
   ready.sort(compareRows);
   held.sort(compareRows);
-  return { ready, held, open: ready.length + held.length };
+  return { ready, held, open: ready.length + held.length, drafts };
 }
 
 /* -------------------------------------------------------------------------- *

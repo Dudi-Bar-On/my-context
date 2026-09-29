@@ -84,7 +84,7 @@ test('ingest → apply → review → promote, with provenance intact at every s
 test('the approval gate: staging creates no rule, accepting creates exactly one', () => {
   const cwd = project();
   try {
-    const lesson = run(['lesson', 'Hooks that throw break the session, so they must fail open'], cwd);
+    const lesson = run(['lesson', 'Hooks that throw break the session, so they must fail open', '--summary-omitted'], cwd);
     assert.equal(lesson.code, 0);
     assert.match(lesson.out, /RULE DERIVATION REQUEST/);
     const lessonId = /LESSON-[a-z0-9-]+/.exec(lesson.out)![0];

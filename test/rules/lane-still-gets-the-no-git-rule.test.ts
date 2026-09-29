@@ -1,4 +1,4 @@
-// @basis RULE-a-delegated-worker-runs-no-git-command-that-touches-the, TASK-seed-the-store-and-migrate-the-rules-that-already-exist, TASK-the-store-is-delivered-at-every-door-an-agent-starts-through, TASK-more-than-half-the-delivery-log-is-tests-and-the-file-has-no
+// @basis RULE-a-delegated-worker-runs-no-git-command-that-touches-the, TASK-seed-the-store-and-migrate-the-rules-that-already-exist, TASK-the-store-is-delivered-at-every-door-an-agent-starts-through, TASK-more-than-half-the-delivery-log-is-tests-and-the-file-has-no, TASK-the-audit-log-still-records-two-session-ids-that-never
 /**
  * **THE MIGRATION'S ONE UNFORGIVING CONDITION: the rule that stops a lane
  * running `git checkout --` on this shared tree must still REACH a lane.**
@@ -54,9 +54,28 @@
  * the real door against the real store in the one directory where the
  * developer tier is in force — which is the whole reason it exists — and the
  * last test in the file asserts, against the owner's actual log, that doing so
- * adds nothing to it. The audit record this door also writes is untouched and
- * still lands in the owner's `.audit/` under the synthetic session id; that is
- * named as a known remaining cost rather than quietly left unsaid.
+ * adds nothing to it.
+ *
+ * **The AUDIT record was the half still being paid, and it is paid no more.**
+ * `TASK-the-audit-log-still-records-two-session-ids-that-never`, measured
+ * 2026-09-23: `.my_context/.audit/` held **422 `subagent-start` records under
+ * the synthetic session `lane-still-gets-the-no-git-rule`** — two per run of
+ * the hook test below, `delivery=attempted` and `delivery=complete` — and two
+ * more under a hand-run `eyeball`. `mycontext audit` and the UI's watch screen
+ * read that stream, so it showed the owner a lane that never ran here.
+ *
+ * The remedy is NOT a second `NODE_TEST_CONTEXT` fork on the core side. Owner
+ * ruling: product code must not infer that it is under test and behave
+ * differently, because that is a hidden mode nobody declared and the next test
+ * that forgets the convention writes the owner's log again with the product's
+ * blessing. So the redirect is EXPLICIT and comes from here — `AUDIT_DIR_ENV`
+ * (`core/audit.ts` · `auditDir`), set to a `mkdtemp` box around the one test
+ * that runs the door and restored afterwards, in the same shape
+ * `MYCONTEXT_UI_SESSIONS_DIR` and `MYCONTEXT_MIRROR_DIR` are already pinned
+ * away from a developer's real directories. The delivery still runs for real
+ * against the real store; only where its records land is stated out loud.
+ * `test/no-test-writes-the-owners-audit-log.test.ts` is what measures that it
+ * worked.
  *
  * ── WHAT MAKES IT GO RED ───────────────────────────────────────────────────
  *
@@ -66,8 +85,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { AUDIT_DIR_ENV } from '../../src/core/audit.ts';
 import { Store } from '../../src/core/store.ts';
 import { rebuild } from '../../src/core/rebuild.ts';
 import { resolveWorkspace } from '../../src/core/workspace.ts';
@@ -76,6 +97,7 @@ import { entriesDir, loadRules } from '../../src/rules/store.ts';
 import { deliverAtDoor, renderEntry, workspaceIsMyContext } from '../../src/rules/deliver.ts';
 import { DELIVERED_DIR, DELIVERED_FILE, deliveries } from '../../src/rules/delivered.ts';
 import { buildSubagentStartOutput } from '../../src/hooks/subagent-start.ts';
+import { removeTree } from '../helpers/tmp.ts';
 import type { Entry } from '../../src/rules/schema.ts';
 
 /** The repository itself — `test/rules/` is two levels down. */
@@ -173,9 +195,40 @@ test('THE SUBAGENT DOOR delivers its TEXT, and no other mechanism can produce th
 test('THE HOOK A LANE STARTS THROUGH puts it in the envelope', () => {
   const entry = shipped();
   assert.ok(entry !== null, `${ENTRY_ID} is not in the shipped store`);
-  const raw = buildSubagentStartOutput(
-    { session_id: 'lane-still-gets-the-no-git-rule', agent_id: 'proof', cwd: REPO }, REPO,
-  );
+
+  // **This is the one test in the file that writes an AUDIT record, and it is
+  // told where to put it.** The door resolves its own root with
+  // `findProjectRoot(cwd)` and `cwd` has to be this repository, so the two
+  // `subagent-start` rows it appends — `delivery=attempted` and
+  // `delivery=complete` — landed in the owner's `.my_context/.audit/` under a
+  // session id no session ever had: 422 of them by 2026-09-23. The redirect is
+  // said here rather than inferred there, for the reason `core/audit.ts` ·
+  // `auditDir` gives at length.
+  //
+  // Set and restored around the call, not for the whole file: while it is set,
+  // every audit READ in this process looks in the box too, and a later test
+  // here asking the owner's log a question would silently be asking the empty
+  // one. Restored in a `finally`, because a failed assertion must not leave the
+  // variable set for whatever runs next in this process.
+  const box = mkdtempSync(path.join(tmpdir(), 'myctx-lane-audit-'));
+  const before = process.env[AUDIT_DIR_ENV];
+  // `<box>/.audit`, not `<box>`: `core/private-gitignore.ts` refuses to write
+  // the `*` .gitignore into a path holding no directory this product creates,
+  // and says so on stderr — twice per run, for a box nobody will ever `git
+  // add`. Pointing at the name the product owns keeps the redirect silent and
+  // keeps the box's contents shaped exactly like the directory it stands in for.
+  process.env[AUDIT_DIR_ENV] = path.join(box, '.audit');
+  let raw: string;
+  try {
+    raw = buildSubagentStartOutput(
+      { session_id: 'lane-still-gets-the-no-git-rule', agent_id: 'proof', cwd: REPO }, REPO,
+    );
+  } finally {
+    if (before === undefined) delete process.env[AUDIT_DIR_ENV];
+    else process.env[AUDIT_DIR_ENV] = before;
+    removeTree(box);
+  }
+
   assert.notEqual(raw, '', 'the SubagentStart hook produced nothing at all for this workspace');
   const envelope = JSON.parse(raw) as { hookSpecificOutput?: { additionalContext?: string } };
   const context = envelope.hookSpecificOutput?.additionalContext ?? '';

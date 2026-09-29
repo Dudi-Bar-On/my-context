@@ -63,8 +63,10 @@ import { RETRIEVAL_DIR } from '../core/retrieval/mission.ts';
 import { missionText, type MaterialPointer, type MissionRequest, type RetrievalMode }
   from '../core/retrieval/mission.ts';
 import { queryFromPassage } from '../core/retrieval/from-selection.ts';
-import { ConversationIndex, iterateTranscript, type AnchorRow }
-  from '../core/conversation-index.ts';
+import {
+  ConversationIndex, ConversationIndexIncompleteError, ConversationIndexUninitializedError,
+  iterateTranscript, type AnchorRow,
+} from '../core/conversation-index.ts';
 import { searchArchive } from '../core/conversation-search.ts';
 import { removeNoise, type NoiseReport } from '../core/retrieval/noise.ts';
 import {
@@ -353,25 +355,41 @@ const POINTER_CAP = 60;
  * same refusal `read-model-conversations.ts` makes one module over, and
  * `test/ui/server-e2e.test.ts` is what proves nothing is written.
  *
- * A name shorter than the index’s trigram run cannot be searched for at all;
- * `searchArchive` says so rather than answering "nothing found", and such a
- * name simply contributes no points here.
+ * A name shorter than the index’s trigram run cannot be searched for at all,
+ * and an index that was never built cannot answer about the archive at all.
+ * `searchArchive` says both rather than answering "nothing found" — and until
+ * 2026-09-23 **this function threw that answer away and kept only `.hits`**,
+ * which is what the sentence here used to claim was handled
+ * (`TASK-nine-sites-report-a-measured-zero-for-something-they-could`, the
+ * reviewer's finding against this caller). The claim is now true of the caller
+ * and not only of the callee: the refusal leaves here as `coverage`, and
+ * `composeMaterial` puts it in the body's own `query.matchable`/`query.note`
+ * pair — the shape this surface already carries, never a second field for one
+ * condition.
+ *
+ * `coverage` is `searchArchive`'s own sentence, carried verbatim and
+ * untranslated, and `null` when every name that came back empty came back
+ * empty about a complete index.
  */
 function pointersFor(
   index: ConversationIndex,
   files: TranscriptFiles,
   names: readonly string[],
   scope: { sessionId: string | null; from: string | null; to: string | null },
-): MaterialPointer[] {
-  if (names.length === 0) return [];
+): { pointers: MaterialPointer[]; coverage: string | null } {
+  if (names.length === 0) return { pointers: [], coverage: null };
   const seen = new Set<string>();
   const out: MaterialPointer[] = [];
+  // The first refusal, kept: every name here asks ONE index, so they all come
+  // back with the same sentence, and the first is the one a reader is served.
+  let coverage: string | null = null;
   for (const name of names) {
     if (out.length >= POINTER_CAP) break;
     const found = searchArchive(index, name, {
       sessionId: scope.sessionId ?? undefined,
       limit: POINTER_CAP,
     });
+    if (!found.searchable) coverage = coverage ?? found.note;
     for (const hit of found.hits) {
       if (out.length >= POINTER_CAP) break;
       // Two names matching one turn is one point, not two.
@@ -403,7 +421,37 @@ function pointersFor(
   // Chronological, because the mission asks for a chronological account and
   // a table in score order would be asking the subagent to sort it.
   out.sort((a, b) => (a.at ?? '').localeCompare(b.at ?? '') || a.byteOffset - b.byteOffset);
-  return out;
+  return { pointers: out, coverage };
+}
+
+/**
+ * **The coverage refusal, put where this surface already says why an answer is
+ * not an answer** — `TASK-nine-sites-report-a-measured-zero-for-something-they-could`.
+ *
+ * `matchable` is left ALONE and only `note` is filled, which is the one
+ * decision in this repair worth stating. `matchable: false` is read by
+ * `apiRetrievalMission` (`request.query = null`) and then by `mission.ts`,
+ * which prints *"Nothing was matched on. Do not guess a subject: report that
+ * the passage named nothing the archive could be queried with, and stop."* —
+ * a sentence that is FALSE here: the passage named something perfectly
+ * matchable and the INDEX is what could not answer. Trading one wrong sentence
+ * for another is not a repair.
+ *
+ * **Asked only when nothing at all was found**, which is `apiConversationSearch`'s
+ * own rule (`answers.every((a) => !a.searchable)`) reused rather than
+ * re-decided: a mission that found material found it, and holding it back to
+ * discuss coverage would be the same class of drop pointed the other way.
+ *
+ * The passage's own refusal wins over this one where both could apply, because
+ * a passage that named nothing was never searched for at all.
+ */
+function withCoverage(
+  query: { names: string[]; terms: string[]; matchable: boolean; note: string | null },
+  found: { pointers: MaterialPointer[]; coverage: string | null },
+): { names: string[]; terms: string[]; matchable: boolean; note: string | null } {
+  if (found.pointers.length > 0 || found.coverage === null) return query;
+  if (query.note !== null) return query;
+  return { ...query, note: found.coverage };
 }
 
 /**
@@ -744,7 +792,9 @@ interface ComposedMaterial {
  *
  * **It is a READ.** `openReadOnlyChecked` cannot build the index it reads, so
  * an archive nobody has scanned yields no points and SAYS so through an empty
- * table rather than being quietly filled in.
+ * table rather than being quietly filled in. An archive that cannot be READ is
+ * a different fact and leaves by a different route — see the `catch` around
+ * that open.
  */
 function composeMaterial(
   ws: Workspace,
@@ -767,10 +817,32 @@ function composeMaterial(
   let index: ConversationIndex;
   try {
     index = ConversationIndex.openReadOnlyChecked(ws.dbPath);
-  } catch {
-    // An archive nobody has scanned. The mission then carries no points, which
-    // is honest: there is nothing to open.
-    return empty;
+  } catch (err) {
+    // **THE TWO EMPTY STATES ONLY, AND EVERY FAULT IS RETHROWN** —
+    // `TASK-a-corrupt-or-locked-archive-index-makes-every-retrieval`. The
+    // narrowing is the sibling route's, one file over (`read-model-
+    // conversations.ts`, `apiConversationSearch`), and it is the same door
+    // being read the same way rather than a second policy about it.
+    //
+    // An archive nobody has scanned, and an index an older build wrote, are
+    // empty: neither is damage, neither is this surface's to repair — creating
+    // a table is a write — and the mission then carries no points, which is
+    // honest, because there is nothing to open.
+    //
+    // A file that is not a database, and a database this process cannot read
+    // right now, are NOT that. What this `catch` returned for them was a brief
+    // stating that the conversation record bears nothing on the subject, which
+    // is A CLAIM ABOUT THE ARCHIVE rather than a report about the read: the
+    // reader who believes it stops looking, and no sentence anywhere said the
+    // index was never opened. `INV-nothing-is-dropped-silently` and
+    // `STD-a-measured-zero-is-drawn-and-named` both land on that zero — it was
+    // never measured — so the fault leaves here carrying the door's own
+    // sentence, which already names the file and says what is wrong with it.
+    if (err instanceof ConversationIndexUninitializedError
+      || err instanceof ConversationIndexIncompleteError) {
+      return empty;
+    }
+    throw err;
   }
 
   try {
@@ -807,9 +879,9 @@ function composeMaterial(
     if (mode === 'list-subjects') {
       const pass = subjectsFor(index, repo, depth, scope);
       const raw = pointersFor(index, files, pass.terms.slice(0, SUBJECTS_SEARCHED), scope);
-      const filtered = withoutNoise(raw);
+      const filtered = withoutNoise(raw.pointers);
       return {
-        query: pass.terms.length === 0
+        query: withCoverage(pass.terms.length === 0
           ? {
             names: [], terms: [], matchable: false,
             note: pass.note
@@ -817,7 +889,7 @@ function composeMaterial(
               + 'mentions in the scope asked for, so there is no subject list to return. '
               + 'Widen the scope, or ask with a passage.',
           }
-          : { names: [], terms: pass.terms, matchable: true, note: null },
+          : { names: [], terms: pass.terms, matchable: true, note: null }, raw),
         pointers: filtered.pointers,
         noise: { ...filtered.report.removed, seen: filtered.report.seen },
         anchors: [],
@@ -849,9 +921,9 @@ function composeMaterial(
     // first because `pointersFor` fills up to `POINTER_CAP` in order, so the
     // better signal is never crowded out by the weaker one.
     const raw = pointersFor(index, files, [...query.names, ...query.terms], scope);
-    const filtered = withoutNoise(raw);
+    const filtered = withoutNoise(raw.pointers);
     return {
-      query,
+      query: withCoverage(query, raw),
       pointers: filtered.pointers,
       noise: { ...filtered.report.removed, seen: filtered.report.seen },
       anchors: [],
@@ -923,7 +995,12 @@ export function apiRetrievalMission(ws: Workspace, raw: unknown): JsonResult {
     at,
     repoRoot: repo,
     resultPath: path.relative(repo, resultPathFor(repo, id)).split(path.sep).join('/'),
-    query: query.matchable ? { names: query.names, terms: query.terms } : null,
+    // `note` travels WITH the names, because the brief is read by the one
+    // reader that cannot ask the screen — a dispatched subagent — and it was
+    // being stripped here while `body.query` beside it carried it.
+    query: query.matchable
+      ? { names: query.names, terms: query.terms, note: query.note }
+      : null,
     pointers,
     resultShape: resultContract(),
   };

@@ -2,7 +2,8 @@ import { readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { retryOnTransientFsError } from './rebuild.ts';
 import {
-  appendJsonlLine, readJsonlFileState, type JsonlFileState, type JsonlLogSpec,
+  appendJsonlLines, readJsonlFileState,
+  type AppendProgress, type JsonlFileState, type JsonlLogSpec,
 } from './jsonl-log.ts';
 import { sanitizeSessionId, type LedgerTier } from './ledger.ts';
 import type { SeenEntry } from './select.ts';
@@ -149,13 +150,20 @@ function specFor(file: string): JsonlLogSpec {
 }
 
 /**
- * Retry attempts per appended line, passed to `retryOnTransientFsError`
- * (which sleeps 20·(attempt+1) ms between attempts): a worst case of
- * 10·5·4 = 200 ms of backoff PER LINE. Unlike `SNAPSHOT_RENAME_ATTEMPTS`
- * this guards a hot path where the worst case scales with the number of
- * items delivered — every line can exhaust its backoff and still succeed —
- * so it deliberately keeps the default hot-path impatience rather than the
- * snapshot's compaction-time patience. Two tests in `seen-file.test.ts`
+ * Retry attempts per append, passed to `retryOnTransientFsError` (which
+ * sleeps 20·(attempt+1) ms between attempts): a worst case of 10·5·4 = 200 ms
+ * of backoff.
+ *
+ * **PER CALL since 2026-09-23, where it used to be per line.** `appendSeen`
+ * now writes a whole delivery through one `appendJsonlLines`, so the worst
+ * case no longer scales with the number of items delivered: a 20-item
+ * injection can back off for 200 ms in total rather than for 20 × 200 ms. The
+ * constant's value is unchanged, and the band the static test pins is
+ * unchanged with it — what moved is only that the band is now the ceiling for
+ * the whole append instead of for one of its lines, which is the safe
+ * direction against the 10 s hook kill. It deliberately keeps the default
+ * hot-path impatience rather than `SNAPSHOT_RENAME_ATTEMPTS`' compaction-time
+ * patience. Two tests in `seen-file.test.ts`
  * pin two different things: a static band pins this constant's VALUE, and a
  * measured-backoff test (read-only file, transient EPERM/EACCES) pins that
  * appendSeen's EFFECTIVE retry behaviour matches it — so a drifted constant,
@@ -173,25 +181,44 @@ export function appendSeen(
   try {
     const file = seenFilePath(root, key);
     const dir = path.dirname(file);
-    for (const line of lines) {
-      // The same transient-EPERM guard the snapshot rename and writeItem use:
-      // a scanner holding the file open for a moment must cost a retry, not
-      // a lost dedupe record (design §6 risk 4).
-      retryOnTransientFsError(() => appendJsonlLine(dir, file, {
-        protocol: SEEN_PROTOCOL, id: line.id, tier: line.tier, at: line.at,
-        // Omitted rather than written as `undefined`: a caller that has not
-        // been updated to pass a checksum yet must produce the exact line it
-        // always did, not a new key with no value. `''` — an item whose
-        // checksum has never been stamped (`item.ts` ·
-        // `optString(fm, rawBlock, 'checksum') ?? ''`) — IS written: it is a
-        // real, if degenerate, currency claim (`select.ts` compares it
-        // against the item's checksum exactly as any other value, so two
-        // unstamped reads of the same never-edited item still match and stay
-        // deduped; the day the item is stamped for real, the mismatch is
-        // exactly the "superseded" case this task exists to catch).
-        ...(line.checksum === undefined ? {} : { checksum: line.checksum }),
-      }), SEEN_APPEND_ATTEMPTS);
-    }
+    /**
+     * **One append for the whole delivery, not one per item.**
+     *
+     * A JIT injection delivers a score of items — 20 in
+     * `test/perf/focus-latency.perf.ts`'s corpus — and this loop used to call
+     * `appendJsonlLine` once per item, each of which re-created the directory,
+     * re-checked its `.gitignore` marker and re-measured the log's tail before
+     * writing its one line. Profiled on the PreToolUse hot path 2026-09-23,
+     * that was 42.6 ms of the hook's 54.9 ms per call, and it is per-ITEM work
+     * that answers the same question twenty times. `appendJsonlLines` asks it
+     * once; each item is still its own append-mode write, so the lock-free
+     * append property is unchanged (see its header).
+     *
+     * The retry now wraps the batch rather than each line, and `progress`
+     * carries how far it got — the same transient-EPERM guard the snapshot
+     * rename and writeItem use (a scanner holding the file open for a moment
+     * must cost a retry, not a lost dedupe record, design §6 risk 4), with the
+     * added property that a retry resumes rather than re-appending what is
+     * already on disk.
+     */
+    const progress: AppendProgress = { appended: 0 };
+    const records = lines.map((line) => ({
+      protocol: SEEN_PROTOCOL, id: line.id, tier: line.tier, at: line.at,
+      // Omitted rather than written as `undefined`: a caller that has not
+      // been updated to pass a checksum yet must produce the exact line it
+      // always did, not a new key with no value. `''` — an item whose
+      // checksum has never been stamped (`item.ts` ·
+      // `optString(fm, rawBlock, 'checksum') ?? ''`) — IS written: it is a
+      // real, if degenerate, currency claim (`select.ts` compares it
+      // against the item's checksum exactly as any other value, so two
+      // unstamped reads of the same never-edited item still match and stay
+      // deduped; the day the item is stamped for real, the mismatch is
+      // exactly the "superseded" case this task exists to catch).
+      ...(line.checksum === undefined ? {} : { checksum: line.checksum }),
+    }));
+    retryOnTransientFsError(
+      () => appendJsonlLines(dir, file, records, {}, progress), SEEN_APPEND_ATTEMPTS,
+    );
     return { written: true, error: null };
   } catch (err) {
     return { written: false, error: reason(err) };

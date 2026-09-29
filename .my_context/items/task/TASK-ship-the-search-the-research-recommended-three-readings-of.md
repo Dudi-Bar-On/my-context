@@ -142,3 +142,7 @@ ALSO NOT DONE: `src/core/conversation-search.ts:248` still cites the phantom id
 `STD-nothing-to-do-and-could-not-look-are-different-answers`. The handover of 2026-09-16 asks
 for all seven sites to be repaired as ONE act, so this lane left its one alone rather than
 making that count harder to verify.
+
+## Request
+
+ok so now generate the grand D table progress and include all the Ds from 1 till the end, let me see, two more things: 1 - the search in conversation is not smart, it let me search for a specific string and i could not find more complex cases, i want you to dispatch now a subagent that will do deep reaserch over the internet, specifically look at the notepad++ and similar and find the best feature reach search implementation, it can also look for a solution in githib repos if an existing node open source exists, 2 - i want to add a capability that will backfill a conversation with anchores as we did, only by reading the conversation and trying to find points to be anchored as much as possible when no corpus exists, it is intended for a user that installs mycontext at the middle of development so it's conversation was created before mycontext was installed, there may be several claude code sessions that are archived and becomes conversations as we are browsing them under Conversations menu item

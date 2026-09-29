@@ -1,4 +1,4 @@
-// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
+// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items, TASK-the-unknown-category-default-is-answered-three-different
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
@@ -247,6 +247,46 @@ test('a carried id on a rationale category is dropped with "not a normative cate
   assert.deepEqual(sel.index.normative.map((n) => n.id), ['RULE-a']);
   assert.deepEqual(sel.index.carried?.dropped,
     [{ id: 'LESSON-a', reason: 'not a normative category' }]);
+});
+
+/**
+ * **The reason an item whose CATEGORY vanished is given, pinned after the
+ * unknown-category default changed under it.**
+ *
+ * `TASK-the-unknown-category-default-is-answered-three-different` gave the
+ * three surfaces one answer, and `isNormative` was one of them: it used to
+ * answer `false` for a category nobody declared — reading it as rationale —
+ * and now reads it as `normative`, failing closed with `tierOf`.
+ *
+ * `carriedDropReason` asks `isNormative` before `isEligible`, so this item's
+ * reason MOVED, from `not a normative category` to `no longer eligible`. The
+ * new sentence is the true one and the order stays as it is:
+ *
+ *   - `not a normative category` is now FALSE about it. Nothing has said this
+ *     category is rationale; nothing has said anything about it at all, and
+ *     the project's one answer to that is `normative`. A label that names a
+ *     tier the corpus never assigned is a silent drop wearing a badge — the
+ *     same defect the focus branch below was written for.
+ *   - `no longer eligible` is exactly what happened and exactly what every
+ *     other surface says about this item: `isEligible` reads `enabled` off a
+ *     category that is not there, `doctor` reports `unknown_category` with
+ *     *"no tier admits an item whose category is unknown"*, and `loadLayer`
+ *     keeps it indexed while nothing injects it.
+ *
+ * **Nothing about SELECTION moved** — an unknown category was never eligible
+ * and still is not. Only the sentence a reader is given for it.
+ */
+test('a carried id whose category vanished says it is no longer eligible, not mis-tiered', () => {
+  const sel = select(
+    [item({ id: 'RULE-a' }), item({ id: 'GONE-a', type: 'vanished' })],
+    { event: 'session-start', carried: carriedFrom(['RULE-a', 'GONE-a']) },
+    CONFIG,
+  );
+
+  assert.deepEqual(sel.index.normative.map((n) => n.id), ['RULE-a'],
+    'an unknown category is not selectable — that did not change');
+  assert.deepEqual(sel.index.carried?.dropped,
+    [{ id: 'GONE-a', reason: 'no longer eligible' }]);
 });
 
 test('a carried id nothing knows is dropped with "unknown id"', () => {

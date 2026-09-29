@@ -58,7 +58,9 @@ jobs:
             runs-on: ubuntu-latest
     runs-on: ${{ matrix.runs-on }}
     steps:
+      # `check:board`'s drift tier reads commit history, and a shallow clone shows it none.
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: '24' }
       - run: npm ci
@@ -143,28 +145,58 @@ jobs:
       # its own line prints into a green log and manufactures the appearance of
       # coverage. Here it prints inside a run whose greenness means something.
       - run: npm run check:board
-      # Before `npm test` because it is two seconds, and in CI at all because the
-      # alternative is what this repository just lived through: it exits on the
-      # DOCUMENTATION tier only, it was red on 2026-09-13, and `release.yml` was
-      # the only place it ran — so every tag cut that day would have failed at a
-      # gate no pull request exercised. Two of the four breaks were opened by
-      # 44b3623b THAT SAME DAY, hours after the review counted two, by a commit
-      # that moved `STATUSES` out of `validate.ts`. Nothing noticed, because on
-      # master nothing was looking.
-      - run: npm run verify:citations
+      # A failure this codebase catches and then says NOTHING about, and a write
+      # result a producer returns and the call site drops. Report 3 proposed
+      # this gate twice — once for its pattern P1 and once for P2 — the
+      # consolidation carried every INSTANCE forward and the gate nowhere, and
+      # both proposals came back a month later as
+      # `TASK-the-gate-for-the-swallow-class-was-proposed-twice-and-built` and
+      # `TASK-d70-closed-all-five-instances-and-never-built-the-gate-the`. Their
+      # shared argument is why this is a CI step and not a review: when the last
+      # instance closes the subject READS FINISHED, and the whole-codebase review
+      # that made the class findable will not run again.
+      #
+      # It gates what this package SHIPS, read at run time from
+      # `package.json:files`, and it detects SILENCE rather than `catch` — 195
+      # catch blocks in this tree carry a written argument and not one of them
+      # trips it. `test/scripts/swallow-gate.test.ts` plants every class it
+      # claims to detect and asserts the exit code and the printed line, the way
+      # every other checker here is proved.
+      #
+      # Beside `check:board` rather than after `npm test`: it is a two-second
+      # scan, and the cheap-fails-first trade every ordering in this file argues
+      # for applies to it unchanged.
+      - run: npm run check:swallows
       - run: npm run typecheck
       - run: npm test
+      # AFTER `npm test`, not before. The reasoning that put the cheap
+      # `check:*` gates ahead of the suite still stands — each is a two-second
+      # check that fails long before a twelve-minute run would tell you the
+      # same thing. This gate is not one of them: it exits on the
+      # DOCUMENTATION tier only, and for 27 days (2026-08-21 to 2026-09-17) the
+      # unit suite never ran on master because this gate was red in front of
+      # it and nobody was looking. A documentation-tier gate must never be the
+      # thing standing between a push and the suite that actually proves the
+      # code, so it now runs after that suite rather than in front of it.
+      - run: npm run verify:citations
       - run: npm run test:perf
 
       # ── The browser suite. UBUNTU ONLY, and deliberately so. ──────────────
       #
       # Every other step runs on both runners because the CLI's path handling
       # and terminal rendering are genuinely OS-dependent — `pin-rendering.ts`
-      # exists for exactly that. None of it is in play here: this suite loads
-      # one self-contained HTML file over `file://` and asks what Chromium
-      # drew. Chromium is Chromium. Running it twice doubles a 275 MB download
-      # for no additional signal, and if this repository ever goes private,
-      # Windows minutes bill at 2x (see the note on the matrix above).
+      # exists for exactly that. None of it is in play here: this suite
+      # drives the REAL server — `e2e/global-setup.ts` boots it against a
+      # sandboxed temp workspace and every spec talks to it over `http`, not
+      # `file://`. (It used to load one self-contained HTML mockup instead;
+      # `screen-parity.spec.ts`, `pixel-parity.spec.ts` and `tree-parity.spec.ts`
+      # were the specs that compared the real screens against that mockup, and
+      # ruling B, 2026-09-21 (`DEC-the-mockup-is-a-reference-to-initial-thoughts-and-only-a`)
+      # retired the mockup as a source of truth, so those three specs are gone —
+      # this comment used to describe them and no longer does.) Chromium is
+      # Chromium. Running it twice doubles a 275 MB download for no additional
+      # signal, and if this repository ever goes private, Windows minutes bill
+      # at 2x (see the note on the matrix above).
       #
       # AFTER the cheap checks, never before. The static checkers catch what a
       # browser cannot — EN/HE key parity in both directions, dead translation
@@ -212,7 +244,7 @@ jobs:
       - name: every mermaid fence in the documents parses
         if: matrix.name == 'ubuntu'
         run: npm run check:diagrams
-      - name: browser suite against the mockup
+      - name: browser suite
         if: matrix.name == 'ubuntu'
         run: npm run test:e2e
 

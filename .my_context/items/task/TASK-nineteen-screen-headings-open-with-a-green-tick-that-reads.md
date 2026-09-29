@@ -17,17 +17,17 @@ tags:
   - needs-ruling
   - "plan:screens"
   - "seq:27"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: acadb2de39c49b1a
+checksum: 917f74ee9e77aa55
 plan: screens
 seq: "27"
-state: todo
+state: done
 priority: "2"
 ---
 

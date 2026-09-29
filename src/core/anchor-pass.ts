@@ -738,21 +738,46 @@ export const ANCHOR_PROBE_PAGES = 25;
  * to walk came back FULL, which means there are more behind it and this run
  * did not see them. A run that exhausted its matches ends on a short page and
  * reports false.
+ *
+ * ── AND `unsearchable` IS THE OTHER HONEST HALF, ADDED 2026-09-23 ─────────
+ *
+ * `TASK-nine-sites-report-a-measured-zero-for-something-they-could`, the
+ * reviewer's finding against this function: it consumed `.hits` and DROPPED
+ * `searchable`/`note`, so an empty page over a prose index that holds nothing
+ * was indistinguishable from an archive with no tables in it. The index the
+ * probes read is filled by `mycontext conversation rebuild` and NOT by
+ * `rebuildConversations`, so that is the state every workspace is in until
+ * somebody types it — and the pass then reported `probed: 0, found: 0`, which
+ * `INV-a-turn-that-qualifies-for-an-automatic-mark-carries-one-when` names in
+ * as many words: *"a pass that answers 'nothing to do' when it means 'I could
+ * not read anything'. Those are two different answers and must be two
+ * different values."*
+ *
+ * It is `searchArchive`'s own sentence, carried and never re-worded, for
+ * `coverageNote`'s stated reason: one condition, spelled once, so the search
+ * module and this pass cannot come to describe one index two ways. `null` when
+ * the probe was searched — never absent, so "measured" is told from "this
+ * build does not say".
  */
 function probeCandidates(
   index: ConversationIndex,
   probe: string,
   scope: SearchScope,
-): { hits: ProseHit[]; capped: boolean } {
+): { hits: ProseHit[]; capped: boolean; unsearchable: string | null } {
   const hits: ProseHit[] = [];
   for (let page = 0; page < ANCHOR_PROBE_PAGES; page += 1) {
     const answer = searchArchive(index, probe, {
       ...scope, limit: ANCHOR_PROBE_LIMIT, offset: page * ANCHOR_PROBE_LIMIT,
     });
     for (const hit of answer.hits) hits.push(hit);
-    if (answer.hits.length < ANCHOR_PROBE_LIMIT) return { hits, capped: false };
+    // A refusal can only arrive on a page that brought nothing back —
+    // `searchArchive` asks the coverage question of an EMPTY answer only — so
+    // this is read on the page that ends the walk and never mid-paging.
+    if (answer.hits.length < ANCHOR_PROBE_LIMIT) {
+      return { hits, capped: false, unsearchable: answer.searchable ? null : answer.note };
+    }
   }
-  return { hits, capped: true };
+  return { hits, capped: true, unsearchable: null };
 }
 
 /**
@@ -812,6 +837,27 @@ export interface AutoAnchorReport {
   relabelled: number;
   /** At least one probe filled its bound, so there may be more behind it. */
   capped: boolean;
+  /**
+   * **WHY `probed` IS NOT A MEASUREMENT** — `null` when it is one.
+   *
+   * `TASK-nine-sites-report-a-measured-zero-for-something-they-could`, and it
+   * is `capped`'s sibling rather than a new idea: `capped` says *the probes ran
+   * and there is more behind them*, this says *the probes did not run at all*.
+   * It carries `searchArchive`'s own sentence — the prose index holds nothing,
+   * or covers part of the archive — untouched and untranslated.
+   *
+   * It is a FIELD of the report rather than a second report type, for
+   * `planned`'s stated reason one field down: a caller holding an
+   * `AutoAnchorReport` must not be able to read `probed: 0` without also being
+   * able to see that nothing was looked at.
+   *
+   * **The other two candidate sources are unaffected and that is why `did`
+   * stays `'marked'`.** `ownerPromptSpans` and `laneLastAnswers` answer from
+   * the archive's own tables and need no prose index, so a run whose probes
+   * could not search has still shown the grammar everything they found. What it
+   * has not done is look for TABLES, which is what this says.
+   */
+  unsearchable: string | null;
   ms: number;
   /**
    * **`marked`, SPLIT BY KIND — the disclosure a bulk run is refusable on.**
@@ -1122,7 +1168,8 @@ export function markAutomaticAnchors(
   const write = options.plan !== true;
   const startedMs = Date.now();
   const report: AutoAnchorReport = {
-    probed: 0, found: 0, marked: 0, dropped: 0, relabelled: 0, capped: false, ms: 0,
+    probed: 0, found: 0, marked: 0, dropped: 0, relabelled: 0, capped: false,
+    unsearchable: null, ms: 0,
     byKind: { table: 0, ruling: 0, report: 0 },
     samples: [],
     planned: !write,
@@ -1315,6 +1362,11 @@ export function markAutomaticAnchors(
         ...(windows === null ? {} : { windows }),
       });
       if (answer.capped) report.capped = true;
+      // **THE FIRST REFUSAL WINS AND THE SECOND DOES NOT OVERWRITE IT.** Both
+      // probes read one index, so both come back with the same sentence; `??`
+      // rather than an assignment keeps the answer stable if that ever stops
+      // being true, and the sentence a reader gets is the one raised first.
+      report.unsearchable = report.unsearchable ?? answer.unsearchable;
       for (const hit of answer.hits) {
         consider(hit.sessionId, hit.agentId, hit.byteOffset, hit.at);
       }

@@ -2,6 +2,7 @@ import {
   AUDIT_KINDS, AUDIT_OPS, parseWhen, type AuditFilter, type AuditKind, type AuditOp,
 } from '../core/audit.ts';
 import { filterSelect, queryProjection, sessions, summaryByOp, topItems } from '../core/audit-db.ts';
+import { AUDIT_ROLES } from '../core/command-flags.ts';
 import { Store } from '../core/store.ts';
 import type { Layer, Origin, Status } from '../core/types.ts';
 import { ORIGINS } from '../core/validate.ts';
@@ -577,8 +578,15 @@ export function apiAskSummary(ws: Workspace, url: URL): JsonResult {
   // Refused rather than ignored: a `role` accepted and dropped would answer a
   // different question from the one on screen and report it as the same one.
   if (role !== null && report !== 'items') return badRequest('role applies only to report=items');
-  if (role !== null && !['subject', 'injected', 'spilled'].includes(role)) {
-    return badRequest('role must be one of subject, injected, spilled');
+  // `AUDIT_ROLES`, not a fourth hand-written copy of it. The three words were
+  // spelled out here while `--kind`, `--op` and `--origin` above all imported
+  // their vocabulary, and the cost of that asymmetry was measured the day
+  // `core/audit-db.ts` began filing restore disclosures under a fourth role:
+  // the CLI's list and this one had to be found separately, and this one was
+  // not, so `/api/ask/summary?role=disclosed` refused a row the projection had
+  // just written. One array, one refusal message built from it.
+  if (role !== null && !AUDIT_ROLES.includes(role)) {
+    return badRequest(`role must be one of ${AUDIT_ROLES.join(', ')}`);
   }
   const limit = intParam(url, 'limit', 1, 200, 20);
   if (limit === null) return badRequest('limit must be an integer between 1 and 200');

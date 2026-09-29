@@ -44,6 +44,7 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { claimKey, sameClaim } from './claim.ts';
+import { writePrivateGitignore } from '../core/private-gitignore.ts';
 
 export { claimKey };
 
@@ -186,7 +187,7 @@ export function recordDecline(stateRoot: string, decline: Decline): DeclineWrite
     // directory existed — the same three lines `ledger.ts`, `focus.ts` and
     // `session-names.ts` each write beside their own store, for the same
     // reason. A decline carries the owner's words about his own repository.
-    writeFileSync(path.join(path.dirname(target), '.gitignore'), '*\n', 'utf8');
+    writePrivateGitignore(path.dirname(target));
     writeFileSync(tmp, `${JSON.stringify(kept, null, 2)}\n`, 'utf8');
     renameSync(tmp, target);
     return { written: true };

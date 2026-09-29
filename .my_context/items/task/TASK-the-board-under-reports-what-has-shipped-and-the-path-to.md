@@ -116,3 +116,7 @@ He asked for a reliable path to 100%, and the honest version of that is a path w
 STEP IS EITHER DISPATCHABLE OR NAMED AS HIS. It is not a promise that every D closes: one is held by
 his own ruling and two end in decisions only he can make. A mechanism that hid that distinction
 would be telling him what he wants to hear, and he has said repeatedly that he wants the opposite.
+
+## Request
+
+now according to the table you show, D69 is the first not completed yet till D77 (D78 because it's actually not closed) - i want you to build amechanism that will make all of them be dispatched progress tracked and 100% completed so i could use it as a reliable path to complete all currentlly known opened Ds

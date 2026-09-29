@@ -1728,7 +1728,8 @@ export interface TranscriptRecord {
  *
  * A consumer that stops early leaves these at the point it stopped, which is
  * the honest answer: `reachedEnd` false with `scannedBytes` below the cap
- * means the CONSUMER stopped, not the file.
+ * means the CONSUMER stopped, not the file — **unless `failed` is set, which
+ * is the third reading and the one that sentence used to hide** (`swallow/11`).
  */
 export interface TranscriptCursor {
   /** Bytes read from the file so far. */
@@ -1737,6 +1738,33 @@ export interface TranscriptCursor {
   reachedEnd: boolean;
   /** Lines that would not parse. Counted, never thrown and never skipped. */
   unreadable: number;
+  /**
+   * **Why the walk stopped, when what stopped it was the FILE** —
+   * `swallow/11`, `INV-nothing-is-dropped-silently`. Absent for every walk that
+   * ran out of file, hit its cap, or was stopped by its consumer.
+   *
+   * It is set for a transcript that would not OPEN and for one whose bytes
+   * would not be READ, which are the two doors the same failure comes through
+   * on different platforms: `openSync` on a directory refuses on POSIX and
+   * SUCCEEDS on Windows, where the first `readSync` is what refuses (measured
+   * 2026-09-23). A caller that cares about the distinction reads the message.
+   *
+   * **`readSync`'s failure used to vanish into a bare `catch {}`** whose whole
+   * comment was *"`scannedBytes` says how far it got"* — and `scannedBytes` is
+   * precisely what cannot say it: zero bytes read because the file refused and
+   * zero bytes read because the consumer broke out of the loop are the same two
+   * numbers. The header's *"errors are states, never throws"* was kept; the
+   * STATE was missing.
+   *
+   * **OPTIONAL, and that is a scope decision rather than a shape one.** The
+   * cursor is an out-parameter every caller builds as a literal — nine of them
+   * across six modules — and eight of those never ask this question. A required
+   * field would be nine edits in six files, in a release where those files
+   * belong to other lanes, to add a fact they do not read. It is written by the
+   * walk and never by a caller, so a caller that forgets it reads `undefined`,
+   * which is the same answer it would have got from a `null`.
+   */
+  failed?: string;
 }
 
 export interface TranscriptWalkOptions {
@@ -1782,7 +1810,13 @@ export function* iterateTranscript(
   let fd: number;
   try {
     fd = openSync(file, 'r');
-  } catch {
+  } catch (err) {
+    // **The ANSWER is unchanged and the STATE is new** (`swallow/11`). Yielding
+    // nothing is still right — a rebuild that aborted on one bad file would
+    // lose the whole archive to it — but "nothing" was the same value a walk
+    // whose consumer stopped leaves behind, and `TranscriptCursor` told a
+    // caller to read it as the second.
+    cursor.failed = err instanceof Error ? err.message : String(err);
     return;
   }
 
@@ -1866,9 +1900,17 @@ export function* iterateTranscript(
     if (cursor.reachedEnd && walk.trailing !== null) {
       yield parse(walk.trailing.bytes, walk.trailing.at);
     }
-  } catch {
-    // A read that failed part-way keeps what it yielded. `scannedBytes` says
-    // how far it got.
+  } catch (err) {
+    // **A read that failed part-way keeps what it yielded, AND SAYS SO.**
+    //
+    // `scannedBytes` was offered as the account and it is the one number that
+    // cannot give it: zero bytes because the file refused and zero bytes
+    // because the consumer broke out of the loop are the same zero, and
+    // `TranscriptCursor`'s own docstring sent a reader to the calmer reading.
+    // The reason is preferred from `walk.failed`, which `line-walk.ts` records
+    // at the `readSync` itself and re-throws — so the message here is the
+    // platform's, whatever wrapped it on the way up (`swallow/11`).
+    cursor.failed = walk.failed ?? (err instanceof Error ? err.message : String(err));
   } finally {
     try { closeSync(fd); } catch { /* nothing usable to close */ }
   }

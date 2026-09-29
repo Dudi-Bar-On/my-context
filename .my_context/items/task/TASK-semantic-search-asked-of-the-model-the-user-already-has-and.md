@@ -163,3 +163,7 @@ show the deterministic results at 4.3 ms and fold the expanded hits in when they
 
 ## Relations
 - superseded_by [[RULE-search-may-rank-its-results-and-semantic-search-is-not]]
+
+## Request
+
+fix it now, i want to see marks as soon as they are created, about the search - implement it completelly including the semantic search, the model is always available because users ar using it for development, it is not expansive and i want you to implement it from day 0

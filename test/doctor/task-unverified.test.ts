@@ -1,4 +1,5 @@
-// @basis TASK-a-grandfather-cutoff-belonging-to-this-repository-is-hard, TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan
+// @basis TASK-a-grandfather-cutoff-belonging-to-this-repository-is-hard, TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan,
+// TASK-sweep-every-timestamp-comparison-for-the-millisecond-tie
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -461,6 +462,72 @@ test('adoption the log never witnessed grandfathers nothing, and still reports',
       const findings = checkTaskUnverified(corpus, adopting(task('TASK-a', { state: 'done' })), CONFIG);
       assert.equal(findings.length, 1);
       assert.equal(findings[0]!.code, 'task_unverified');
+      assert.equal(findings[0]!.item, 'TASK-a');
+    },
+  );
+});
+
+/* -------------------------------------------------------------------------- *
+ * THE MILLISECOND TIE — `TASK-sweep-every-timestamp-comparison-for-the-
+ * millisecond-tie`
+ *
+ * `at` is `Date.toISOString()`: one-millisecond resolution, and nothing about
+ * a synchronous burst of `recordAudit` calls promises the clock ticks between
+ * two of them. CI's Ubuntu job landed six in one millisecond (run
+ * 35715432299), which is the measurement release/13 came out of.
+ *
+ * The cutoff here compares two readings of THE SAME CLOCK from THE SAME LOG —
+ * a task's recorded `state` transition against this workspace's first recorded
+ * `verified_on` write — so `transitionAt < adoptedAt` cannot tell "same
+ * millisecond, written first" from "same millisecond, written after", and a
+ * task that was closed BEFORE the convention was adopted is reported as though
+ * it had been closed after it.
+ *
+ * The monotonic fact is the one release/13 used one layer over: the record's
+ * POSITION in the log. `readAudit` delivers oldest-first across every segment
+ * and within a segment that is insertion order, so two records tied on `at`
+ * are still ordered by where they sit — which is what the log itself
+ * guarantees and what the wall clock does not.
+ *
+ * The two tests below are one pair: identical records, identical timestamps,
+ * opposite ORDER, opposite verdicts. Neither could be written against `at`.
+ * -------------------------------------------------------------------------- */
+
+test('A TIE: a transition written BEFORE the adoption in the same millisecond is grandfathered', () => {
+  withRoot(
+    // Both at `ADOPTED_AT` to the millisecond, the transition first — the
+    // shape a burst of writes produces on a fast machine. It happened before
+    // the convention existed, so nothing is owed.
+    [
+      createdAt('TASK-a', wayBeforeCutoff),
+      stateTransitionAt('TASK-a', ADOPTED_AT),
+      adoptionAt(ADOPTED_AT),
+    ],
+    (corpus) => {
+      const findings = checkTaskUnverified(corpus, adopting(task('TASK-a', { state: 'done' })), CONFIG);
+      assert.equal(findings.length, 1,
+        `expected only the coverage note: ${JSON.stringify(findings)}`);
+      assert.equal(findings[0]!.code, 'task_verification_coverage',
+        'THE DEFECT: a tied millisecond made a task closed BEFORE adoption look like one closed '
+        + 'after it, and the warn it draws can only be cleared by an acknowledgement nobody owes');
+      assert.equal(findings[0]!.item, undefined);
+    },
+  );
+});
+
+test('A TIE, the other way: a transition written AFTER the adoption in the same millisecond is measured', () => {
+  withRoot(
+    [
+      createdAt('TASK-a', wayBeforeCutoff),
+      adoptionAt(ADOPTED_AT),
+      stateTransitionAt('TASK-a', ADOPTED_AT),
+    ],
+    (corpus) => {
+      const findings = checkTaskUnverified(corpus, adopting(task('TASK-a', { state: 'done' })), CONFIG);
+      assert.equal(findings.length, 1, JSON.stringify(findings));
+      assert.equal(findings[0]!.code, 'task_unverified',
+        'the ruling the boundary tests already pinned still holds: at the cutoff and after it, '
+        + 'the task is measured');
       assert.equal(findings[0]!.item, 'TASK-a');
     },
   );

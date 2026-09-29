@@ -57,7 +57,14 @@ export interface UpdatableName {
    *
    * Spelled out per name because it is not derivable and getting it wrong costs
    * a person an attempt: `always` has two spellings (`edit --always=true` and
-   * `mycontext pin`), and `source_file` has no command at all.
+   * `mycontext pin`), and until 2026-09-22 `source_file` had no command at
+   * all — a person who read `undeclaredFlagError`'s composed refusal for it
+   * learned only that nothing existed, never what to do about a `source_file`
+   * that had drifted or, worse, escaped the repository (`escapesRoot`,
+   * paths.ts). `mycontext edit <id> --detach-source --yes` is that command
+   * now: see `TIER_UPDATES`'s `source_file` entry, below, which is the one
+   * `UpdatableName` in this catalogue whose `command` clears a field rather
+   * than setting it.
    */
   command?: string;
   /** One line a person reads. Rendered by `mycontext help` and `mycontext examples`. */
@@ -112,6 +119,13 @@ export const TIER_UPDATES: Record<Tier, CategoryUpdates> = {
     severity: { store: 'field', values: ['hard', 'soft'], command: 'mycontext harden <id> | mycontext soften <id>', note: 'Binding or advisory. `edit --severity` is the same change under another name.' },
     always: { store: 'field', values: ['true', 'false'], command: 'mycontext pin <id> | mycontext unpin <id>', note: 'Injected at every session start. `edit --always=true` is the same change under another name.' },
     continuity: { store: 'field', values: ['true', 'false'], command: 'mycontext edit <id> --continuity[=false]', note: 'Re-delivered on every session start and after every compaction, against its own budget. For what the NEXT session needs in order not to start over — a pointer plus a bounded digest, never a document.' },
+    // Declared on BOTH tiers, identically, because `--file` capture is
+    // TIER-wide rather than category-wide (`addSnapshot`, cli/index.ts: "It
+    // is not restricted to the `reference` category... What holds the trust
+    // boundary is the TIER, not the flag"). A normative item captured with
+    // `--file` carries a `source_file` exactly as a reference does, so the
+    // command that repairs one cannot be declared on one tier only.
+    source_file: { store: 'field', command: 'mycontext edit <id> --detach-source --yes', note: 'The file this item was snapshotted from, and its checksum — set at capture, never writable after. The one supported edit clears both: for a source that no longer exists, or was recorded outside the repository.' },
   },
   rationale: {
     title: { store: 'field', command: 'mycontext edit <id> --title "…"', note: 'The one-line name. Changing it does not change the id.' },
@@ -123,6 +137,10 @@ export const TIER_UPDATES: Record<Tier, CategoryUpdates> = {
     severity: { store: 'field', values: ['soft'], command: 'mycontext soften <id>', note: 'Only soft. `--severity hard` is REFUSED here — severity governs on the normative tier only.' },
     always: { store: 'field', values: ['false'], command: 'mycontext unpin <id>', note: 'Only false. `--always true` is REFUSED here — pinning governs on the normative tier only.' },
     continuity: { store: 'field', values: ['true', 'false'], command: 'mycontext edit <id> --continuity[=false]', note: 'Accepted on this tier, unlike severity and always: the continuity tier is not a governance tier and never consults isNormative, so a reference can carry it.' },
+    // Identical to the normative entry, and identical for the same reason —
+    // see the comment there. `reference` is the category this field exists
+    // for, but it is not the only one that can carry it.
+    source_file: { store: 'field', command: 'mycontext edit <id> --detach-source --yes', note: 'The file this item was snapshotted from, and its checksum — set at capture, never writable after. The one supported edit clears both: for a source that no longer exists, or was recorded outside the repository.' },
   },
 };
 

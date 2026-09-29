@@ -17,9 +17,9 @@ tags:
   - "seq:85"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/refused.md"
+source_file: null
 source_anchor: null
-source_checksum: f65a9536ad1558b0
+source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
 checksum: b461c55294a1aba1

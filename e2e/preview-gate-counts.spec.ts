@@ -304,9 +304,14 @@ test('every rung carries the count of items that fail there, names its specimen 
       // The house's one bounded list, in the order that claims nothing about
       // why these ids are in this sequence — they are in `/api/items`' id order.
       const bound = screen(page).locator('#gateRows ~ .bound p').first();
+      // `num()` (`screens/parts.js`) formats every count with `toLocaleString
+      // ('en-US')` — a thousand separator past 999 — and rung 2 ("tier") is
+      // the one count on this corpus that crosses it. A bare `${count}` here
+      // built a regex the comma could never match.
+      const shownCount = counts[rung]!.toLocaleString('en-US');
       await expect(bound).toHaveText(counts[rung]! > BOUND_CAP_LIST
-        ? new RegExp(`Showing the first ${BOUND_CAP_LIST} of ${counts[rung]}\\.`)
-        : new RegExp(`Showing all ${counts[rung]}\\.`));
+        ? new RegExp(`Showing the first ${BOUND_CAP_LIST} of ${shownCount}\\.`)
+        : new RegExp(`Showing all ${shownCount}\\.`));
       continue;
     }
     await expect(rows, `rung ${rung + 1} draws no list of its own`).toHaveCount(0);

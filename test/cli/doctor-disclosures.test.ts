@@ -268,17 +268,49 @@ test('doctor --json: counts and findings exclude the note; `disclosures` carries
     assert.equal(doc.findings.some((f) => f.code === 'citation_form_excused'), false);
     assert.equal(doc.findings.some((f) => f.code === 'citation_form'), true,
       'the real finding is still served, still in the array a consumer reads');
-    assert.equal(doc.disclosures.length, 1);
-    assert.equal(doc.disclosures[0]!.about, 'citation_form');
-    assert.match(doc.disclosures[0]!.message, /excused as SPECIMENS/);
+    // Asserted as the SET of disclosure codes rather than as a count, which is
+    // the shape `test/ui/read-model.test.ts` moved to for the same reason: a
+    // count breaks the next time a check grows a disclosure and says nothing
+    // about which one. `governing_spill_coverage` is the second here and
+    // arrived with `TASK-two-checks-route-their-only-disclosure-to-a-surface-
+    // nobody` — a throwaway project has never run `mycontext audit`, so
+    // `checkGoverningSpillPressure` has no projection to read and now says so
+    // instead of showing nothing at all.
+    assert.deepEqual(
+      doc.disclosures.map((f) => f.code).sort(),
+      ['citation_form_excused', 'governing_spill_coverage'],
+    );
+    const excused = doc.disclosures.find((f) => f.code === 'citation_form_excused');
+    assert.ok(excused);
+    assert.equal(excused!.about, 'citation_form');
+    assert.match(excused!.message, /excused as SPECIMENS/);
     assert.equal(doc.exitCode, code, 'the document and the process still agree');
     assert.equal(doc.totalErrors > 0, doc.exitCode === 1);
   });
 });
 
+/**
+ * **The empty case, and building the audit projection is now part of reaching
+ * it** — `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`.
+ *
+ * This test's subject is the FIELD: `disclosures` is always present, so a
+ * consumer can tell "checked, none" from a key an older build never wrote. It
+ * used to reach the empty case by writing a plain item, because a throwaway
+ * project produced no disclosure at all. It does now:
+ * `checkGoverningSpillPressure` reports that it could not look when
+ * `.audit/audit.db` has never been built, which in a fresh `mycontext init`
+ * workspace is always. `mycontext audit` builds it — one command, the very one
+ * that disclosure's own remedy names — and with the projection present the
+ * check has nothing to say and the set is empty again.
+ *
+ * Reaching the empty state by SATISFYING the check rather than by relaxing the
+ * assertion is the point: the fixture now demonstrates the remedy works, which
+ * is a stronger claim than the one it replaced.
+ */
 test('doctor --json always carries `disclosures`, as [] when there are none', () => {
   withProject((cwd) => {
     writeItem(cwd, 'TASK-a', BODY_PLAIN);
+    assert.equal(run(['audit'], cwd).code, 0, 'the fixture must actually build the projection');
     const { out } = run(['doctor', '--json'], cwd);
     const doc = JSON.parse(out) as { disclosures?: Finding[] };
     assert.deepEqual(doc.disclosures, [],

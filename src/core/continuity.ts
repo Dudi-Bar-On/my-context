@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { retryOnTransientFsError } from './rebuild.ts';
+import { writePrivateGitignore } from './private-gitignore.ts';
 import { readSeen, SEEN_FILE_SUFFIX, seenFilePath, seenIds } from './seen-file.ts';
 import { readSessionNames } from './session-names.ts';
 
@@ -346,7 +347,7 @@ export function setCarrySource(
     // Beside the file, on every write: `state/` may have no `.gitignore` yet if
     // no snapshot has ever been written here, and a session id that reaches git
     // travels with the corpus into every checkout.
-    writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+    writePrivateGitignore(dir);
 
     const body = `${JSON.stringify({
       protocol: CONTINUITY_PROTOCOL, source: sessionId, at: new Date().toISOString(),

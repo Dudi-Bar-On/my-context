@@ -16,9 +16,9 @@ tags:
   - "seq:11"
   - "state:done"
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/hoswitch.md"
+source_file: null
 source_anchor: null
-source_checksum: 1d833eab11587893
+source_checksum: null
 valid_from: 2026-08-31
 valid_until: null
 checksum: f90a53ac931ef23a

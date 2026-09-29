@@ -582,10 +582,22 @@ export function apiWatchContext(ws: Workspace, url: URL): JsonResult {
   // `core/context-share.ts` owns both, and `mycontext statusline` runs the
   // same two, so the terminal and the browser cannot disagree about one
   // number again.
+  //
+  // `sinceSeq`, not `since`, when the epoch has one: `epoch.at` is a
+  // millisecond-resolution clock reading, and CI's Ubuntu job (run
+  // 35715432299) tied it across a fast, synchronous burst of `recordAudit`
+  // calls in `test/ui/watch-model.test.ts`'s own fixture, which let `at >=`
+  // re-admit a record from BEFORE the compaction. `epoch.seq` is the
+  // `pre-compact` row's own `INTEGER PRIMARY KEY` — unique by construction —
+  // and `at` remains the fallback for the one case with no row to anchor a
+  // `seq` to: a boundary read off a transcript's own resume-rebuild marker.
+  // See `contextEpochStart`'s doc comment (`core/context-share.ts`) for the
+  // measurement.
   const read = readProjection(root, (db) => {
     const epoch = contextEpochStart(db, session);
     return shareOf(queryProjection(db, {
-      sessionId: session, kind: 'injection', ...(epoch === null ? {} : { since: epoch }),
+      sessionId: session, kind: 'injection',
+      ...(epoch === null ? {} : epoch.seq !== null ? { sinceSeq: epoch.seq } : { since: epoch.at }),
     }));
   });
   let mycontext: { tokens: number; injections: number; unrecorded: number } | null = null;
@@ -732,6 +744,18 @@ export interface Spill {
    * never as zero.
    */
   tokens: number | null;
+  /**
+   * **This row is a DISCLOSURE, not a budget loss** — `SpilledRef.neverOffered`
+   * carried through unchanged (`TASK-the-restore-tier-drops-snapshot-ids-with-
+   * no-disclosure-where`). The restore tier names an id it could not bring back
+   * — superseded, on a disabled or rationale category, hidden by a focus,
+   * already delivered, or gone from the corpus — and no budget would have taken
+   * it, so a screen must not offer "raise the budget" as the answer.
+   *
+   * ABSENT on every ordinary row, and on every row read out of a record written
+   * before the mark existed: the field is a claim, not a default.
+   */
+  neverOffered?: true;
 }
 
 function flattenSpills(records: AuditRecord[], item: string | null): Spill[] {
@@ -751,6 +775,8 @@ function flattenSpills(records: AuditRecord[], item: string | null): Spill[] {
         tier: s.tier,
         reason: s.reason,
         tokens: typeof record.tokens === 'number' ? record.tokens : null,
+        // Carried, never re-derived, and only when the record makes the claim.
+        ...(s.neverOffered === true ? { neverOffered: true as const } : {}),
       });
     }
   }

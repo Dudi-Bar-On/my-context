@@ -6,7 +6,8 @@ import { isMainEntry } from '../core/paths.ts';
 import { clearWindowState } from '../core/window-state.ts';
 import { findProjectRoot } from '../core/workspace.ts';
 import {
-  hookParseErrorLine, parseHookInput, payloadOf, readStdin, type HookPayload,
+  hookParseErrorLine, parseHookInput, payloadOf, readStdin, unrecordedHookLine,
+  type HookPayload,
 } from './io.ts';
 
 /**
@@ -211,7 +212,7 @@ export function buildSessionEndOutcome(
       // sentence distinguishes "cleared nothing" from "cleared" from "would
       // not go", so the record below is the truth rather than the intention.
       const note = clearWindowState(root, sessionId);
-      recordAudit(root, {
+      const written = recordAudit(root, {
         kind: 'hook',
         op: 'session-end',
         sessionId,
@@ -230,6 +231,23 @@ export function buildSessionEndOutcome(
       // `PreCompact` makes at the other boundary, and one mechanism should not
       // have two spellings of its one important sentence depending on which
       // hook noticed. The day this channel is surfaced, it is already there.
+      // The state WAS cleared; only the record of it was lost. That asymmetry
+      // is the reason this is disclosed rather than shrugged at: after a
+      // `/clear` the window is gone, so a row that never landed cannot be
+      // reconstructed from anything, and the handover-ask verdict this row
+      // carries for all five outcomes is the count
+      // `DEC-the-ask-and-the-writing-are-two-turns-apart-so-a-flag-is` exists
+      // to make countable. Written on the same channel and under the same
+      // caveat as the disclosure below — the platform shows a SessionEnd
+      // hook's output only on the failure branch today, and the argument for
+      // writing it anyway is made there.
+      if (!written.written) {
+        process.stderr.write(unrecordedHookLine(
+          'SessionEnd', 'session-end', written.error ?? 'unknown',
+          'this `/clear` destroyed a context window and nothing recorded what was cleared ' +
+          'or whether the handover it asked for was ever written',
+        ));
+      }
       const disclosure = discloseIgnoredAsk(root, sessionId, ask, '/clear');
       if (disclosure !== '') process.stderr.write(disclosure);
       return { action: 'cleared', note: `${note}${askNote}` };
@@ -248,9 +266,22 @@ export function buildSessionEndOutcome(
       `reason=${reason === '' ? '<absent>' : reason} is not one of ` +
       `${SESSION_END_REASONS.join(', ')}; no window state was cleared and none was ` +
       'deliberately kept — this build of my_context does not know what this reason means';
-    recordAudit(root, {
+    const unknown = recordAudit(root, {
       kind: 'hook', op: 'session-end', sessionId, hook: 'SessionEnd', note,
     });
+    // **This row is the ONLY thing that would ever say a new platform member
+    // arrived**, which is what the comment above it says in full — so losing
+    // it is the defect twice over: an unknown `reason` goes unhandled, and the
+    // one signal that it exists goes unwritten. `INV-nothing-is-dropped-
+    // silently` on the only other channel this event has.
+    if (!unknown.written) {
+      process.stderr.write(unrecordedHookLine(
+        'SessionEnd', 'session-end', unknown.error ?? 'unknown',
+        `this session ended with a reason this build does not know (${
+          reason === '' ? '<absent>' : reason}) and nothing recorded that it did — that row ` +
+        'is the only thing that would ever report a new SessionEnd reason',
+      ));
+    }
     return { action: 'unknown', note };
   } catch {
     // INV-hooks-fail-open.

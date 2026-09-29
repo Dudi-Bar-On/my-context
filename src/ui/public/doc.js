@@ -60,10 +60,12 @@
  * No `innerHTML`, anywhere. No `eval`. No `Function`. Every node on this page
  * came out of `githubNodes`, which builds them with `createElement` and
  * `textContent`, having passed every raw tag and attribute through
- * `lib/sanitize.js`'s allow-list first. This server sends no
- * `Content-Security-Policy` (retired by owner decision 2026-08-22, and
- * `server-e2e.test.ts` asserts its absence), so that structural guarantee is
- * the only one there is — which is exactly why it is structural.
+ * `lib/sanitize.js`'s allow-list first. Since 2026-09-23 this server also
+ * sends a `Content-Security-Policy` with `script-src 'self'` (owner ruling E,
+ * `DEC-the-ui-sends-a-content-security-policy-with-script-src-self`; it was
+ * absent between 2026-08-22 and then), but the structural guarantee does not
+ * lean on it: the policy is the second net, and this file is built as if it
+ * were the only one — which is exactly why it is structural.
  *
  * It also renders no console chrome, opens no stream, and holds no session.
  * A reader who opened a document wants the document.

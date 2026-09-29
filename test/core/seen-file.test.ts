@@ -161,10 +161,15 @@ test('a canonical id — a real lowercase UUID — passes through byte-stable', 
 
 test('the seen append retry budget is hot-path patience that fits the hook kill window', () => {
   // `retryOnTransientFsError` sleeps 20·(attempt+1) ms after each failed
-  // attempt, so k attempts back off for at most 10·k·(k-1) ms PER LINE — and
-  // unlike the snapshot rename, appendSeen retries per line, so its worst
-  // case scales with the number of items delivered: every line can exhaust
-  // its backoff and still succeed. This pins the budget the way
+  // attempt, so k attempts back off for at most 10·k·(k-1) ms per append.
+  //
+  // **That used to be per LINE, and since 2026-09-23 it is per CALL**:
+  // `appendSeen` writes the whole delivery through one `appendJsonlLines`, so
+  // the worst case no longer scales with the number of items delivered. The
+  // 40-line assertion below is therefore now a bound on 40 SEPARATE appends
+  // rather than on one delivery of 40 items, and it is kept at that reading —
+  // the budget it pins is the same one, and a future change that put the retry
+  // back on the line must still fit inside it. This pins the budget the way
   // SNAPSHOT_RENAME_ATTEMPTS is pinned, so neither the constant nor the
   // backoff formula can drift silently. If the formula in rebuild.ts
   // changes, re-derive the budget rather than deleting this test.

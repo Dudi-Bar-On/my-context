@@ -22,7 +22,15 @@
 import fs from 'node:fs';
 import { appendJsonlLine, healTornTail } from '../../src/core/jsonl-log.ts';
 
-const [file, code] = process.argv.slice(2);
+const [file, code, dir] = process.argv.slice(2);
+// Every argument is required. This script used to default `dir` to `.`, and on
+// 2026-09-23 a bare `node --test` at the repository root ran it with no argv,
+// so `.` was the repository and its .gitignore became `*` (release/25). A
+// fixture with no directory has nothing to run against and says so.
+if (file === undefined || code === undefined || dir === undefined) {
+  process.stderr.write('force-stat-failure: needs <file> <code> <dir>, got ' + JSON.stringify(process.argv.slice(2)) + '\n');
+  process.exit(2);
+}
 
 const real = fs.statSync;
 // `Object.defineProperty`, not `fs.statSync = …`: the property is declared
@@ -37,9 +45,9 @@ Object.defineProperty(fs, 'statSync', { value: ((target: string, ...rest: unknow
   return (real as (...a: unknown[]) => unknown)(target, ...rest);
 }) as typeof fs.statSync, configurable: true, writable: true });
 
-process.stdout.write(`${JSON.stringify(healTornTail(file!))}\n`);
+process.stdout.write(`${JSON.stringify(healTornTail(file))}\n`);
 try {
-  appendJsonlLine(process.argv[4] ?? '.', file!, { appended: true });
+  appendJsonlLine(dir, file, { appended: true });
   process.stdout.write(`${JSON.stringify({ appended: true })}\n`);
 } catch (err) {
   process.stdout.write(`${JSON.stringify({ refused: err instanceof Error ? err.message : String(err) })}\n`);

@@ -1,4 +1,5 @@
-// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
+// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items,
+//        TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where
 /**
  * The select/render/simulate/sessions/injected/status/doctor/decay read model,
  * and the route table under it.
@@ -68,6 +69,12 @@ import { writeTee } from '../../src/core/statusline-tee.ts';
 import type { Item, Relation } from '../../src/core/types.ts';
 import { VERSION } from '../../src/core/version.ts';
 import { listRepoFiles, runChecks, type Finding } from '../../src/doctor/checks.ts';
+// `ruleStoreFindings` is `apiDoctor`'s second half and is NOT in `runChecks`:
+// spec §7 keeps `doctor/checks.ts` from reaching `src/rules/` at all
+// (`test/rules/isolation.test.ts`). See the `/api/doctor` tests below.
+import { ruleStoreFindings } from '../../src/doctor/rule-store.ts';
+import { RULES_DIR_ENV } from '../../src/rules/deliver.ts';
+import { writeManifest } from '../../src/rules/manifest.ts';
 import { commandList, helpTopic, HELP_TOPICS } from '../../src/help/index.ts';
 import { pendingReview, queueAge } from '../../src/review/pending.ts';
 import { appendJsonlLine } from '../../src/core/jsonl-log.ts';
@@ -288,7 +295,7 @@ test('/api/select reads the per-session SEEN FILE, and the seen answer differs f
  * the other way.
  *
  * Read the way the hook reads it — `core/inject.ts` ·
- * `const carried = !manual && (subagent || !compacting)` · ~476 — which means
+ * `const sessionCarried = !manual && (subagent || !compacting)` · ~695 — which means
  * `session-start` and nothing else.
  */
 test('/api/select carries the cross-session carry, so the UI reads the shape the CLI renders', () => {
@@ -804,6 +811,100 @@ test('/api/simulate/sweep finds the eviction rung and names the evicted ids', ()
     // — the natural ceiling `sliderMaxFor`'s replacement reads.
     const last = body.rungs[body.rungs.length - 1];
     assert.equal(last.count, 3);
+  } finally { f.done(); }
+});
+
+/**
+ * **The restore tier's disclosure, through the two endpoints that PRICE a
+ * selection** — `TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-
+ * where`.
+ *
+ * Since that item, `selection.spilled` no longer names only items: a snapshot
+ * id the corpus has since lost is disclosed with `reason: 'unknown id'` and
+ * `neverOffered: true`. Both endpoints used to treat every spilled id as an
+ * item they could price, and said so in a `throw` — so the disclosure that was
+ * supposed to keep a compaction honest would have turned the preview into a
+ * 500, which is the same reader losing the same information through a louder
+ * door.
+ *
+ * The three cases below are the whole of it: the price of a thing that does not
+ * exist is not 0 but *nothing*; a ladder must not promise a budget would buy
+ * back what no budget was offered; and both facts are read off
+ * `Spill.neverOffered` rather than off the reason string.
+ */
+test('/api/simulate serves a snapshot id the corpus no longer has, and prices nothing for it', () => {
+  const f = fixture();
+  try {
+    const result = apiSimulate(
+      f.ws,
+      url('simulate', 'event=compact&cold=1&restore=RULE-pin-me,RULE-deleted-since'),
+    );
+    assert.equal(result.status, 200, 'a disclosure must not be a 500');
+    const body = result.body as {
+      selection: Selection; costs: { id: string; tokens: number | null }[];
+    };
+
+    const spill = body.selection.spilled.find((s) => s.id === 'RULE-deleted-since');
+    assert.ok(spill, 'the disclosure itself survives the trip through the endpoint');
+    assert.equal(spill!.tier, 'restored');
+    assert.equal(spill!.reason, 'unknown id');
+    assert.equal(spill!.neverOffered, true);
+
+    // One entry per id — the invariant `costs` states about itself — and the
+    // one that names no item carries `null` rather than a 0 that would read as
+    // a measured price.
+    const priced = body.costs.find((c) => c.id === 'RULE-deleted-since');
+    assert.ok(priced, 'the row keeps its id; a shorter costs array is the silent drop');
+    assert.equal(priced!.tokens, null);
+    const ids = new Set([
+      ...body.selection.full.map((e) => e.item.id),
+      ...body.selection.spilled.map((s) => s.id),
+    ]);
+    assert.equal(body.costs.length, ids.size, 'costs prices full ∪ spilled, no more and no less');
+    // Non-vacuity: the same call still prices a real item with a real number.
+    assert.ok(body.costs.some((c) => typeof c.tokens === 'number' && c.tokens > 0));
+  } finally { f.done(); }
+});
+
+test('/api/simulate/sweep serves a snapshot id it cannot price, and never sweeps it', () => {
+  const f = fixture();
+  try {
+    const result = apiSimulateSweep(
+      f.ws,
+      url('simulate/sweep',
+        'event=compact&cold=1&tier=restored&restore=RULE-always-use-posix-paths,RULE-deleted-since'),
+    );
+    assert.equal(result.status, 200, 'a disclosure must not be a 500');
+    const body = result.body as {
+      candidateCount: number; neverOffered: string[];
+      rungs: { threshold: number; count: number; evicted: string[] }[];
+    };
+
+    assert.deepEqual(body.neverOffered, ['RULE-deleted-since'],
+      'the id is absent from the ladder and the response says so');
+    assert.equal(body.candidateCount, 1, 'exactly the one id the budget was actually offered');
+    // The ladder is about the real candidate only: no rung names the id that
+    // no budget could ever admit.
+    for (const rung of body.rungs) {
+      assert.equal(rung.evicted.includes('RULE-deleted-since'), false);
+    }
+  } finally { f.done(); }
+});
+
+test('a snapshot id that still resolves but no budget could admit is not swept either', () => {
+  const f = fixture();
+  try {
+    // A rationale-tier item: it exists, it is active, and the restore tier can
+    // never deliver it. Pricing it as a candidate would draw a rung claiming a
+    // bigger `restored` budget brings it back.
+    const result = apiSimulateSweep(
+      f.ws,
+      url('simulate/sweep', 'event=compact&cold=1&tier=restored&restore=DEC-we-chose-sqlite'),
+    );
+    assert.equal(result.status, 200);
+    const body = result.body as { candidateCount: number; neverOffered: string[] };
+    assert.deepEqual(body.neverOffered, ['DEC-we-chose-sqlite']);
+    assert.equal(body.candidateCount, 0);
   } finally { f.done(); }
 });
 
@@ -1450,6 +1551,27 @@ function tallyOf(items: Item[], key: (i: Item) => string): Record<string, number
   return counts;
 }
 
+/**
+ * One sound `product`-tier entry, for the throwaway rule store the
+ * `/api/doctor` fault test seals and then breaks. It is a fixture store and
+ * never `src/rules/entries` — see that test.
+ */
+const RULE_STORE_ENTRY = [
+  '---',
+  'id: a-body-stops-at-the-first-heading',
+  'kind: fact',
+  'tier: product',
+  'title: a body stops at the first ## heading',
+  'truth: everything from the first `## ` heading onwards is dropped when a body is stored',
+  'breaks: the tail of a body is lost with no error, and the write reports success',
+  'example: the 2026-09-07 item whose Observations block vanished on save',
+  'check: "preventive:the write path refuses a body carrying a ## heading"',
+  '---',
+  '',
+  'True for anyone who installs the tool.',
+  '',
+].join('\n');
+
 const checksFor = (ws: Workspace, items: Item[]): Finding[] => runChecks({
   root: ws.projectRoot!,
   repoRoot: path.dirname(ws.projectRoot!),
@@ -1569,7 +1691,15 @@ test('/api/status is `status --json`\'s document, composed from the same functio
     // word-for-word. Two governing normative items saying the same words is
     // exactly what that check exists to surface.
     const reportable = findings.filter((x) => x.about === undefined);
-    assert.equal(findings.length - reportable.length, 1, 'one disclosure, and it is excluded below');
+    // Asserted as the SET of disclosure codes rather than as a count: a count
+    // breaks the next time a check grows a disclosure, and says nothing about
+    // which one. `governing_spill_coverage` is the second and arrived with
+    // `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`.
+    assert.deepEqual(
+      findings.filter((x) => x.about !== undefined).map((x) => x.code).sort(),
+      ['contradiction_drain_limits', 'governing_spill_coverage'],
+      'every `about` finding is a disclosure and is excluded below',
+    );
     assert.deepEqual(body.health, {
       errors: reportable.filter((x) => x.level === 'error' && x.acknowledged !== true).length,
       warnings: reportable.filter((x) => x.level === 'warn' && x.acknowledged !== true).length,
@@ -1737,7 +1867,17 @@ test('/api/doctor is runChecks verbatim — unfiltered, ungrouped, unsorted', ()
     const result = apiDoctor(ws, url('doctor', ''));
     assert.equal(result.status, 200);
     const { findings } = result.body as DoctorBody;
-    assert.deepEqual(findings, checksFor(ws, items),
+    // `runChecks` PLUS the rule-store disclosure, and the second half is
+    // written out rather than left to be equal by luck. `apiDoctor` appends
+    // `ruleStoreFindings` — `TASK-two-checks-route-their-only-disclosure-to-a-
+    // surface-nobody` — because a check reported in the terminal and absent
+    // from the screen is the routing defect that item is about, one door over.
+    // It cannot be in `checksFor`: `runChecks` lives in `doctor/checks.ts`,
+    // which `test/rules/isolation.test.ts` requires to reach nothing under
+    // `src/rules/` (spec §7). Against this fixture's store — the shipped one,
+    // which is sound — it contributes NOTHING, so writing it here is what
+    // keeps the assertion honest rather than accidentally true.
+    assert.deepEqual(findings, [...checksFor(ws, items), ...ruleStoreFindings(ws.projectRoot!)],
       'the array is carried, not reshaped: same order, same objects, same optional `item`');
 
     // Non-vacuity, and the shape of the screen's three groups: all three
@@ -1756,6 +1896,12 @@ test('/api/doctor is runChecks verbatim — unfiltered, ungrouped, unsorted', ()
       ['warn', 'summary_absent', 'RULE-always-use-posix-paths'],
       ['warn', 'summary_absent', 'RULE-never-log-the-customer-email'],
       ['warn', 'summary_absent', 'RULE-pin-me'],
+      // The governing-spill disclosure, added by
+      // `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`: an
+      // `about` finding, so it draws no row and is excluded from the health
+      // tally above — but `/api/doctor` carries `runChecks` VERBATIM, so it is
+      // here.
+      ['info', 'governing_spill_coverage', null],
       // `checkCorpusContradictions` (plan:contra seq:3), and it is a TRUE
       // finding this fixture builds on purpose: `enrich` clones `RULE-pin-me`
       // into `RULE-a-captured-rule`, so the two carry the same body word for
@@ -1780,6 +1926,59 @@ test('/api/doctor is runChecks verbatim — unfiltered, ungrouped, unsorted', ()
       'non-vacuity: a corpus where every finding names an item cannot test the optional case',
     );
   } finally { f.done(); }
+});
+
+/**
+ * **The screen is told what the terminal is told** —
+ * `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`.
+ *
+ * The test above proves `/api/doctor` carries the rule-store call; it cannot
+ * prove the call SAYS anything, because this fixture's store is the shipped one
+ * and the shipped one is sound. So the fault is planted here, against a store
+ * of this test's own under `MYCONTEXT_RULES_DIR` — never `src/rules/entries`,
+ * which `KNOWN-running-the-test-suite-can-leave-the-shipped-rule-store` is
+ * about.
+ *
+ * `mycontext doctor --json` is held to the same thing by
+ * `test/cli/doctor-rule-store.test.ts`. Two surfaces, one disclosure, and P5's
+ * complaint — *"the disclosure is routed to a surface nobody is on"* — answered
+ * on both.
+ */
+test('/api/doctor carries the rule-store disclosure when the store cannot be verified', () => {
+  const f = fixture();
+  const store = mkdtempSync(path.join(tmpdir(), 'myctx-rm-rulestore-'));
+  const before = process.env[RULES_DIR_ENV];
+  try {
+    writeFileSync(path.join(store, 'fact.md'), RULE_STORE_ENTRY, 'utf8');
+    writeManifest(store);
+    writeFileSync(path.join(store, 'manifest.json'), '{ this is not json', 'utf8');
+    process.env[RULES_DIR_ENV] = store;
+
+    const result = apiDoctor(f.ws, url('doctor', ''));
+    assert.equal(result.status, 200);
+    const { findings } = result.body as DoctorBody;
+    const disclosure = findings.find((x) => x.code === 'rule_store_unverified');
+    assert.ok(disclosure, 'the screen must not be the surface that shows nothing at all');
+    assert.equal(disclosure!.level, 'info');
+    assert.equal(disclosure!.about, 'rule_store_unverified');
+    assert.deepEqual(disclosure!.remedy, { route: 'copy', argv: ['mycontext', 'rules', 'verify'] });
+    assert.match(disclosure!.message, /manifest/);
+
+    // It is a DISCLOSURE, so `/api/status`'s badge is untouched by it — the
+    // same `about` filter that keeps it out of the terminal's counts.
+    const health = apiStatus(f.ws, url('status', '')).body as StatusBody;
+    assert.equal(
+      health.health.errors + health.health.warnings + health.health.infos
+        + health.health.acknowledged,
+      findings.filter((x) => x.about === undefined).length,
+      'a note about a check must not move the number a reader reads as work',
+    );
+  } finally {
+    if (before === undefined) delete process.env[RULES_DIR_ENV];
+    else process.env[RULES_DIR_ENV] = before;
+    removeTree(store);
+    f.done();
+  }
 });
 
 test('/api/decay is computeDecay over the ledger, with history() verbatim beside it', () => {

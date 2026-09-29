@@ -1,4 +1,4 @@
-// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items
+// @basis TASK-the-pinned-tier-sits-half-empty-while-sixty-nine-governing, OPENQ-does-the-pinned-tier-spend-its-spare-room-on-governing-items, TASK-two-surfaces-still-describe-importing-a-full-export-after, DEC-a-full-export-is-an-archive-to-copy-back-never-an-artefact
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -10,6 +10,7 @@ import { splitProvenance } from '../../src/mcp/provenance.ts';
 import { TOOL_NAMES, createRegistry } from '../../src/mcp/tools.ts';
 import { RESERVED_TOOLS, toolDescriptions } from '../../src/help/index.ts';
 import { runCli } from '../../src/cli/index.ts';
+import { FULL_EXPORT_REFUSAL } from '../../src/pack/import.ts';
 import { parseItem, renderItem } from '../../src/core/item.ts';
 import { extraFieldNames, resolveConfig } from '../../src/core/config.ts';
 import { updateItem } from '../../src/core/mutate.ts';
@@ -2110,6 +2111,65 @@ test('preview_pack_import: previews an artefact and never imports it', () => {
     assert.match(out, new RegExp(`mycontext pack import ${artefact.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
 
     // Nothing actually landed: no item, and no import record.
+    assert.match(registry.call('query_items', { type: 'constraint' }), /no items match/);
+    assert.match(registry.call('preview_pack_import', {}), /no packs have been imported/);
+  } finally {
+    removeTree(cwd);
+    removeTree(source);
+  }
+});
+
+/**
+ * Rests on TASK-two-surfaces-still-describe-importing-a-full-export-after,
+ * DEC-a-full-export-is-an-archive-to-copy-back-never-an-artefact.
+ *
+ * Lane 3.5 found `preview_pack_import` (mcp/tools.ts) answering a `kind:
+ * export` artefact with the withdrawn "pass --name" message, and found it
+ * for the SAME reason `cli/commands/pack.ts` had the bug before this task:
+ * the refusal ran AFTER `planImport`, so a real export's own unprojected
+ * `config.json` — every category's full definition, `profile`, `budgets` —
+ * hit `refusePackConfig` (`pack/import.ts` step 2) first and threw about a
+ * config merge, wrong words for what is actually wrong. This is built
+ * against a REAL export projection (`mycontext export --out <dir>`, run for
+ * real below), not a hand-shaped `meta: { kind: 'export' }` object — the
+ * artefact under test is exactly the one thing a hand-built manifest cannot
+ * honestly stand in for.
+ *
+ * Pins `FULL_EXPORT_REFUSAL` (`pack/import.ts`) verbatim in the thrown
+ * error — the same string `cli/commands/pack.ts` and `cli/index.ts`'s
+ * `planPack` import and print, so a drift here is a drift on every door —
+ * and asserts nothing landed: no item, and no import record.
+ */
+test('preview_pack_import: a full export is refused with FULL_EXPORT_REFUSAL before planImport runs', () => {
+  const source = mkdtempSync(path.join(tmpdir(), 'myctx-tools-export-source-'));
+  const cwd = project();
+  try {
+    assert.equal(runCli(['init'], source, () => {}), 0);
+    assert.equal(runCli([
+      'add', '--summary-omitted', 'constraint', 'Pool capped at 20', '--yes',
+    ], source, () => {}), 0);
+    const exported = path.join(source, 'exported');
+    // A REAL full export — no `--as-pack` — so `manifest.kind === 'export'`
+    // and `config.json` is the workspace's own, unprojected.
+    assert.equal(runCli(['export', '--out', exported], source, () => {}), 0);
+
+    const registry = createRegistry(cwd);
+    assert.throws(
+      () => registry.call('preview_pack_import', { path: exported, name: 'anything' }),
+      (err: unknown) => {
+        assert.ok(err instanceof Error, 'threw a non-Error');
+        assert.equal(err.message, FULL_EXPORT_REFUSAL, `not verbatim: ${err.message}`);
+        assert.equal(/pass --name/i.test(err.message), false, `still asks for name: ${err.message}`);
+        assert.equal(
+          /cannot be merged/i.test(err.message), false,
+          `planImport's config-merge refusal fired instead: ${err.message}`,
+        );
+        return true;
+      },
+    );
+
+    // Nothing landed: no item, and no import record — the preview never
+    // reached `planImport`, let alone anything that writes.
     assert.match(registry.call('query_items', { type: 'constraint' }), /no items match/);
     assert.match(registry.call('preview_pack_import', {}), /no packs have been imported/);
   } finally {

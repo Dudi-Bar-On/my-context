@@ -82,7 +82,7 @@ test('the markdown renderer shows a script tag, it does not run one', async ({ p
  * its narrowest form: a missing SCREEN is a reportable difference, and this one
  * is excused only because a dated, owner-approved ruling retired it.
  */
-test('the mockup rail offers its twenty-one screens in order, and the app shares twenty of them',
+test('the mockup rail offers its twenty-one screens in order, and the app shares eighteen of them',
   async ({ page }) => {
     const faults = await openMockup(page);
 

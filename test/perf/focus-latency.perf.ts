@@ -34,7 +34,67 @@
  * IS asserted is the thing that would actually be a regression — that reading
  * the focus is not doing per-corpus work — by pinning it well under a
  * millisecond, three orders of magnitude below the ceiling.
+ *
+ * ── Trustworthiness of the JIT-with-focus ceiling, established 2026-09-22 ───
+ *
+ * CI run 35725630027 attempt 1 (ubuntu-latest, commit 4c19d8f5) failed 'the
+ * JIT hook stays under the 50ms p95 ceiling with a focus set' at p95 74.1ms
+ * against the 50ms ceiling; attempt 2 on the identical commit passed. The
+ * sibling hit-path test in `jit-latency.perf.ts` (same corpus size, same
+ * `runPreToolUse` call, no focus set) passed on both attempts. Per the
+ * owner's standing rule — a ceiling is never widened without the owner's
+ * word — `TASK-a-perf-ceiling-on-the-jit-hook-fails-on-the-hosted-ubuntu`
+ * asks the measurement to be made trustworthy before the ceiling is judged,
+ * not for the ceiling itself to move. What was checked here, rather than
+ * assumed:
+ *
+ *   - **Warm-up.** `measure()` below discards `WARMUP` (20) calls before
+ *     sampling, and those 20 calls run the IDENTICAL closure the 200 measured
+ *     calls run — same corpus, same target path, same focus already set. So
+ *     anything a first call pays once — module init, the `globToRegExp`
+ *     pattern cache in `core/paths.ts` (compiled once per pattern text, then
+ *     reused), cold file-cache reads — is paid during warm-up and absent from
+ *     the sampled window.
+ *   - **One-time work in the focus-set path.** `setFocus` runs ONCE, before
+ *     `measure()` is called at all, not inside the timed closure. Inside the
+ *     closure, `runPreToolUse` → `readFocus` does one small `readFileSync`
+ *     per call (separately pinned under 1ms by the test above), then
+ *     `matchesFocus`/`focusHides` and `danglingEdges` (`core/select.ts`,
+ *     `core/focus.ts`) run over `eligibleAll` — bounded by `SCOPED_ITEMS`
+ *     (40), the same set the hit-path test filters to, never the 5,000-item
+ *     corpus. None of that is one-time setup that leaked into the sampled
+ *     window: it is exactly the work a real PreToolUse call repeats on every
+ *     invocation while a focus is active, so it stays IN the measured loop —
+ *     moving it to warm-up would hide a cost a user with a focus set actually
+ *     pays on every hook call.
+ *   - **Sensitivity to a single hiccup.** The p95 here is still computed the
+ *     way `jit-latency.perf.ts` computes its own — `floor(n * 0.95)` over 200
+ *     sorted samples, the 190th-ranked sample with ten samples above it, not
+ *     a maximum-in-disguise the way a 20-sample p95 would be.
+ *     `TASK-five-perf-files-index-the-percentile-one-rank-high-and-their`
+ *     (`hooks/12q`) already names this file as one of five whose index is one
+ *     rank high against nearest-rank, with baselines that need re-deriving
+ *     together on a quiet machine — a separate, broader task, deliberately
+ *     NOT done here. What this item DOES add: the assertion below now prints
+ *     min/median/max alongside the p95, the way `session-start-latency.perf.ts`
+ *     already does, so a future red states its own shape instead of one
+ *     number with no context.
+ *
+ * The Ubuntu log for the failing attempt (CI run 35725630027, job 4) supports
+ * reading the 74.1ms result as contention rather than a code regression,
+ * though this file draws no conclusion from that — the three-consecutive-run
+ * check this item's closing condition asks for is the CONTROLLER's to run.
+ * In that SAME job, minutes later, every other perf test that prints a
+ * distribution showed a fat tail against its own median: `post-compact` p95
+ * 1.4ms but max 155.8ms against a 0.7ms median; `session-start` p95 129.8ms,
+ * max 278.5ms against a 26.7ms median; `subagent-start` p95 355.0ms, max
+ * 562.5ms against an 82.2ms median, its own arrival-order slope climbing from
+ * 55.3ms to 112.0ms across the run. That is the shape `test/helpers/perf.ts`
+ * and `session-start-latency.perf.ts` both call "every statistic up together
+ * → the machine, re-run" — and it is the shape this job shows everywhere it
+ * printed enough to tell, this test included.
  */
+// @basis TASK-a-perf-ceiling-on-the-jit-hook-fails-on-the-hosted-ubuntu
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
@@ -98,7 +158,44 @@ function p95(samples: number[]): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))];
 }
 
-function measure(fn: (i: number) => void): number {
+interface Distribution {
+  readonly n: number;
+  readonly min: number;
+  readonly median: number;
+  readonly p95: number;
+  readonly max: number;
+}
+
+/**
+ * The whole shape, not just the number the ceiling below asserts — `min` and
+ * `median` are what tell a future reader "this is the machine" from "this is
+ * the code" (see this file's header, and `session-start-latency.perf.ts`,
+ * which this mirrors). `p95` keeps this file's own `floor(n * 0.95)` index
+ * rather than switching to `test/helpers/perf-stats.ts`'s nearest-rank form:
+ * that switch, and re-deriving the baseline it would move, is
+ * `TASK-five-perf-files-index-the-percentile-one-rank-high-and-their`
+ * (`hooks/12q`), a separate task this item deliberately leaves alone.
+ */
+function distribution(samples: number[]): Distribution {
+  const sorted = [...samples].sort((a, b) => a - b);
+  return {
+    n: sorted.length,
+    min: sorted[0],
+    median: sorted[Math.floor(sorted.length * 0.5)],
+    p95: p95(samples),
+    max: sorted[sorted.length - 1],
+  };
+}
+
+/** One line carrying the whole shape, for both the console log and a failure message. */
+function report(label: string, d: Distribution): string {
+  return (
+    `${label} p95 ${d.p95.toFixed(1)}ms over ${d.n} samples ` +
+    `(min ${d.min.toFixed(1)}, median ${d.median.toFixed(1)}, max ${d.max.toFixed(1)}ms)`
+  );
+}
+
+function measure(fn: (i: number) => void): Distribution {
   for (let i = 0; i < WARMUP; i++) fn(-1 - i);
   const samples: number[] = [];
   for (let i = 0; i < ITERATIONS; i++) {
@@ -106,7 +203,7 @@ function measure(fn: (i: number) => void): number {
     fn(i);
     samples.push(Number(process.hrtime.bigint() - started) / 1e6);
   }
-  return p95(samples);
+  return distribution(samples);
 }
 
 test('reading the focus costs a file read, not a walk of the corpus', () => {
@@ -123,10 +220,12 @@ test('reading the focus costs a file read, not a walk of the corpus', () => {
     setFocus(root, { tags: ['billing'], categories: [], scope: [] }, 'human');
     const present = measure(() => { readFocus(root); });
 
-    console.log(`focus read p95: no focus ${absent.toFixed(3)}ms, focus set ${present.toFixed(3)}ms`);
+    console.log(
+      `focus read p95: no focus ${absent.p95.toFixed(3)}ms, focus set ${present.p95.toFixed(3)}ms`,
+    );
     assert.ok(
-      absent < READ_CEILING_MS && present < READ_CEILING_MS,
-      `the focus read is ${absent.toFixed(3)}ms / ${present.toFixed(3)}ms p95 against a ` +
+      absent.p95 < READ_CEILING_MS && present.p95 < READ_CEILING_MS,
+      `the focus read is ${absent.p95.toFixed(3)}ms / ${present.p95.toFixed(3)}ms p95 against a ` +
       `${READ_CEILING_MS}ms bound. Over that, it is doing something other than reading one ` +
       `small file — the corpus is 5,000 items and this must not scale with it.`,
     );
@@ -154,11 +253,13 @@ test('the JIT hook stays under the 50ms p95 ceiling with a focus set', () => {
     });
 
     assert.match(last, /hidden by focus/, 'the focus did no filtering, so this measures nothing');
-    console.log(`JIT p95 with a focus set: ${measured.toFixed(1)}ms`);
-    assert.ok(
-      measured < CEILING_MS,
-      `JIT hit-path p95 with a focus was ${measured.toFixed(1)}ms, over the ${CEILING_MS}ms ceiling`,
-    );
+    // Printed with the same shape `session-start-latency.perf.ts` uses, so a
+    // future red (see this file's header for run 35725630027's 74.1ms) states
+    // its own diagnosis: every statistic up together points at the runner,
+    // only the median moving points at the code.
+    const line = `${report('JIT hit-path (focus set)', measured)} against a ${CEILING_MS}ms ceiling`;
+    console.log(line);
+    assert.ok(measured.p95 < CEILING_MS, line);
   } finally {
     removeTree(cwd);
   }

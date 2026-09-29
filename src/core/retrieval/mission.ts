@@ -95,8 +95,17 @@ export interface MissionRequest {
   repoRoot: string;
   /** Where the subagent writes what it found. */
   resultPath: string;
-  /** What the archive was queried with — identifiers, not passages. */
-  query: { names: string[]; terms: string[] } | null;
+  /**
+   * What the archive was queried with — identifiers, not passages.
+   *
+   * `note` is why an EMPTY answer to this query is not an answer about the
+   * archive — `TASK-nine-sites-report-a-measured-zero-for-something-they-could`,
+   * carried from `searchArchive` through the composer verbatim. It is optional
+   * because the overwhelming majority of missions have nothing to say here, and
+   * `null`/absent both mean the same thing: the query was searched over an
+   * index that covers the archive.
+   */
+  query: { names: string[]; terms: string[]; note?: string | null } | null;
   pointers: MaterialPointer[];
   /** Anchor ids the owner chose, which sharpen the search — his ruling. */
   anchors?: string[];
@@ -196,6 +205,15 @@ export function missionText(request: MissionRequest): string {
     }
     if (request.query.terms.length > 0) {
       out.push(`**Terms** ${request.query.terms.map((term) => `\`${term}\``).join(', ')}`);
+    }
+    // **WHY AN EMPTY MATERIAL TABLE BELOW IS NOT AN ANSWER**, in the same voice
+    // as the two lines above it and beside them rather than instead of them.
+    // The subagent reading this file has no screen to ask and no second
+    // request to make: without this line, "open it at these points" naming none
+    // is read as *the archive holds nothing about this*, and that is what gets
+    // reported back.
+    if (request.query.note !== undefined && request.query.note !== null) {
+      out.push(`**Coverage** ${request.query.note}`);
     }
   }
   out.push('');

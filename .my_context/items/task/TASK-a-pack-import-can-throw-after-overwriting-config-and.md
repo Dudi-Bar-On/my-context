@@ -16,17 +16,17 @@ tags:
   - partial-write
   - "plan:store"
   - "seq:7"
-  - "state:todo"
+  - "state:done"
 origin: human
 source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-09-13
 valid_until: null
-checksum: f03a9f2b82f9e344
+checksum: 0314bbbe9742a6dc
 plan: store
 seq: "7"
-state: todo
+state: done
 priority: "2"
 ---
 

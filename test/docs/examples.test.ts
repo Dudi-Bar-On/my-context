@@ -1,8 +1,9 @@
+// @basis STD-documentation-is-regenerated-not-edited-to-match, TASK-release-phase-1-the-repository-tells-the-truth, TASK-the-documented-status-example-carries-the-generating-machine, TASK-the-documented-doctor-example-depends-on-whether-mycontext
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
-  cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync,
+  cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -13,6 +14,7 @@ import {
   runExampleInFixture, scrubOutput, splitCommand, splitPipeline, toDocumentMarkdown, yearOutDay,
 } from '../../scripts/gen-doc-examples.ts';
 import { canonicalizeNearestExisting } from '../../src/core/paths.ts';
+import { NOTHING_PINNED_SENTENCE } from '../../src/core/pin-sentence.ts';
 import { materializeDocFixture } from '../../scripts/doc-fixture.ts';
 import { removeTree } from '../helpers/tmp.ts';
 
@@ -666,6 +668,132 @@ test('a global layer on the generating machine cannot reach a documented example
 });
 
 /**
+ * The leak `materializeDocFixture` (`scripts/doc-fixture.ts`) had until
+ * release/14: `.audit/audit.jsonl` and `state/*.seen.jsonl`, under the
+ * committed `test/fixtures/docs-workspace` itself, are what a live hook
+ * writes when a real Claude Code session touches a file under this
+ * checkout's OWN fixture directory. Neither is committed —
+ * `git show HEAD:test/fixtures/docs-workspace/.my_context/.audit/.gitignore`
+ * (and the `state` equivalent) both answer "exists on disk, but not in
+ * 'HEAD'". The `*` `.gitignore` beside each is written by this project's own
+ * runtime the first time it creates the directory (`ensureLogDir`,
+ * `src/core/audit.ts`; `core/ledger.ts`/`core/continuity.ts` for `state/`),
+ * never committed, so both directories are absent from a fresh clone and
+ * present only on a machine where someone worked the fixture directly.
+ * `cpSync` copied them into every materialized workspace regardless, so
+ * `ledger.sessionCount()` (`src/core/ledger.ts`) — which `mycontext status`
+ * prints as `sessionsRecorded` — read one real session on the generating
+ * machine's own disk and zero everywhere else: the committed `mycontext
+ * status` block said "1 session(s) recorded", a fresh clone's fixture run
+ * said "no sessions recorded yet".
+ *
+ * This plants exactly that class of file on the fixture's OWN disk location
+ * — a rotated audit segment and a matching seen-state file, named so they
+ * cannot collide with whatever a maintainer's own machine already left there
+ * — and asserts `runExampleInFixture('status')` does not move. Proved by
+ * removal: reverting `isDerivedFixtureState`'s `.audit`/`state` filtering
+ * (doc-fixture.ts) turns this red, because the planted session becomes the
+ * one difference between the baseline and the polluted run.
+ */
+test('a session recorded on the fixture directory\'s own disk cannot reach a documented example', () => {
+  const auditDir = path.join(
+    REPO_ROOT, 'test', 'fixtures', 'docs-workspace', '.my_context', '.audit');
+  const stateDir = path.join(
+    REPO_ROOT, 'test', 'fixtures', 'docs-workspace', '.my_context', 'state');
+  const plantedAudit = path.join(auditDir, 'audit.19700101T000000000Z-999999.jsonl');
+  const plantedSeen = path.join(stateDir, '00000000-r14-plant__probe-4fefbed4dbba.seen.jsonl');
+  assert.ok(!existsSync(plantedAudit), 'a previous run of this test left its plant behind');
+  assert.ok(!existsSync(plantedSeen), 'a previous run of this test left its plant behind');
+
+  // Neither directory is committed (see the docblock above and
+  // doc-fixture.ts's) — a fresh checkout has no `.audit/` or `state/` under
+  // the fixture at all, only a machine where the hook has already run there
+  // does. So this test is the thing that creates them on CI, and it is the
+  // thing that must clean them back up: `existsSync` is read BEFORE mkdir,
+  // and a directory this test created is removed, never one that predates it
+  // (the owner's own hook-written `.audit`/`state`, on a machine that has
+  // them, is left exactly as found).
+  const auditDirExisted = existsSync(auditDir);
+  const stateDirExisted = existsSync(stateDir);
+  mkdirSync(auditDir, { recursive: true });
+  mkdirSync(stateDir, { recursive: true });
+
+  const baseline = runExampleInFixture('status');
+  try {
+    writeFileSync(plantedAudit, `${JSON.stringify({
+      protocol: 'my_context/audit@2', kind: 'injection', op: 'jit',
+      sessionId: '00000000-r14-plant',
+      hook: 'PreToolUse', path: 'docs/prd-candidates-catalogue-and-search.json',
+      injected: [{ id: 'CONST-postgres-pool-capped-at-20', tier: 'jit' }],
+      tokens: 1, note: 'release/14 hermeticity probe', at: '1970-01-01T00:00:00.000Z',
+    })}\n`);
+    writeFileSync(plantedSeen, `${JSON.stringify({
+      protocol: 'mycontext-seen/1', id: 'CONST-postgres-pool-capped-at-20', tier: 'jit',
+      at: '1970-01-01T00:00:00.000Z', checksum: '0000000000000000',
+    })}\n`);
+
+    assert.equal(runExampleInFixture('status'), baseline,
+      "a session recorded on the fixture directory's own disk — not the materialized copy — " +
+      'reached a documented example; isDerivedFixtureState (doc-fixture.ts) no longer filters ' +
+      '.audit/ or state/');
+  } finally {
+    rmSync(plantedAudit, { force: true });
+    rmSync(plantedSeen, { force: true });
+    if (!auditDirExisted) removeTree(auditDir);
+    if (!stateDirExisted) removeTree(stateDir);
+  }
+});
+
+/**
+ * The other leak `runExample`'s child had until release/15, measured on the
+ * Ubuntu job of CI run 35719545257: `mycontext doctor`'s `cli_on_path` check
+ * (`src/doctor/cli-on-path.ts`) answers a question about the MACHINE, not
+ * the corpus — whether `mycontext` resolves on PATH at all, and if so, to
+ * this checkout. `runOne`'s child used to inherit the host's own PATH
+ * verbatim, so a runner that never ran `npm link` printed
+ * `cli_not_on_path [warn]` in the generated block while a maintainer's own
+ * linked machine printed 0 findings — the documented `doctor` block was a
+ * fact about whether the GENERATING machine happened to have the package
+ * linked, exactly the release/14 shape one level over.
+ *
+ * `hermeticPath` (`scripts/gen-doc-examples.ts`) is the fix: it prepends a
+ * temp directory whose `mycontext`/`mycontext.cmd` resolve, by
+ * `readShimTarget`'s own reading, to this checkout's real CLI, ahead of a
+ * host PATH with every foreign `mycontext` shim already scrubbed out of it.
+ * This proves it holds regardless of what the HOST PATH itself carries: run
+ * once against the real host PATH, then again with every directory that
+ * holds a `mycontext`/`mycontext.cmd` of ANY kind — matching or not —
+ * stripped out of a copy of it, simulating "not on the host PATH at all",
+ * the CI condition. (Stricter than `scrubForeignMycontextShims`, which keeps
+ * a shim that already matches this checkout — production doesn't need it
+ * removed, since its own prepended shim would shadow it harmlessly either
+ * way, but this test wants to prove the fixture doesn't depend on the host
+ * having one at all, matching or not.)
+ */
+test('runExampleInFixture(\'doctor\') does not depend on whether the host PATH carries a mycontext',
+  () => {
+    const savedPath = process.env.PATH;
+    try {
+      const withHostPath = runExampleInFixture('doctor');
+      assert.doesNotMatch(withHostPath, /cli_not_on_path|cli_path_mismatch/, withHostPath);
+
+      const delimiter = process.platform === 'win32' ? ';' : ':';
+      const stripped = (savedPath ?? '').split(delimiter).filter((dir) => {
+        if (dir === '') return true;
+        return !['mycontext', 'mycontext.cmd'].some((name) => existsSync(path.join(dir, name)));
+      }).join(delimiter);
+      process.env.PATH = stripped;
+
+      assert.equal(runExampleInFixture('doctor'), withHostPath,
+        "`mycontext doctor` in a generated example moved when every mycontext already on the " +
+        'host PATH was removed — the doc fixture is not hermetic against the host\'s own PATH');
+    } finally {
+      if (savedPath === undefined) delete process.env.PATH;
+      else process.env.PATH = savedPath;
+    }
+  });
+
+/**
  * `supportsUnicode` gives `MYCONTEXT_ASCII` precedence over
  * `MYCONTEXT_UNICODE` on purpose — the safe rendering wins when a terminal
  * asks for both. So forcing `MYCONTEXT_UNICODE=1` is not enough on its own: a
@@ -794,6 +922,23 @@ test('scrubOutput replaces the workspace path and normalizes separators', () => 
 });
 
 /**
+ * The same substitution one level up: this repository's OWN root is exactly
+ * as machine-specific as the fixture's, and `REPO_ROOT` here is derived from
+ * `import.meta.dirname` the same way the module under test derives it —
+ * never a literal path, so this test is exactly as portable as the code it
+ * checks.
+ */
+test('scrubOutput replaces the repository root and normalizes separators', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'myctx-scrub-'));
+  try {
+    const text = `resolves to ${path.join(REPO_ROOT, 'src', 'cli', 'index.ts')}`;
+    assert.equal(scrubOutput(text, dir), 'resolves to <repo>/src/cli/index.ts');
+  } finally {
+    removeTree(dir);
+  }
+});
+
+/**
  * That `runExample` is actually wired to `scrubOutput`, asserted against a
  * command that really does print an absolute path.
  *
@@ -806,7 +951,15 @@ test('runExample scrubs the workspace path out of what a command prints', () => 
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-init-'));
   try {
     const out = runExample('init', dir);
-    assert.equal(out, 'my_context: initialized <workspace>/.my_context', out);
+    // Two lines since B13 (owner ruling D, 2026-09-21): `init` now also prints
+    // the first-session sentence right after "initialized" — see
+    // `src/core/pin-sentence.ts`. The scrub is what this test is actually
+    // about, so only the first line is asserted on by value; the second is
+    // pinned by `test/cli/init-pinned-sentence.test.ts` instead, so this file
+    // does not carry a second copy of that wording to drift from it.
+    const [first, second] = out.split('\n');
+    assert.equal(first, 'my_context: initialized <workspace>/.my_context', out);
+    assert.equal(second, NOTHING_PINNED_SENTENCE, out);
   } finally {
     removeTree(dir);
   }
@@ -835,7 +988,10 @@ test('scrubOutput leaves backslashes that are not path separators alone', () => 
 test('scrubOutput refuses to emit a path it could not scrub', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'myctx-scrub-'));
   try {
-    assert.throws(() => scrubOutput(`built from ${REPO_ROOT}`, dir), /machine-specific path/);
+    // The repository root is no longer a leak — it is scrubbed to `<repo>`,
+    // proved by the test above. What still has no token is a temp root that
+    // is neither the workspace under test nor this repository.
+    assert.equal(scrubOutput(`built from ${REPO_ROOT}`, dir), 'built from <repo>');
     assert.throws(() => scrubOutput(`somewhere under ${tmpdir()}`, dir), /machine-specific path/);
     assert.equal(scrubOutput('nothing machine-specific here', dir),
       'nothing machine-specific here');

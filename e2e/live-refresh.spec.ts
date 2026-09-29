@@ -67,10 +67,18 @@ import { recordAudit } from '../src/core/audit.ts';
  * `an id on a different screen opens the pane too`: the router keeps every
  * visited screen in the DOM, so an unscoped selector finds whichever screen was
  * visited first. The fix is the same one, applied at the shell boundary.
+ *
+ * **`[data-id]`, not `button.linkid`.** The Preview screen's own "Delivered"
+ * rows are `el('button', 'row')` with a `dataset.id` (`screens/preview.js`
+ * `deliveredBound`, ~1393) — `.row`, never `.linkid` — and it is `[data-id]`
+ * that `app.js`'s delegated click handler actually opens the pane on (~1609:
+ * `event.target.closest('[data-id]')`), not any particular button class.
+ * `.linkid` is one shape that carries it; `.row` is another. Selecting on the
+ * mechanism itself is what both screens' item buttons share.
  */
 async function firstLink(page: Page) {
-  const link = page.locator('#screen button.linkid').first();
-  await expect(link, 'no button.linkid rendered — this test cannot measure what it is for')
+  const link = page.locator('#screen [data-id]').first();
+  await expect(link, 'no [data-id] control rendered — this test cannot measure what it is for')
     .toBeVisible({ timeout: 15_000 });
   return link;
 }
@@ -80,7 +88,14 @@ test('a mutation while an item pane is open and the page is scrolled: the pane s
 
   // Preconditions the acceptance condition names, established in order.
   const link = await firstLink(page);
-  const clickedId = (await link.textContent() ?? '').trim();
+  // `data-id`, not `textContent()`: the row this now targets carries a tier
+  // chip (`◆ pinned`, …) beside the id, so its whole text is no longer the
+  // bare id `.linkid` used to be. `dataset.id` is what both `linkId()` and
+  // `preview.js`'s own row set — the SAME attribute the shell's delegated
+  // click handler reads — so it names the id precisely regardless of what
+  // else the control draws beside it.
+  const clickedId = await link.getAttribute('data-id') ?? '';
+  expect(clickedId, 'the control has no data-id to open the pane with').not.toBe('');
   await link.click();
   await expect(page.locator('#pane'), 'the pane did not open').toBeVisible({ timeout: 10_000 });
   await expect(page.locator('#paneid')).toHaveText(clickedId);

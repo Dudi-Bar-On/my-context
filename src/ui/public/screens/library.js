@@ -249,11 +249,24 @@ function entryRow(ctx, { href, title, marks }) {
  * only the Library screen, which owns the scrolling box, passes a fourth.
  */
 function paintTutorials(ctx, host, body, fixed = host) {
-  const rollup = el('p', 'small');
-  rollup.append(...ctx.t('tu.rollup', {
-    done: body.heRollup.done, total: body.heRollup.total,
-  }));
-  fixed.append(rollup);
+  // **`heRollup === null` is UNMEASURED, and it is drawn as a refusal rather
+  // than as `0 of 0`.** `GET /api/tutorials` answers it when it never read the
+  // manifest at all — it would not parse, or no project is open — and the
+  // reason travels beside it in `unmeasured`
+  // (`TASK-nine-sites-report-a-measured-zero-for-something-they-could`, M7).
+  // The endpoint used to answer `{ done: 0, total: 0 }` in both cases, which
+  // this line then drew as a clean translation-debt measurement over a file
+  // nothing had opened. Untranslated, like every other `errorNote` on this
+  // screen: it carries the server's own words about the reader's own file.
+  if (body.heRollup === null) {
+    fixed.append(errorNote(body.unmeasured ?? 'the tutorial roster could not be measured.'));
+  } else {
+    const rollup = el('p', 'small');
+    rollup.append(...ctx.t('tu.rollup', {
+      done: body.heRollup.done, total: body.heRollup.total,
+    }));
+    fixed.append(rollup);
+  }
 
   if (body.tutorials.length === 0) {
     const none = el('p', 'small');
@@ -840,9 +853,14 @@ export async function render(root, ctx) {
 
   const [tutBody, docBody, corpusBody] = await Promise.all([
     ctx.api('/api/tutorials').then((b) => {
+      // `heRollup: null` is a VALID answer and not a malformed one — it is the
+      // endpoint saying it never read the manifest, with the reason in
+      // `unmeasured` (`TASK-nine-sites-report-a-measured-zero-for-something-
+      // they-could`, M7). Refusing it here would turn a disclosure back into
+      // an error note with none of the endpoint's own words in it.
       if (b === null || typeof b !== 'object' || !Array.isArray(b.tutorials)
-        || b.heRollup === null || typeof b.heRollup !== 'object'
-        || typeof b.heRollup.done !== 'number' || typeof b.heRollup.total !== 'number') {
+        || (b.heRollup !== null && (typeof b.heRollup !== 'object'
+          || typeof b.heRollup.done !== 'number' || typeof b.heRollup.total !== 'number'))) {
         throw new Error('library: /api/tutorials answered without a tutorials array and a heRollup');
       }
       return b;

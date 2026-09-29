@@ -69,7 +69,24 @@ export interface ManifestRow {
   file: string;
   /** The entry's id, so a refusal can name the ENTRY and not only a path. */
   id: string;
-  checksum: string;
+  /**
+   * Absent exactly when `refused` is present (B12).
+   *
+   * A file the parser cannot read must never be SEALED with a checksum: a
+   * checksum only ever proves "unchanged since sealing", and sealing broken
+   * content would let a later `verify` say that about content nobody has
+   * ever read. See `refused`.
+   */
+  checksum?: string;
+  /**
+   * The parser's own refusal, when this file could not be sealed with a
+   * checksum (B12). The row is still WRITTEN — dropping it would make the
+   * manifest agree with a store it cannot describe, and the entry would then
+   * read as `unexpected` rather than as the broken entry it is — but it
+   * carries no checksum, so `verifyManifest` reports it as damage on every
+   * call rather than silently treating unreadable content as verified.
+   */
+  refused?: string;
 }
 
 /**
@@ -126,7 +143,13 @@ export interface Manifest {
   store?: StoreMeta;
 }
 
-export type Damage = 'missing' | 'altered' | 'unexpected';
+/**
+ * `refused` (B12) is a fourth kind of damage, distinct from the other three:
+ * it is not about whether the bytes changed, it is that the row was never
+ * sealed with a checksum in the first place, because the parser could not
+ * read the file when the manifest was last written.
+ */
+export type Damage = 'missing' | 'altered' | 'unexpected' | 'refused';
 
 export interface Problem {
   /** The entry id where one is known, and the file name where it is not. */
@@ -152,10 +175,193 @@ export function entryFiles(dir: string): string[] {
   return readdirSync(dir).filter((name) => name.endsWith('.md')).sort();
 }
 
+/* ══ READING THE MANIFEST, AND THE TWO "CANNOT" IT TELLS APART ═════════════ */
+
+/**
+ * **There is a manifest and nothing can read it** — which is a different fact
+ * from *there is no manifest*, and keeping them apart is the whole of
+ * `TASK-a-corrupt-manifest-makes-the-next-publish-erase-the-store`.
+ *
+ * Every read on the publish path used to be wrapped in a `catch` that answered
+ * *"then there is no manifest"* for both. A store whose `manifest.json` was one
+ * byte of junk therefore published as if it were a first publish: sixteen
+ * entries reported as `added`, the store's version reset to 1, and five
+ * published versions of changelog replaced by the single row that publish cut.
+ * It returned `ok: true`. Measured on a copy of the shipped store, 2026-09-23.
+ *
+ * A caller that genuinely wants "absent is fine" asks `readManifestIfPresent`
+ * and gets `null`; nobody gets "absent" for a file that is right there.
+ */
+export class ManifestUnreadableError extends Error {
+  /** The bare reason, without the framing sentence, for a caller composing its own. */
+  readonly reason: string;
+  constructor(reason: string) {
+    super(`${MANIFEST_FILE}: ${reason}`);
+    this.name = 'ManifestUnreadableError';
+    this.reason = reason;
+  }
+}
+
+/**
+ * **The one sentence for "the manifest could not be read", said in one place.**
+ *
+ * `verifyManifest` below and `planPublish`'s refusal (src/rules/manifest.ts)
+ * are two surfaces for the same fact, and two hand-written sentences about it
+ * would drift the way this project has already paid for. The detail a caller
+ * hands in names WHICH way it is unreadable; this adds what it costs.
+ */
+export function manifestUnreadableDetail(why: string): string {
+  return `the integrity manifest could not be read (${why}). ` +
+    `Without it nothing can say whether the rules are the ones that shipped.`;
+}
+
+/** The digest width `ALGORITHM` actually produces — derived, never a literal 64. */
+const DIGEST_HEX = new RegExp(`^[0-9a-f]{${createHash(ALGORITHM).update('').digest('hex').length}}$`);
+
+/**
+ * A manifest row is a seal or a refusal, never both and never neither (B12) —
+ * and a "checksum" that is not a digest of the declared algorithm is not a
+ * seal, because nothing on disk can ever be compared with it.
+ */
+function rowFault(row: unknown, where: string, at: number): string | null {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+    return `\`${where}[${at}]\` is not a row`;
+  }
+  const r = row as Record<string, unknown>;
+  if (typeof r.file !== 'string' || r.file === '') return `\`${where}[${at}]\` names no file`;
+  if (typeof r.id !== 'string' || r.id === '') return `\`${where}[${at}]\` (${r.file}) names no entry id`;
+  const sealed = r.checksum !== undefined;
+  const refused = r.refused !== undefined;
+  if (sealed === refused) {
+    return `the \`${where}\` row for ${r.file} carries `
+      + `${sealed ? 'both a checksum and a refusal' : 'neither a checksum nor a refusal'} — `
+      + `a row is one or the other (B12)`;
+  }
+  if (sealed && (typeof r.checksum !== 'string' || !DIGEST_HEX.test(r.checksum))) {
+    return `the \`${where}\` row for ${r.file} carries \`${String(r.checksum)}\`, which is not a `
+      + `${ALGORITHM} digest, so nothing on disk can be compared with it`;
+  }
+  if (refused && (typeof r.refused !== 'string' || r.refused === '')) {
+    return `the \`${where}\` row for ${r.file} is refused and says nothing about why`;
+  }
+  return null;
+}
+
+function changelogRowFault(row: unknown, at: number): string | null {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+    return `\`store.changelog[${at}]\` is not a row`;
+  }
+  const r = row as Record<string, unknown>;
+  if (typeof r.version !== 'number' || !Number.isInteger(r.version)) {
+    return `\`store.changelog[${at}]\` names no version`;
+  }
+  if (typeof r.at !== 'string' || r.at === '') {
+    return `\`store.changelog[${at}]\` (version ${r.version}) names no instant`;
+  }
+  if (r.note !== undefined && typeof r.note !== 'string') {
+    return `\`store.changelog[${at}]\` (version ${r.version}) carries a note that is not text`;
+  }
+  for (const field of ['added', 'changed', 'removed'] as const) {
+    const list = r[field];
+    if (!Array.isArray(list) || list.some((id) => typeof id !== 'string')) {
+      return `\`store.changelog[${at}].${field}\` (version ${r.version}) is not a list of entry ids`;
+    }
+  }
+  return null;
+}
+
+function storeBlockFault(store: unknown): string | null {
+  if (typeof store !== 'object' || store === null || Array.isArray(store)) {
+    return '`store` is present and is not a block';
+  }
+  const s = store as Record<string, unknown>;
+  if (typeof s.version !== 'number' || !Number.isInteger(s.version) || s.version < 0) {
+    return '`store.version` is not a version number';
+  }
+  if (!(s.publishedAt === null || typeof s.publishedAt === 'string')) {
+    return '`store.publishedAt` is neither an instant nor null';
+  }
+  if (!Array.isArray(s.changelog)) {
+    return '`store.changelog` is not a list, so the history in it cannot be carried forward';
+  }
+  for (let at = 0; at < s.changelog.length; at += 1) {
+    const fault = changelogRowFault(s.changelog[at], at);
+    if (fault !== null) return fault;
+  }
+  return null;
+}
+
+/**
+ * **Everything a reader of this file assumes, checked once, here.**
+ *
+ * The old reader checked one thing — that `entries` was an array — and every
+ * other field was taken on trust by whoever touched it next. `store.changelog`
+ * holding the string `"oops"` therefore reached `[row, ...previous.changelog]`
+ * in `publishStore`, which spreads a string into its characters: five real
+ * changelog rows became one real row and the four letters of `oops`, written
+ * to disk, `ok: true`. Measured 2026-09-23. A field checked where it is USED is
+ * a field checked by whoever remembers to; this is the one place that has to.
+ */
+function manifestFault(raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return 'it is not an object';
+  const m = raw as Record<string, unknown>;
+  if (typeof m.version !== 'number' || !Number.isInteger(m.version) || m.version < 1) {
+    return '`version` is not a manifest format version';
+  }
+  if (m.algorithm !== ALGORITHM) {
+    return `it declares algorithm \`${String(m.algorithm)}\` and this reader computes \`${ALGORITHM}\`, `
+      + `so not one checksum in it can be compared with the entries on disk`;
+  }
+  if (!Array.isArray(m.entries)) return 'it carries no entry list';
+  for (let at = 0; at < m.entries.length; at += 1) {
+    const fault = rowFault(m.entries[at], 'entries', at);
+    if (fault !== null) return fault;
+  }
+  if (m.working !== undefined) {
+    if (!Array.isArray(m.working)) return '`working` is present and is not a list';
+    for (let at = 0; at < m.working.length; at += 1) {
+      const fault = rowFault(m.working[at], 'working', at);
+      if (fault !== null) return fault;
+    }
+  }
+  if (m.store !== undefined) return storeBlockFault(m.store);
+  return null;
+}
+
+/**
+ * **`null` means THERE IS NO MANIFEST. Anything else that goes wrong throws.**
+ *
+ * This is the read every caller that used to write `try { readManifest(dir) }
+ * catch { /* no manifest *\/ }` wanted: the absent case is a value it can
+ * branch on, and the corrupt case can no longer be mistaken for it.
+ */
+export function readManifestIfPresent(dir: string): Manifest | null {
+  let text: string;
+  try {
+    text = readFileSync(manifestPath(dir), 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw new ManifestUnreadableError(
+      `it could not be opened (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (err) {
+    throw new ManifestUnreadableError(
+      `it is not valid JSON (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
+  const fault = manifestFault(raw);
+  if (fault !== null) throw new ManifestUnreadableError(fault);
+  return raw as Manifest;
+}
+
 export function readManifest(dir: string): Manifest {
-  const raw = JSON.parse(readFileSync(manifestPath(dir), 'utf8')) as Manifest;
-  if (!Array.isArray(raw.entries)) throw new Error(`${MANIFEST_FILE} carries no entry list`);
-  return raw;
+  const manifest = readManifestIfPresent(dir);
+  if (manifest === null) throw new ManifestUnreadableError('it is not there');
+  return manifest;
 }
 
 /**
@@ -175,8 +381,9 @@ export function verifyManifest(dir: string, sanctionedBy?: Map<string, string>):
     const problem: Problem = {
       entry: MANIFEST_FILE,
       why: 'missing',
-      detail: `the integrity manifest could not be read (${err instanceof Error ? err.message : String(err)}). ` +
-        `Without it nothing can say whether the rules are the ones that shipped.`,
+      // The same sentence `planPublish`'s refusal uses, from the same function:
+      // one fact, two surfaces, and no second wording to drift.
+      detail: manifestUnreadableDetail(err instanceof Error ? err.message : String(err)),
     };
     return { ok: false, entry: problem.entry, why: problem.why, problems: [problem] };
   }
@@ -185,6 +392,23 @@ export function verifyManifest(dir: string, sanctionedBy?: Map<string, string>):
   const listed = new Set<string>();
   for (const row of manifest.entries) {
     listed.add(row.file);
+    // B12: a row sealed with `refused` carries no checksum, so it can never
+    // "match" one — it is reported as damage on every call, independent of
+    // what is currently on disk. That is deliberate: the row records what
+    // was true when the store was last sealed, and re-parsing the file here
+    // would make `verifyManifest` a second parser to keep in sync with
+    // `parseEntry` for a question `writeManifest`/`recordWrite` already
+    // answered once, at the only moment that is allowed to change the seal.
+    if (row.refused !== undefined) {
+      problems.push({
+        entry: row.id,
+        why: 'refused',
+        detail: `${row.file} failed to parse when the store was last sealed (${row.refused}). It ` +
+          `carries no checksum and cannot be verified as unchanged. Fix the entry, then regenerate ` +
+          `the manifest.`,
+      });
+      continue;
+    }
     let text: string;
     try {
       text = readFileSync(path.join(dir, row.file), 'utf8');

@@ -579,7 +579,7 @@ function askParagraph(
  */
 export function upkeepNote(upkeep: Upkeep | null): string {
   if (upkeep === null) return '';
-  return actClause(upkeep) + discardedWriteClause(upkeep);
+  return actClause(upkeep) + unreadableStateClause(upkeep) + discardedWriteClause(upkeep);
 }
 
 /** What the upkeep DID, or `''` — the clause `upkeepNote` has always written. */
@@ -610,6 +610,26 @@ function actClause(upkeep: Upkeep): string {
     return `; the UI server upkeep stood down after ${after}`;
   }
   return '';
+}
+
+/**
+ * **A state file the upkeep could not read, said out loud once** —
+ * `swallow/11` m7, `INV-nothing-is-dropped-silently`.
+ *
+ * `discardedWriteClause` below is the precedent and this is deliberately its
+ * twin: same row, same reason, same file named in the sentence so the rate is
+ * recovered by counting rows. What differs is the direction — that one is a
+ * write that went nowhere, this one is a READ that came back with nothing and
+ * was acted on anyway.
+ *
+ * It matters more than it looks: `FRESH` is `stoodDown: false` with a zeroed
+ * failure count, so a workspace whose upkeep had stood down comes back through
+ * the cold path and spawns, and does it again on the next turn, for as long as
+ * the file stays unreadable. The reason travels from `readState`, which is the
+ * only place that knows which of the ways in this was.
+ */
+function unreadableStateClause(upkeep: Upkeep): string {
+  return upkeep.stateUnreadable === undefined ? '' : `; ${upkeep.stateUnreadable}`;
 }
 
 /**
@@ -1299,6 +1319,22 @@ export function refreshNote(report: ConversationRefresh | null): string {
   // tells a reader why the turns around it lost theirs.
   const overranMs = autoAnchors !== null && autoAnchors.ms > ANCHOR_HALF_CEILING_MS
     ? autoAnchors.ms : null;
+  /**
+   * **The probes that could not be run at all** — `null` when `probed` is a
+   * measurement.
+   *
+   * `TASK-nine-sites-report-a-measured-zero-for-something-they-could`. It is
+   * `capped`'s sibling on `AutoAnchorReport` and it is read here for `capped`'s
+   * own recorded reason: that field existed from the day the pass was written
+   * and NOTHING read it, so a run that reached part of its candidates looked
+   * exactly like a run that reached all of them. This one is the same shape
+   * one step earlier — the prose index the probes search is filled by
+   * `mycontext conversation rebuild` and NOT by the refresh above, so a turn
+   * whose probes searched an index that could not answer reports
+   * `probed: 0, found: 0` and is otherwise indistinguishable from a turn on
+   * which there was no table to find.
+   */
+  const unsearchable = autoAnchors?.unsearchable ?? null;
   const moved = report.appended + report.scanned + report.removed + agentsMoved + mirrorMoved
     + anchorsMoved + anchorsDeferred + (stoodDown === null ? 0 : 1)
     + (overranMs === null ? 0 : 1)
@@ -1315,6 +1351,10 @@ export function refreshNote(report: ConversationRefresh | null): string {
     // and NOTHING had ever read it — so the run in which a probe could not
     // reach every candidate looked exactly like the run in which it did.
     + (autoAnchors?.capped === true ? 1 : 0)
+    // **And probes that could not search**, on exactly the rule above it: it is
+    // a state nothing else on this row would ever hint at, and `probed: 0`
+    // beside it is not a measurement.
+    + (unsearchable === null ? 0 : 1)
     // **A refusal counts as movement even though nothing moved**, and it is
     // the one entry in this sum that is not about work done. It is the
     // opposite: it says the archive was not looked at, so every other number
@@ -1440,14 +1480,24 @@ export function refreshNote(report: ConversationRefresh | null): string {
   // been frozen since eleven o'clock", and a reader who is told only that
   // something is behind cannot tell those apart either.
   if (couldNotLook !== null) {
-    const worst = couldNotLook
+    // **`reduce` OVER A LIST THAT COULD BE EMPTY, which it had no initial value
+    // for.** `markAnchorsOnTurn` cannot produce that pairing today — it derives
+    // `did` from `stale.length` — but `refreshNote` accepts a
+    // `ConversationRefresh` from anywhere, and the discriminant is the obvious
+    // place a later lane would put a second "could not look" fact. It would
+    // have found out by throwing a `TypeError` inside the Stop hook, which
+    // costs the turn its whole refresh report. The clause is still SAID when
+    // no source is named: naming none is not a reason to say nothing.
+    const worst = couldNotLook.length === 0 ? null : couldNotLook
       .reduce((a, b) => ((b.behind ?? Infinity) > (a.behind ?? Infinity) ? b : a));
-    const how = worst.behind === null
-      ? `${worst.file} would not answer a stat at all`
-      : `${worst.key} is ${worst.behind} byte(s) behind its transcript`;
+    const how = worst === null
+      ? 'and it named no source, so how far behind cannot be read off this row'
+      : (worst.behind === null
+        ? `worst: ${worst.file} would not answer a stat at all`
+        : `worst: ${worst.key} is ${worst.behind} byte(s) behind its transcript`);
     parts.push(
       `the automatic anchor pass READ NOTHING and the archive is behind the files it indexes — `
-      + `${couldNotLook.length} source(s), worst: ${how}. This is NOT "there was nothing to `
+      + `${couldNotLook.length} source(s), ${how}. This is NOT "there was nothing to `
       + 'mark": the pass was never shown the turns, so anchors in them are not late, they are '
       + 'not coming until the archive catches up or `mycontext conversation rebuild` is run',
     );
@@ -1461,6 +1511,19 @@ export function refreshNote(report: ConversationRefresh | null): string {
       `an anchor probe filled its bound of ${ANCHOR_PROBE_PAGES * ANCHOR_PROBE_LIMIT} `
       + 'candidate(s), so there are turns it did not reach and anchors that will not be written '
       + 'until the bound is raised',
+    );
+  }
+  // **The probes that could not be run at all**, beside the bound that filled
+  // for the same reason: `probed: 0` is printed by nothing on this row, so the
+  // only thing that can distinguish a pass that looked and found no table from
+  // a pass that could not look for one is this sentence. It is the SEARCH
+  // module's own wording, carried through `AutoAnchorReport.unsearchable`
+  // unchanged — one condition, one spelling, so the row and the search box
+  // cannot come to describe one index two ways.
+  if (unsearchable !== null) {
+    parts.push(
+      'the automatic anchor pass could not search for tables, so the candidates it reports are '
+      + `not a measurement of this archive — ${unsearchable}`,
     );
   }
   // The stand-down, which is the budget doing its job and must still be

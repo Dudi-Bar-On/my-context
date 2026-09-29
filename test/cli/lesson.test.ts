@@ -52,7 +52,7 @@ const ACCEPT_SUMMARY = [
 ];
 
 function stage(cwd: string): { lessonId: string; keys: string[] } {
-  const created = run(['lesson', 'Migrations deadlock when run during peak traffic'], cwd);
+  const created = run(['lesson', 'Migrations deadlock when run during peak traffic', '--summary-omitted'], cwd);
   const lessonId = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
   writeFileSync(path.join(cwd, 'r.json'), CANDIDATES, 'utf8');
   const staged = run(['lesson-stage', lessonId, '--file', 'r.json'], cwd);
@@ -69,7 +69,9 @@ function stagingFile(cwd: string, lessonId: string): string {
 
 test('lesson records the lesson and prints a derivation request', () => {
   withProject((cwd) => {
-    const { code, out } = run(['lesson', 'Migrations deadlock when run during peak traffic'], cwd);
+    const { code, out } = run(
+      ['lesson', 'Migrations deadlock when run during peak traffic', '--summary-omitted'], cwd,
+    );
     assert.equal(code, 0);
     assert.match(out, /LESSON-migrations-deadlock-when-run-during-peak-traffic/);
     assert.match(out, /RULE DERIVATION REQUEST/);
@@ -78,7 +80,7 @@ test('lesson records the lesson and prints a derivation request', () => {
 
 test('the recorded lesson is active but rationale — indexed, never injected', () => {
   withProject((cwd) => {
-    run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
+    run(['lesson', 'Migrations deadlock during peak traffic', '--summary-omitted'], cwd);
     assert.match(run(['list'], cwd).out,
       cells('LESSON-migrations-deadlock-during-peak-traffic', 'lesson', 'active'));
   });
@@ -86,7 +88,7 @@ test('the recorded lesson is active but rationale — indexed, never injected', 
 
 test('lesson with an existing id re-derives without creating a duplicate', () => {
   withProject((cwd) => {
-    const first = run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
+    const first = run(['lesson', 'Migrations deadlock during peak traffic', '--summary-omitted'], cwd);
     const id = /LESSON-[a-z0-9-]+/.exec(first.out)![0];
     const again = run(['lesson', id], cwd);
     assert.equal(again.code, 0);
@@ -104,7 +106,7 @@ test('lesson with an existing id re-derives without creating a duplicate', () =>
  */
 test('lesson says "recorded" only when this call actually recorded something', () => {
   withProject((cwd) => {
-    const first = run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
+    const first = run(['lesson', 'Migrations deadlock during peak traffic', '--summary-omitted'], cwd);
     const id = /LESSON-[a-z0-9-]+/.exec(first.out)![0];
     assert.match(first.out, new RegExp(`lesson ${id} recorded`));
 
@@ -153,7 +155,7 @@ test('lesson-stage lists the staged candidates with their keys and creates no ru
 // truncated into it.
 test('lesson-stage prints a real table — headed, and not collided by a long title', () => {
   withProject((cwd) => {
-    const created = run(['lesson', 'Deploys are risky'], cwd);
+    const created = run(['lesson', 'Deploys are risky', '--summary-omitted'], cwd);
     const lessonId = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
     const longTitle = 'Run every schema migration through the staged rollout checklist before it reaches production';
     writeFileSync(path.join(cwd, 'r.json'), JSON.stringify([
@@ -193,7 +195,7 @@ test('lesson-stage prints a real table — headed, and not collided by a long ti
 
 test('lesson-stage reports rejected candidates without discarding the good ones', () => {
   withProject((cwd) => {
-    const created = run(['lesson', 'Deploys are risky'], cwd);
+    const created = run(['lesson', 'Deploys are risky', '--summary-omitted'], cwd);
     const lessonId = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
     writeFileSync(path.join(cwd, 'r.json'), JSON.stringify([
       { title: 'Good rule', directive: 'do', body: 'b' },
@@ -213,7 +215,7 @@ test('lesson-stage reports rejected candidates without discarding the good ones'
 // repository — silently widening a rule past what its author wrote.
 test('lesson-stage rejects a string scope by name instead of staging it as unscoped', () => {
   withProject((cwd) => {
-    const created = run(['lesson', 'Deploys are risky'], cwd);
+    const created = run(['lesson', 'Deploys are risky', '--summary-omitted'], cwd);
     const lessonId = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
     writeFileSync(path.join(cwd, 'r.json'), JSON.stringify([
       { title: 'Scoped rule', directive: 'do', body: 'b', scope: 'migrations/**' },
@@ -230,7 +232,7 @@ test('lesson-stage rejects a string scope by name instead of staging it as unsco
 
 test('lesson-stage rejects a candidate with no body — the schema declares it required', () => {
   withProject((cwd) => {
-    const created = run(['lesson', 'Deploys are risky'], cwd);
+    const created = run(['lesson', 'Deploys are risky', '--summary-omitted'], cwd);
     const lessonId = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
     writeFileSync(path.join(cwd, 'r.json'), JSON.stringify([
       { title: 'Bodyless rule', directive: 'do' },
@@ -297,7 +299,7 @@ test('lesson-discard removes a candidate from consideration permanently', () => 
 
 test('lesson-accept on a lesson with no staging explains the next step', () => {
   withProject((cwd) => {
-    const created = run(['lesson', 'Something happened'], cwd);
+    const created = run(['lesson', 'Something happened', '--summary-omitted'], cwd);
     const id = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
     const { code, out } = run(['lesson-accept', id, 'deadbeef'], cwd);
     assert.equal(code, 1);
@@ -402,7 +404,9 @@ function plantUnrelatedCorruptItem(cwd: string): void {
 test('lesson reports an unrelated corrupt item as a warning but still exits 0', () => {
   withProject((cwd) => {
     plantUnrelatedCorruptItem(cwd);
-    const { code, out } = run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
+    const { code, out } = run(
+      ['lesson', 'Migrations deadlock during peak traffic', '--summary-omitted'], cwd,
+    );
     assert.equal(code, 0, 'lesson recorded the item and printed the request; the unrelated corpus problem is a warning');
     assert.match(out, /my_context: error\s+.*CONST-broken\.md/);
     assert.match(out, /RULE DERIVATION REQUEST/);
@@ -411,7 +415,9 @@ test('lesson reports an unrelated corrupt item as a warning but still exits 0', 
 
 test('lesson-stage reports an unrelated corrupt item as a warning but still exits 0', () => {
   withProject((cwd) => {
-    const created = run(['lesson', 'Migrations deadlock during peak traffic'], cwd);
+    const created = run(
+      ['lesson', 'Migrations deadlock during peak traffic', '--summary-omitted'], cwd,
+    );
     const lessonId = /LESSON-[a-z0-9-]+/.exec(created.out)![0];
     plantUnrelatedCorruptItem(cwd);
     writeFileSync(path.join(cwd, 'r.json'), CANDIDATES, 'utf8');
@@ -613,7 +619,7 @@ function itemCount(type: string, cwd: string): number {
  */
 test('lesson --agent records origin: agent and stays active — read off disk', () => {
   withProject((cwd) => {
-    const { code, out } = run(['lesson', '--agent', 'Retry storms need jitter'], cwd);
+    const { code, out } = run(['lesson', '--agent', 'Retry storms need jitter', '--summary-omitted'], cwd);
     assert.equal(code, 0, out);
     const file = lessonFile(cwd, recordedId(out));
     assert.match(file, /^origin: agent$/m,
@@ -625,7 +631,7 @@ test('lesson --agent records origin: agent and stays active — read off disk', 
 
 test('lesson without the flag still records origin: human — read off disk', () => {
   withProject((cwd) => {
-    const { code, out } = run(['lesson', 'Retry storms need jitter'], cwd);
+    const { code, out } = run(['lesson', 'Retry storms need jitter', '--summary-omitted'], cwd);
     assert.equal(code, 0, out);
     const file = lessonFile(cwd, recordedId(out));
     assert.match(file, /^origin: human$/m,
@@ -642,7 +648,7 @@ test('lesson without the flag still records origin: human — read off disk', ()
  */
 test('lesson --agent=false records origin: human, and --agent=maybe is refused before the write', () => {
   withProject((cwd) => {
-    const off = run(['lesson', '--agent=false', 'Retry storms need jitter'], cwd);
+    const off = run(['lesson', '--agent=false', 'Retry storms need jitter', '--summary-omitted'], cwd);
     assert.equal(off.code, 0, off.out);
     assert.match(lessonFile(cwd, recordedId(off.out)), /^origin: human$/m);
 

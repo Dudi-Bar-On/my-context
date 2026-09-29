@@ -457,9 +457,16 @@ for (const lang of ['en', 'he'] as const) {
     await expect(page.locator(`${PANE} table.flagtable`).first()).toBeVisible();
     expect(await overflow(page)).toBe(0);
 
-    const flagless = find('command', 'show');
-    expect(flagless, 'the fixture serves no `show` — the flagless case has no subject').toBeTruthy();
-    await choose(page, 'command', 'show', flagless!.label);
+    // **`rebuild`, not `show`.** `show` gained `--json` since this file was
+    // written, so it is no longer the flagless case this test needs — it now
+    // draws the very flag table the other half of this test already covers
+    // via `audit` (measured: `mycontext show --help` now lists one flag).
+    // `rebuild` still answers "This command takes no flags" (`mycontext
+    // rebuild --help`).
+    const flagless = find('command', 'rebuild');
+    expect(flagless, 'the fixture serves no `rebuild` — the flagless case has no subject')
+      .toBeTruthy();
+    await choose(page, 'command', 'rebuild', flagless!.label);
     await expect(page.locator(`${PANE} table.flagtable`)).toHaveCount(0);
     // The absence is a SENTENCE, and it is the card's own — read out of the
     // string table the page is using rather than typed here.

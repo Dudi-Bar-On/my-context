@@ -1,4 +1,4 @@
-import { test, expect } from './app.ts';
+import { test, expect, reloadFresh } from './app.ts';
 
 /**
  * **EVERY FIELD THE STRIP DRAWS IS A PILL, HAS A HOVER, AND IS ONE HEIGHT.**
@@ -64,7 +64,11 @@ test('every field the strip draws is a pill, has a hover, and is one height', as
       status: 200, contentType: 'application/json', body: JSON.stringify(body(pct, five, seven)),
     }));
     await page.setViewportSize({ width: 2273, height: 900 });
-    await page.reload();
+    // `page.reload()` replays the already-spent nonce and comes back
+    // token-less — see `reloadFresh`'s own header (`e2e/app.ts`,
+    // `KNOWN-two-e2e-harness-defects-make-specs-fail-for-reasons-that-have-
+    // nothing-to-do-with-the-product`) for the measurement.
+    await reloadFresh(page, app.port);
     await page.waitForTimeout(600);
 
     const found = await page.evaluate(() => {

@@ -1,4 +1,19 @@
-import { readdirSync, statSync } from 'node:fs';
+/**
+ * **Through the namespace, not as named imports, and that is load-bearing.**
+ *
+ * `newestMtime` below has a branch for a subtree it could not READ, and on
+ * win32 no arrangement of the real filesystem produces a non-`ENOENT` `readdir`
+ * failure: `icacls /deny` does not bite for this account, a file where a
+ * directory belongs is never pushed onto the stack (`entry.isDirectory()` is
+ * false for it), and a path that is not there answers `ENOENT`, which IS
+ * absence. `test/fixtures/force-stat-failure.ts` and
+ * `test/fixtures/force-readdir-failure.ts` record the same finding for
+ * `core/jsonl-log.ts` and `ui/execute-effect.ts`, and both of those modules
+ * call through the namespace for this reason — a named import cannot be
+ * replaced by a fixture process, so the branch would be written and never
+ * exercised. Same device, same reason, here.
+ */
+import fs from 'node:fs';
 import path from 'node:path';
 import { auditLogPath } from './audit.ts';
 
@@ -100,6 +115,21 @@ export interface CorpusDrift {
    * fit. So a truncated sweep that found nothing answers `null`, not `false`.
    */
   truncated: boolean;
+  /**
+   * How many entries the sweep could not read — a directory that would not
+   * list, or an entry that would not `stat` for any reason but `ENOENT`.
+   *
+   * **A number rather than a flag, for `scanned`'s reason**: the bound is
+   * declared so it is legible, and a refusal is declared so the `null` beside
+   * it is legible. `0` is the measured answer and is what a healthy sweep
+   * reports; anything above it means `drifted` is `null` unless the sweep had
+   * already found its evidence (`STD-a-measured-zero-is-drawn-and-named-an-
+   * unmeasured-thing-is`). Site M5 of
+   * `TASK-nine-sites-report-a-measured-zero-for-something-they-could`: this
+   * used to be swallowed entirely, and a subtree that refused was reported as
+   * a subtree in which nothing had changed.
+   */
+  unreadable: number;
 }
 
 /**
@@ -123,32 +153,64 @@ export const SWEEP_MAX_ENTRIES = 5000;
  * the right way round: a corpus that has not drifted pays a full 6ms sweep, and
  * one that has answers as soon as it finds its first piece of evidence.
  */
+/**
+ * **`ENOENT` is the only absence; every other errno is a REFUSAL and is
+ * counted.**
+ *
+ * The three `catch`es below used to be one sentence — *"vanished under us, or
+ * unreadable: not evidence either way"* — and the two halves of that sentence
+ * are not the same fact.
+ *
+ *  - VANISHED is genuinely not evidence, and is genuinely `ENOENT`. An entry
+ *    listed a moment ago and gone now was DELETED, and a delete raises its
+ *    parent directory's mtime, which this sweep stats before it iterates. So
+ *    the evidence is not lost; it is measured one level up.
+ *  - REFUSED is an entry that is still there and would not open. Nothing about
+ *    it was measured, and treating it as "not evidence" is how `drifted: false`
+ *    came to be answered over a subtree nobody read — site M5 of
+ *    `TASK-nine-sites-report-a-measured-zero-for-something-they-could`.
+ *
+ * `unreadable` is therefore counted rather than swallowed, and
+ * `measureCorpusDrift` routes it into the `null` branch `truncated` already
+ * had. It is the same narrowing
+ * `TASK-one-unreadable-directory-makes-the-audit-projection-look` applied to
+ * `auditSegments`: only `ENOENT` is absence, and a refusal is its own answer.
+ */
 function newestMtime(
   dir: string,
   newerThan: number,
   budget: { left: number },
-): { newest: number; scanned: number; truncated: boolean } {
+): { newest: number; scanned: number; truncated: boolean; unreadable: number } {
   let newest = 0;
   let scanned = 0;
+  let unreadable = 0;
+  /** `true` for the one errno that means the entry is not there any more. */
+  const vanished = (err: unknown): boolean =>
+    typeof err === 'object' && err !== null && (err as NodeJS.ErrnoException).code === 'ENOENT';
   const stack: string[] = [dir];
   while (stack.length > 0) {
-    if (budget.left <= 0) return { newest, scanned, truncated: true };
+    if (budget.left <= 0) return { newest, scanned, truncated: true, unreadable };
     const current = stack.pop() as string;
     let entries;
     try {
-      entries = readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue; // vanished under us, or unreadable: not evidence either way
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch (err) {
+      // A directory that will not LIST hides every file under it, which is the
+      // widest refusal this sweep can meet and the one M5 was raised about.
+      if (!vanished(err)) unreadable += 1;
+      continue;
     }
     try {
-      const m = statSync(current).mtimeMs;
+      const m = fs.statSync(current).mtimeMs;
       if (m > newest) newest = m;
-    } catch {
-      // same
+    } catch (err) {
+      // A directory that listed and will not stat: its own mtime — the one
+      // thing that carries a DELETE under it — was not measured.
+      if (!vanished(err)) unreadable += 1;
     }
     scanned += 1;
     budget.left -= 1;
-    if (newest > newerThan) return { newest, scanned, truncated: false };
+    if (newest > newerThan) return { newest, scanned, truncated: false, unreadable };
     for (const entry of entries) {
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) {
@@ -156,21 +218,24 @@ function newestMtime(
         continue;
       }
       if (!entry.name.endsWith('.md')) continue;
-      if (budget.left <= 0) return { newest, scanned, truncated: true };
+      if (budget.left <= 0) return { newest, scanned, truncated: true, unreadable };
       scanned += 1;
       budget.left -= 1;
       try {
-        const m = statSync(full).mtimeMs;
+        const m = fs.statSync(full).mtimeMs;
         if (m > newest) {
           newest = m;
-          if (newest > newerThan) return { newest, scanned, truncated: false };
+          if (newest > newerThan) return { newest, scanned, truncated: false, unreadable };
         }
-      } catch {
-        // a file that disappeared between readdir and stat is not evidence
+      } catch (err) {
+        // A file that disappeared between readdir and stat is not evidence —
+        // its deletion is already in the directory mtime stat'd above. One that
+        // is there and refused is a file whose mtime nobody has seen.
+        if (!vanished(err)) unreadable += 1;
       }
     }
   }
-  return { newest, scanned, truncated: false };
+  return { newest, scanned, truncated: false, unreadable };
 }
 
 /**
@@ -183,12 +248,12 @@ function newestMtime(
  * that must always answer.
  */
 export function measureCorpusDrift(projectRoot: string | null): CorpusDrift {
-  const unknown: CorpusDrift = { drifted: null, aheadByMs: null, scanned: 0, truncated: false };
+  const unknown: CorpusDrift = { drifted: null, aheadByMs: null, scanned: 0, truncated: false, unreadable: 0 };
   if (projectRoot === null) return unknown;
 
   let logMs: number;
   try {
-    logMs = statSync(auditLogPath(projectRoot)).mtimeMs;
+    logMs = fs.statSync(auditLogPath(projectRoot)).mtimeMs;
   } catch {
     // No log at all: a fresh corpus that has never been written through
     // mycontext. There is nothing to be behind, and nothing measured either.
@@ -209,15 +274,36 @@ export function measureCorpusDrift(projectRoot: string | null): CorpusDrift {
   if (swept.newest === 0 && swept.scanned === 0) return unknown;
 
   const drifted = swept.newest > logMs;
-  if (!drifted && swept.truncated) {
-    // The bound cut the sweep short and it found nothing. "Nothing here" is
-    // then a statement about the part that fit, which is not the question.
-    return { drifted: null, aheadByMs: null, scanned: swept.scanned, truncated: true };
+  // **Two ways a sweep can fall short of the question, and both answer `null`.**
+  //
+  // The BOUND cut the sweep short and it found nothing: "nothing here" is then
+  // a statement about the part that fit, which is not what was asked. A
+  // REFUSAL is the same shortfall arriving by a different road — a subtree that
+  // would not list hides every file under it, and the sweep cannot know whether
+  // one of them is newer than the log.
+  //
+  // Only the second was missing, and it is site M5 of
+  // `TASK-nine-sites-report-a-measured-zero-for-something-they-could`: the
+  // right doctrine was already written three lines up, for the bound, and the
+  // unreadable case was simply never wired into it. A branch switch rewrites
+  // hundreds of item files, one directory is momentarily locked, and the page
+  // tells the reader it is NOT stale.
+  //
+  // `drifted === true` is deliberately NOT downgraded by either. Evidence the
+  // sweep actually holds is evidence: a file newer than the log was seen, and
+  // suppressing that because some other subtree refused would be this same
+  // defect inverted — a real finding hidden behind a partial walk.
+  if (!drifted && (swept.truncated || swept.unreadable > 0)) {
+    return {
+      drifted: null, aheadByMs: null,
+      scanned: swept.scanned, truncated: swept.truncated, unreadable: swept.unreadable,
+    };
   }
   return {
     drifted,
     aheadByMs: drifted ? Math.round(swept.newest - logMs) : null,
     scanned: swept.scanned,
     truncated: swept.truncated,
+    unreadable: swept.unreadable,
   };
 }

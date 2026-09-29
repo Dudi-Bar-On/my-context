@@ -2,7 +2,10 @@
 // TASK-inline-code-has-no-hue-and-a-table-frame-is-drawn-at-1-71-1,
 // TASK-inline-code-in-a-conversation-gets-a-font-change-and-nothing,
 // REQ-the-conversation-archive-is-a-terminal-you-can-scroll-not-a,
-// DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn
+// DEC-the-meaning-hue-budget-is-five-gold-ok-carry-crit-and-warn,
+// DEC-the-browser-suite-runs-headless-by-default-a-person-who,
+// TASK-two-browser-gates-are-red-before-any-lane-touches-them-and,
+// TASK-forty-six-browser-failures-are-recorded-as-unknown-so-the
 /**
  * **The hue on inline code, and the frame a reader can actually see.**
  *
@@ -867,6 +870,45 @@ test('both frame candidates are photographed on his own table', async ({ page })
  * border is the only thing in a table that spans its whole width, so the rows
  * are found by span instead — which also means a different device scale factor
  * changes the split this finds and not the claim it checks.
+ *
+ * ── AND THE SPLIT IS A HEADED RENDERING, WHICH IS NOW THE OPT-IN ──────────
+ *
+ * **Measured 2026-09-22, same machine, same corpus, back to back: headed
+ * Chromium paints the 57/43 split above; headless paints ONE population, at
+ * the full token colour, on all nine ruling rows.** Deterministic in both
+ * directions, in isolation, every time. Headless rasterizes the sub-device-
+ * pixel collapsed border without the half-intensity spread across two device
+ * rows, so the blend this paragraph is about is simply not in the paint.
+ *
+ * That difference arrived with `DEC-the-browser-suite-runs-headless-by-default-
+ * a-person-who` (owner ruling 2026-09-22, `e2e/playwright.config.ts`), which
+ * made headless the default and `MYCONTEXT_E2E_HEADED` the opt-in. So the
+ * original guard — **two** colour populations or the test is vacuous — was
+ * asserting a property of the RENDERER rather than of the page, and it went
+ * red on a run in which nothing about the app had changed.
+ *
+ * **What the guard is now** (controller ruling, 2026-09-23, B4 fix round 1):
+ *
+ *   1. At least one ruling population is found at all. Zero is still vacuous
+ *      and still fails.
+ *   2. EVERY population found clears 3:1 — the claim itself, stated over what
+ *      the renderer actually put in the paint instead of over a count.
+ *   3. The brightest population is the token colour EXACTLY, `#c9c6d4`, at
+ *      better than 11:1. Under headless, where exactly one population is
+ *      found, that one population is therefore pinned to the token — the test
+ *      cannot go green by measuring a stray surface, an empty clip or a colour
+ *      nobody chose.
+ *   4. When two are found — headed, and CI is free to run headed — the blend
+ *      assertions above are unchanged: the dim population spans more than two
+ *      rows and still clears 3.0:1, which is the finding this whole docblock
+ *      records and which `--dim` (2.85) and `--edge-3` (1.82) fail.
+ *
+ * The arithmetic at the end of the test — that HALF of `--dim` and half of
+ * `--edge-3` fall below 3 and 2 — is computed, not sampled, so it holds under
+ * either renderer and is asserted unconditionally. The BLEND is therefore
+ * still exercised on every headed run, which is the run a person watches; what
+ * the headless default buys is that the same file no longer reports a renderer
+ * difference as a contrast regression.
  */
 test('every pixel of the ruling clears 3:1, and not only the token', async ({ page }) => {
   await openDocument(page, 'en');
@@ -936,22 +978,44 @@ test('every pixel of the ruling clears 3:1, and not only the token', async ({ pa
   const shown = found.map((f) => `${asCss(f.colour)} on ${f.rows} rows `
     + `(${ratio(asCss(f.colour), ground).toFixed(2)}:1)`).join('; ');
 
-  // TWO populations, not one — the test would be vacuous if the blend were not
-  // in the paint, and the whole finding is that it is.
-  expect(found.length, `ruling rows: ${shown}`).toBeGreaterThanOrEqual(2);
-  const full = found[found.length - 1]!;
-  const part = found[0]!;
-  expect(full.colour, `ruling rows: ${shown}`).toEqual([0xc9, 0xc6, 0xd4]);
-  expect(part.rows, `ruling rows: ${shown}`).toBeGreaterThan(2);
-  expect(full.rows, `ruling rows: ${shown}`).toBeGreaterThan(2);
+  // **SAID OUT LOUD ON EVERY RUN**, because the population COUNT is now the
+  // thing that differs between the two renderers and a reader of the log
+  // should not have to make the test fail to see which one they got.
+  console.log(`[ruling ${found.length === 1 ? 'headless-shaped' : 'blended'}] `
+    + `${found.length} population(s): ${shown}`);
 
-  const dim = ratio(asCss(part.colour), ground);
+  // NOT VACUOUS: something was found. Zero populations means the clip missed
+  // the table, or the ruling stopped being painted, and both must fail.
+  expect(found.length, `ruling rows: ${shown}`).toBeGreaterThanOrEqual(1);
+
+  // THE BRIGHTEST POPULATION IS THE TOKEN, EXACTLY — and this is what keeps
+  // the HEADLESS case (exactly one population, see the docblock) honest: the
+  // one thing found is pinned to `--tvframe`'s own value, so a green here
+  // cannot be a stray surface or a clip that slipped off the well.
+  const full = found[found.length - 1]!;
+  expect(full.colour, `ruling rows: ${shown}`).toEqual([0xc9, 0xc6, 0xd4]);
+  expect(full.rows, `ruling rows: ${shown}`).toBeGreaterThan(2);
   const bright = ratio(asCss(full.colour), ground);
   expect(bright, `the token paints ${bright.toFixed(2)}:1`).toBeGreaterThan(11);
-  // THE CLAIM. The darkest ROW of the ruling clears 3.0:1 — which `--dim`
-  // (2.85 at the same blend) and `--edge-3` (1.82) do not.
-  expect(dim, `the half-painted ruling measures ${dim.toFixed(2)}:1 — ${shown}`)
-    .toBeGreaterThan(3);
+
+  // THE CLAIM, over EVERY population the renderer actually painted rather than
+  // over a count of them: no row of the ruling falls below 3.0:1 — which
+  // `--dim` (2.85 at the blend) and `--edge-3` (1.82) do.
+  for (const population of found) {
+    const measured = ratio(asCss(population.colour), ground);
+    expect(measured, `a ruling population measures ${measured.toFixed(2)}:1 — ${shown}`)
+      .toBeGreaterThan(3);
+  }
+
+  // AND WHEN THE BLEND IS IN THE PAINT — headed, where the sub-device-pixel
+  // split occurs — the original assertions about it are unchanged.
+  if (found.length >= 2) {
+    const part = found[0]!;
+    expect(part.rows, `ruling rows: ${shown}`).toBeGreaterThan(2);
+    const dim = ratio(asCss(part.colour), ground);
+    expect(dim, `the half-painted ruling measures ${dim.toFixed(2)}:1 — ${shown}`)
+      .toBeGreaterThan(3);
+  }
   const halfOf = (hex: string): string => {
     const g = [0x10, 0x10, 0x14];
     const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));

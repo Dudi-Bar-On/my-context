@@ -28,7 +28,15 @@
  * `MYCONTEXT_WIDTH` is deleted for the same reason it is deleted there: a
  * layout budget exported for a maintainer's own terminal must not reshape the
  * suite's expected output.
+ *
+ * **And scrubs PATH of any `mycontext` shim that points at a checkout other
+ * than this one**, via `./hermetic-path.ts` — see that file for the full
+ * argument. Same shape as the sessions-dir pin below: a side-effecting import
+ * that runs before any test file's top-level code, so every CLI child this
+ * suite spawns inherits the scrubbed PATH rather than whatever the machine
+ * happens to have globally linked.
  */
+import './hermetic-path.ts';
 import './pin-sessions-dir.ts';
 import { installRealHomeGuard } from './real-home-guard.ts';
 

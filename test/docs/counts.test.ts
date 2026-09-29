@@ -758,7 +758,16 @@ test('the ungated member of the approval boundary is real', () => {
       return lines.join('\n');
     };
     assert.equal(runCli(['init'], dir, () => {}), 0);
-    const lesson = /LESSON-[a-z0-9-]+/.exec(run(['lesson', 'Retry storms need jitter']));
+    // @basis TASK-release-phase-3-the-defects
+    // Since 3.11 the summary gate covers `lesson`, so this capture is
+    // refused without one (STD-a-summary-is-one-plain-sentence-for-someone-who-does-not).
+    // That gate is orthogonal to the approval boundary this test is about —
+    // it declines before any confirmation prompt is reached — so it is
+    // satisfied here rather than routed around.
+    const lesson = /LESSON-[a-z0-9-]+/.exec(run([
+      'lesson', 'Retry storms need jitter',
+      '--summary', 'Retries wait a randomised extra moment, so a crowd of clients does not come back all at once.',
+    ]));
     assert.ok(lesson, 'the lesson was not recorded');
     writeFileSync(path.join(dir, 'candidates.json'), JSON.stringify([{
       title: 'Add jitter to backoff',

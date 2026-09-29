@@ -2129,6 +2129,22 @@ function cmdConversationAnchor(ws: Workspace, args: string[], out: Emit): number
       // A record of `null` is what a character offset produces, and reporting
       // it here is the difference between a bookmark that is wrong now and one
       // that is found to be wrong in a month.
+      //
+      // **AND THE DIAGNOSIS IS ONLY SAID WHEN IT WAS ESTABLISHED** —
+      // `swallow/11` m14. The CHARACTER-offset sentence is a claim about the
+      // NUMBER, and it used to be said about a transcript nobody had opened:
+      // `resolveAnchor` gave the same `record: null` for a file it could not
+      // read, so a locked or replaced transcript sent the owner to check an
+      // offset that was never wrong. `unreadable` is what it says now, in the
+      // file's own words, and the mark is still kept either way.
+      if (resolved?.unreadable != null) {
+        out(
+          `my_context: ${resolved.unreadable}. The mark is KEPT — this says nothing about the ` +
+          `byte you gave, only that nothing could be read there. Take it back with ` +
+          `\`mycontext conversation anchor --drop ${row.id}\` if it was wrong.`,
+        );
+        return 0;
+      }
       out(resolved?.record === null
         ? 'my_context: nothing starts at that byte, so this anchor reads as unreadable. That ' +
           'is what a CHARACTER offset produces on this archive. The mark is kept — take it ' +

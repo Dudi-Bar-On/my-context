@@ -301,11 +301,14 @@
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+import {
+  partition as partitionFiles, walkSummary, walkTracked, type Walk,
+} from './tracked-walk.ts';
 
 const REPO = path.resolve(import.meta.dirname, '..');
 
 /** Documents whose citations are checked. Everything under these, recursively. */
-const DOC_ROOTS = ['docs/superpowers/specs', 'docs/superpowers/plans', 'docs/design'];
+export const DOC_ROOTS = ['docs/superpowers/specs', 'docs/superpowers/plans', 'docs/design'];
 
 /**
  * **THE FIFTH TREE: the front door, which is the one document a stranger
@@ -343,7 +346,7 @@ const DOC_ROOTS = ['docs/superpowers/specs', 'docs/superpowers/plans', 'docs/des
  * Markdown rules apply to them in full, wrapping included: a citation split
  * across two lines here is a fault, because Markdown could have held it on one.
  */
-const DOC_FILES = ['README.md', 'docs/README.he.md'];
+export const DOC_FILES = ['README.md', 'docs/README.he.md'];
 
 /**
  * Source trees whose comment citations are checked. Walked on every run and
@@ -353,7 +356,101 @@ const DOC_FILES = ['README.md', 'docs/README.he.md'];
  * files, and it was outside every root this script knew. See `isSourceFile`
  * for the other half of that blind spot and for what the two of them cost.
  */
-const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
+/**
+ * **`SOURCE_ROOTS` IS GONE, and adding entries to it was not the repair.**
+ *
+ * It was `['src', 'test', 'scripts', 'e2e']`, and that is the shape
+ * `TASK-a-scanner-enumerates-what-it-will-skip-not-what-it-will-scan` names: a
+ * root list answers "nothing broken" for everything outside it. `e2e` joined
+ * on 2026-08-29 because it was outside; the first round of that task made the
+ * list eight entries long, which is the SAME repair a second time and is the
+ * one this file's siblings were corrected for.
+ *
+ * The source tier now walks **every source file git tracks**, through the one
+ * walk in `scripts/tracked-walk.ts` that all five gates in this directory
+ * share, and every file it does not read comes back carrying the reason —
+ * printed, counted, in `sourceSkipReason` below.
+ *
+ * **Measured across the change, on the same tree:** 587 citations in 180
+ * source files, 40 broken, 19 faults — before the four extra roots, after
+ * them, and after the tracked walk. Not one of the trees the roots missed
+ * carries a citation in this form today. That is the point rather than an
+ * anticlimax: the inversion buys nothing NOW and everything LATER, and a
+ * measured zero is drawn and named rather than left as a claim
+ * (`STD-a-measured-zero-is-drawn-and-named`). The table under "Widening it is
+ * two lines" above is unaffected, having been re-run.
+ *
+ * **What it GATES did not move and must not.** The documentation tier is
+ * `DOC_ROOTS` + `DOC_FILES`, walked separately, and `isSourceFile` accepts
+ * only `.ts`/`.js`/`.mjs`/`.cjs` — so no document and no corpus item can enter
+ * the source population, whatever the source walk is pointed at.
+ * `test/scripts/verify-citations.test.ts` asserts that disjointness rather
+ * than trusting it.
+ */
+export function sourceSkipReason(file: string): string | null {
+  if (!isSourceFile(file)) return NOT_SOURCE_FILE;
+  if (SOURCE_EXEMPT.has(file)) return EXEMPT_SPECIMEN;
+  return null;
+}
+
+/** Why a tracked file is not source. Stated once so it can be printed once. */
+export const NOT_SOURCE_FILE =
+  'not source — this tier reads `.ts`/`.js`/`.mjs`/`.cjs`; the reference documents are the '
+  + 'DOC_ROOTS walk and an item body is the corpus walk, each counted on its own line above';
+
+/** Why the five specimen files are not read. See `SOURCE_EXEMPT` for the argument. */
+export const EXEMPT_SPECIMEN =
+  'a specimen file — it PRINTS the citation form in order to document or test it, so reading it '
+  + 'as source would buy faults against text doing its job (SOURCE_EXEMPT)';
+
+/**
+ * The source tier's population: the tracked tree, or — where git cannot answer
+ * — the whole filesystem tree, SAID OUT LOUD.
+ *
+ * **Fail closed means "read more and say so", not "read nothing quietly".**
+ * The failure this whole item is about is a scanner that reports a clean run
+ * over a population it never had. So when `git ls-files` cannot answer, this
+ * does NOT return an empty list and it does NOT report zero: it substitutes
+ * the widest population available — every file under the tree — and prints the
+ * substitution with what it costs. A wider population can only produce MORE
+ * findings, never fewer, which is the direction a gate is allowed to fail in.
+ * If that walk is empty too, there is genuinely nothing to read and this
+ * THROWS, exactly as its four siblings do.
+ *
+ * **Why the fallback exists at all**, rather than throwing the way
+ * `check-text-files.ts` does: this script is driven by copying it into a
+ * throwaway directory that is not a repository —
+ * `test/scripts/verify-citations.test.ts`, `citations-in-source.test.ts` and
+ * `citations-in-corpus.test.ts` do it sixty-odd times, deliberately, because
+ * *"a unit test over the regex would pin the pattern and not the gate"*. A
+ * source tier that cannot exist outside a repository is a source tier with no
+ * red proof, which is the trade this project refuses in the other direction.
+ */
+export function sourcePopulation(root: string): { walk: Walk; note: string | null } {
+  try {
+    return { walk: walkTracked(root, sourceSkipReason), note: null };
+  } catch (e) {
+    const found: string[] = [];
+    walk(root, found, () => true);
+    const files = found
+      .map((f) => path.relative(root, f).split(path.sep).join('/'))
+      .filter((f) => f !== '');
+    if (files.length === 0) {
+      throw new Error(
+        `my_context: git could not list ${root} and the tree holds no file either. This gate `
+        + 'refuses to report a clean source tier over nothing — see INV-nothing-is-dropped-silently.',
+      );
+    }
+    return {
+      walk: partitionFiles(files, sourceSkipReason),
+      note:
+        'the source tier was walked over the FILESYSTEM, not over what git tracks — git could '
+        + `not answer here (${(e instanceof Error ? e.message : String(e)).split('\n')[0]}). `
+        + 'The population is therefore WIDER than usual: an untracked file is read too. Nothing '
+        + 'below is under-counted; the documentation tier is unaffected and still gates.',
+    };
+  }
+}
 
 /**
  * **THE SEVENTH TREE, AND THE ONE THIS FILE REFUSED ON A MEASUREMENT THAT HAS
@@ -422,7 +519,7 @@ const SOURCE_ROOTS = ['src', 'test', 'scripts', 'e2e'];
  * legitimate corpus marker would be reported as broken by the checker that does
  * not own it. One rule, one owner. See `corpusRules` in `collect`.
  */
-const CORPUS_ROOT = '.my_context/items';
+export const CORPUS_ROOT = '.my_context/items';
 
 /**
  * **The gate's own specimens, which it must not report as defects.**
@@ -473,7 +570,7 @@ const CORPUS_ROOT = '.my_context/items';
  * properly.** That file is this one, which is exempt for this reason. The
  * result is zero faults there, full coverage kept, and one canonical spelling.
  */
-const SOURCE_EXEMPT = new Set([
+export const SOURCE_EXEMPT = new Set([
   'scripts/verify-citations.ts',
   'test/scripts/verify-citations.test.ts',
   'test/scripts/citations-in-source.test.ts',
@@ -724,7 +821,7 @@ const isMarkdown = (name: string): boolean => name.endsWith('.md');
  * reasons above — it is not, as was written here, an answer something else was
  * already providing.
  */
-const isSourceFile = (name: string): boolean =>
+export const isSourceFile = (name: string): boolean =>
   /\.(?:ts|js|mjs|cjs)$/.test(name) && !name.endsWith('.d.ts');
 
 /**
@@ -1173,9 +1270,11 @@ function main(): number {
 
   const rel = (full: string): string => path.relative(REPO, full).split(path.sep).join('/');
 
-  const found: string[] = [];
-  for (const root of SOURCE_ROOTS) walk(path.join(REPO, root), found, isSourceFile);
-  const sources = found.filter((f) => !SOURCE_EXEMPT.has(rel(f))).sort();
+  // The tracked tree, not a root list — see `sourceSkipReason`.
+  const source = sourcePopulation(REPO);
+  const sources = source.walk.scanned
+    .map((f) => path.join(REPO, ...f.split('/')))
+    .sort();
   const sourceFiles = new Set(sources.map(rel));
 
   // A tree walked unless it is waived off, and an empty list when it is — so
@@ -1421,6 +1520,18 @@ function main(): number {
       (withCorpus ? line(`${corpusItemsSeen} corpus item(s)`, corpusRows) : '') +
       `${markers.length} marker(s), ${faults.length} fault(s)\n`,
   );
+  // **What the source tier read, and what it declined, with why.** The tier
+  // used to print how many files carried a citation and nothing about the
+  // population behind that number, so the line read the same whether the walk
+  // covered the repository or four directories of it
+  // (`STD-a-measured-zero-is-drawn-and-named`).
+  process.stdout.write(
+    `${walkSummary(
+      `${source.walk.scanned.length} ${source.note === null ? 'tracked ' : ''}source file(s) `
+      + `walked, ${source.walk.skipped.length} not.`,
+      source.walk,
+    )}\n${source.note === null ? '' : `${source.note}\n`}`,
+  );
   if (broken.length === 0 && ambiguous.length === 0 && moved.length === 0 && faults.length === 0) {
     process.stdout.write(
       historical.length === 0
@@ -1468,4 +1579,19 @@ function main(): number {
   return failing > 0 ? 1 : 0;
 }
 
-process.exit(main());
+/**
+ * Guarded so this file can be IMPORTED. It ran `process.exit(main())` at module
+ * load, which is why `check-cited-items.ts` had to restate its root list rather
+ * than import it, and why the source walk had no test of its own.
+ *
+ * Spelled inline rather than through `isMainEntry` (`src/core/paths.ts`), the
+ * way `check-faint-usage.ts` already spells it: `test/scripts/verify-citations.test.ts`
+ * drives this file by COPYING it into a throwaway tree, so every `src/` import
+ * it grows is a file that probe has to carry.
+ */
+if (
+  process.argv[1] !== undefined
+  && path.resolve(process.argv[1]) === path.resolve(import.meta.filename)
+) {
+  process.exitCode = main();
+}

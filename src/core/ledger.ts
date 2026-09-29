@@ -6,6 +6,7 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { retryOnTransientFsError } from './rebuild.ts';
+import { writePrivateGitignore } from './private-gitignore.ts';
 import { readSessionNames } from './session-names.ts';
 
 export type LedgerTier = 'pinned' | 'jit' | 'restored';
@@ -102,6 +103,47 @@ const LEDGER_TABLE_COLUMNS: [string, string[]][] = [
  * where the file is actually broken.
  */
 export class LedgerUninitializedError extends Error {}
+
+/**
+ * The sentence a REPORT appends when the usage ledger itself would not open or
+ * would not answer, so its session count is UNMEASURED rather than zero.
+ *
+ * `auditReadFailureNote` (core/audit.ts) is its sibling one layer out: that one
+ * covers a ledger that opened fine and could not be brought UP TO DATE from the
+ * audit log, so the counts below it are a floor. This one covers the harder
+ * case — nothing was counted at all — and the two must not be told apart by
+ * their wording, which is why each is spelled exactly once and imported rather
+ * than restated.
+ *
+ * **It exists because `0` was being printed for it.**
+ * `TASK-nine-sites-report-a-measured-zero-for-something-they-could`, site M9:
+ * `mycontext status` and the `status_report`/`decay_report` tools each wrapped
+ * the whole open-and-read in a bare `catch` returning `sessionsRecorded: 0`,
+ * and 0 is what drives *"no sessions recorded yet"* and, in the decay report,
+ * *"nothing here has been measured; 'cold' currently means only 'never
+ * injected'"*. A brand-new workspace and a damaged ledger were the same
+ * sentence, and the second one is an agent being handed a list of governing
+ * constraints marked cold with no hint the measurement failed
+ * (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`,
+ * `INV-nothing-is-dropped-silently`).
+ *
+ * The reason is carried VERBATIM, never summarised, for
+ * `auditReadFailureNote`'s reason: the reader with a broken `.index.db` needs
+ * the engine's own complaint, and a report that rephrases it is a report that
+ * can drift from the one the next surface prints.
+ *
+ * `LedgerUninitializedError` is NOT this case and must never reach here: a
+ * corpus that has never injected anything has a real, measured zero, which is
+ * exactly the distinction that class carries.
+ */
+export function ledgerReadFailureNote(err: unknown): string {
+  return (
+    'NOTE: the usage ledger could not be read, so NOTHING below that derives from it was ' +
+    'measured — the session count is UNKNOWN rather than zero, and "cold" below means only ' +
+    '"this report has no injection history at all", never "not used". Nothing was deleted and ' +
+    `nothing was written. ${err instanceof Error ? err.message : String(err)}`
+  );
+}
 
 export class Ledger {
   #db: DatabaseSync;
@@ -761,7 +803,8 @@ export function writeSnapshot(root: string, sessionId: string, itemIds: string[]
   const target = snapshotPath(root, sessionId);
   const dir = path.dirname(target);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+  // `core/private-gitignore.ts` owns the line — the 2026-09-23 incident.
+  writePrivateGitignore(dir);
 
   const snapshot: Snapshot = {
     sessionId,
@@ -920,7 +963,13 @@ export function readSnapshotMeta(root: string, sessionId: string): SnapshotRead 
   return { meta: { itemIds, capturedAt }, defect: wellFormed ? null : 'malformed-ids' };
 }
 
-const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
+/**
+ * The tail bound. Exported because it is no longer a private implementation
+ * detail: `scanTranscript` reports it as the number of bytes it actually read
+ * whenever a transcript is bigger than this, callers print that number, and a
+ * test that re-declared it would be a second copy free to disagree.
+ */
+export const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
 
 /**
  * Uppercase category prefix, hyphen, lowercase slug body — the shape guaranteed
@@ -929,47 +978,153 @@ const MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024;
  */
 const ID_PATTERN = /\b[A-Z][A-Z0-9]{1,11}-[a-z0-9][a-z0-9-]*\b/g;
 
-function readTail(file: string): string {
+function readTail(file: string): { text: string; bytesRead: number; totalBytes: number } {
   const { size } = statSync(file);
-  if (size <= MAX_TRANSCRIPT_BYTES) return readFileSync(file, 'utf8');
+  if (size <= MAX_TRANSCRIPT_BYTES) {
+    return { text: readFileSync(file, 'utf8'), bytesRead: size, totalBytes: size };
+  }
   const fd = openSync(file, 'r');
   try {
     const buffer = Buffer.alloc(MAX_TRANSCRIPT_BYTES);
     readSync(fd, buffer, 0, MAX_TRANSCRIPT_BYTES, size - MAX_TRANSCRIPT_BYTES);
-    return buffer.toString('utf8');
+    return {
+      text: buffer.toString('utf8'), bytesRead: MAX_TRANSCRIPT_BYTES, totalBytes: size,
+    };
   } finally {
     closeSync(fd);
   }
 }
 
 /**
- * Item ids mentioned anywhere in the transcript that also exist in the index.
+ * How much of the transcript the scan actually saw.
  *
- * `knownIds: null` means "no known-id filter: the index was unavailable (or
- * knew nothing) at capture time" (Task 10). Over-capture is the safe
- * direction — a snapshot id matching no live item selects nothing at restore
- * — and the universe is bounded by the 8 MB transcript tail and the strict
- * id shape either way.
+ *  - `'whole'`       the file was read from its first byte to its last.
+ *  - `'tail'`        the file is bigger than `MAX_TRANSCRIPT_BYTES` and only
+ *                    that many bytes at the END of it were read. Everything
+ *                    cited before that point is UNMEASURED, not absent.
+ *  - `'absent'`      no transcript path was given at all.
+ *  - `'unreadable'`  a path was given and it could not be read (or is not a
+ *                    file). `why` says which.
+ *
+ * There is deliberately no state for "the filter was empty, so the file was
+ * not opened". It existed until round 1 of task 4.7's review and NO caller
+ * could reach it, while the doc read as though production did — one more fact
+ * asserted by a comment and by nothing else, which is this item's own defect
+ * wearing a different hat. Whether the ids were filtered is now a SEPARATE
+ * field (`unfiltered`), because it is a separate fact from how much was read.
  */
-export function scanTranscriptIds(
-  transcriptPath: string | null | undefined, knownIds: Set<string> | null,
-): string[] {
-  if (!transcriptPath || (knownIds !== null && knownIds.size === 0)) return [];
-  let text: string;
-  try {
-    if (!statSync(transcriptPath).isFile()) return [];
-    text = readTail(transcriptPath);
-  } catch {
-    return [];
+export type TranscriptScanState = 'whole' | 'tail' | 'absent' | 'unreadable';
+
+/**
+ * **What the caller knows about the index, which is what decides whether the
+ * ids can be checked against anything at all.**
+ *
+ *  - `{ ids }`       filter against these. An EMPTY set is legal and means
+ *                    exactly what it says — the index knows nothing, so nothing
+ *                    matches and the answer is a MEASURED zero over a file that
+ *                    was really read.
+ *  - `{ unfiltered }` no filter is possible, and WHY. The scan still reads:
+ *                    over-capture is the safe direction, because a snapshot id
+ *                    matching no live item selects nothing at restore, while a
+ *                    MISS is the direction this design forbids outright.
+ *
+ * **The two are a union rather than `Set | null` so that "there was no filter"
+ * cannot be passed without saying why.** That is the same rule the rest of this
+ * task enforces on counts: a caller that skips the filter knows the reason, the
+ * row has to print it, and a `null` carries the fact while dropping the reason
+ * on the floor.
+ */
+export type KnownIds = { ids: Set<string> } | { unfiltered: string };
+
+/**
+ * A transcript scan, and everything about it the id list cannot say.
+ *
+ * **`ids.length` alone answered three different questions with one number**
+ * (`TASK-one-number-means-nothing-cited-could-not-read-and-read-only`):
+ * "nothing was cited", "the transcript could not be read" and "only the last
+ * 8 MB of a 65 MB transcript was read" all arrived as an empty or short array.
+ * At the size this workspace's own transcripts reach — 65,046,326 bytes
+ * measured, of which the tail bound covers 12% — the third case drops every id
+ * cited in the first 57 MB while printing the first case's number.
+ *
+ * So the state travels WITH the ids, and the byte counts are `null` exactly
+ * where nothing was read: `STD-a-measured-zero-is-drawn-and-named-an-
+ * unmeasured-thing-is` forbids a zero that stands in for a measurement nobody
+ * took, and a `0` byte count would be one.
+ */
+export interface TranscriptScan {
+  /** The ids found, deduped and sorted — as far as the scan could see. */
+  ids: string[];
+  state: TranscriptScanState;
+  /** Bytes actually read, or `null` when the file was never opened. */
+  bytesRead: number | null;
+  /** The file's size, or `null` when it was never stat'ed successfully. */
+  totalBytes: number | null;
+  /** Why nothing (or not all) was read; `null` on a clean whole read. */
+  why: string | null;
+  /**
+   * Why the ids were NOT checked against the index, or `null` when they were.
+   *
+   * A count taken with no filter is a different fact from the same count taken
+   * with one — it may name ids that were deleted or renamed — and until this
+   * field the two printed identically. Separate from `state` on purpose: how
+   * much was READ and whether it was CHECKED are two questions, and one field
+   * answering both is how this item's defect got in.
+   */
+  unfiltered: string | null;
+}
+
+/**
+ * Item ids mentioned anywhere in the transcript that also exist in the index,
+ * WITH how much of the transcript that answer rests on and whether anything
+ * checked it.
+ *
+ * `KnownIds` says which of those the caller could do. `{ unfiltered }` still
+ * READS — over-capture is the safe direction, a snapshot id matching no live
+ * item selects nothing at restore, and the universe is bounded by the tail
+ * bound and the strict id shape either way. `{ ids: new Set() }` is not that
+ * case: it says the index genuinely knows nothing, so nothing can match and
+ * the file is still read for a measured zero.
+ *
+ * Never throws. Every failure is a state, because a throw here would be one
+ * more way for these facts to collapse into each other.
+ */
+export function scanTranscript(
+  transcriptPath: string | null | undefined, known: KnownIds,
+): TranscriptScan {
+  const unfiltered = 'unfiltered' in known ? known.unfiltered : null;
+  const unread = { ids: [], bytesRead: null, totalBytes: null, unfiltered };
+  if (!transcriptPath) {
+    return { ...unread, state: 'absent', why: 'the payload carried no transcript_path' };
   }
 
-  return scanTextIds(text, knownIds);
+  let read: { text: string; bytesRead: number; totalBytes: number };
+  try {
+    if (!statSync(transcriptPath).isFile()) {
+      return { ...unread, state: 'unreadable', why: 'the path is not a file' };
+    }
+    read = readTail(transcriptPath);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    return { ...unread, state: 'unreadable', why: code ?? String(err) };
+  }
+
+  return {
+    ids: scanTextIds(read.text, 'ids' in known ? known.ids : null),
+    state: read.bytesRead < read.totalBytes ? 'tail' : 'whole',
+    bytesRead: read.bytesRead,
+    totalBytes: read.totalBytes,
+    why: read.bytesRead < read.totalBytes
+      ? `the transcript is larger than the ${MAX_TRANSCRIPT_BYTES}-byte tail bound`
+      : null,
+    unfiltered,
+  };
 }
 
 /**
  * The same scan over text a caller already holds, rather than a file.
  *
- * Split out of `scanTranscriptIds` for `hooks/post-compact.ts`, whose input is
+ * Split out of `scanTranscript` for `hooks/post-compact.ts`, whose input is
  * the `compact_summary` on the payload — a string that exists nowhere on disk.
  * It is a split and not a second implementation on purpose: `ID_PATTERN` is
  * the one place that knows what an id looks like, and a second regex agreeing
@@ -1121,7 +1276,7 @@ function writeCarryOnceEntries(root: string, entries: CarryOnceEntry[]): { writt
     // Beside the file, on every write — the same reason `continuity.ts` and
     // `focus.ts` write one here: `state/` may have no `.gitignore` yet if
     // nothing else has written into it in this workspace.
-    writeFileSync(path.join(dir, '.gitignore'), '*\n', 'utf8');
+    writePrivateGitignore(dir);
     const body = `${JSON.stringify({ protocol: CARRY_ONCE_PROTOCOL, ids: entries }, null, 2)}\n`;
     writeFileSync(tmp, body, 'utf8');
     retryOnTransientFsError(() => renameSync(tmp, target));

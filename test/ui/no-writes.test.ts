@@ -141,6 +141,14 @@ const WRITERS: Record<string, string[]> = {
   'src/core/relations.ts': ['linkItems', 'unlinkItems'],
   'src/core/revision.ts': ['stageRevision', 'promoteRevision', 'discardRevision'],
   'src/core/jsonl-log.ts': ['appendJsonlLine', 'ensureLogDir', 'healTornTail'],
+  // Added 2026-09-23 with the module itself: it is the one writer of the `*`
+  // .gitignore this product puts in its private directories, after a repository's
+  // own root file was found truncated to that line
+  // (TASK-the-product-overwrote-the-repository-s-root-gitignore-with-a).
+  // Eleven call sites used to write it by hand; every one of them now reaches the
+  // filesystem through here, so this key is what keeps `isWriter` honest about
+  // all eleven.
+  'src/core/private-gitignore.ts': ['writePrivateGitignore'],
   'src/core/audit.ts': ['recordAudit'],
   'src/core/focus.ts': ['writeFocus', 'clearFocus', 'setFocus', 'unsetFocus'],
   'src/core/seen-file.ts': ['appendSeen'],

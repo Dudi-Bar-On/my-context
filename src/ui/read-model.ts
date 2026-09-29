@@ -125,6 +125,11 @@ import { RETIRED_STATUSES } from '../core/select.ts';
 import {
   listRepoFiles, type Finding,
 } from '../doctor/checks.ts';
+// `ruleStoreFindings` and NOT `cli/commands/doctor.ts`'s copy of the call:
+// that module pulls in `openMutateContext` and the command registry behind it,
+// which is the entire write surface, to reach one wrapper. `doctor/rule-store.ts`
+// is where both surfaces read it from — see `apiDoctor`.
+import { ruleStoreFindings } from '../doctor/rule-store.ts';
 import { healthSnapshot, type HealthReading } from './read-model-health.ts';
 import { helpTopic, HELP_TOPICS } from '../help/index.ts';
 import type { Budgets, Config } from '../core/config.ts';
@@ -656,13 +661,35 @@ export function apiSimulate(ws: Workspace, url: URL): JsonResult {
       ...selection.full.map((e) => e.item.id),
       ...selection.spilled.map((s) => s.id),
     ])];
+    // **One entry per id, and `tokens: null` where there is nothing to price.**
+    //
+    // `selection.spilled` no longer names only items: since
+    // `TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where` the
+    // restore tier discloses every snapshot id it could not bring back, and one
+    // of its five reasons is `unknown id` — an id the compaction snapshot holds
+    // and the corpus no longer has. There is no item, so there is no
+    // `itemCost`, and inventing one (a 0 that reads as a measured zero, the
+    // shape `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`
+    // refuses) would put a price on something that does not exist.
+    //
+    // **The entry is kept rather than skipped**, which is the same reasoning
+    // the throw below was written with: a `costs` array quietly one shorter
+    // than its selection is exactly the silent drop this project keeps paying
+    // for. The row still carries its id, and the reason travels with the spill
+    // record inside `selection` itself.
+    //
+    // **The throw stays for every other id.** `selection.full` and every
+    // spilled CANDIDATE were built from this same `items` array, so an id from
+    // either that does not resolve still means the two disagree — and nothing
+    // is guessed. `neverOffered` is the one documented exception and it is
+    // read off the record rather than inferred from the reason string.
+    const neverOffered = new Set(
+      selection.spilled.filter((s) => s.neverOffered === true).map((s) => s.id),
+    );
     const costs = ids.map((id) => {
       const item = byId.get(id);
       if (item === undefined) {
-        // Structurally impossible: both sets come from the `items` array this
-        // same call passed to `select`. It is a throw rather than a skipped
-        // entry because a `costs` array quietly one shorter than its
-        // selection is exactly the silent drop this project keeps paying for.
+        if (neverOffered.has(id)) return { id, tokens: null };
         throw new Error(
           `mycontext ui: /api/simulate priced a selection naming ${id}, which is not in the ` +
           'item set the selection was computed from. The two disagree; nothing is guessed.',
@@ -825,18 +852,38 @@ export function apiSimulateSweep(ws: Workspace, url: URL): JsonResult {
     const zeroBudgets: Budgets = { ...ws.config.budgets, [tier]: 0 };
     const zeroConfig: Config = { ...ws.config, budgets: zeroBudgets };
     const zeroSelection = select(items, ctx, zeroConfig);
-    const candidateIds = zeroSelection.spilled
-      .filter((s) => s.tier === tier)
-      .map((s) => s.id);
+    // **A `neverOffered` record is not a candidate, and the ladder must not
+    // imply a budget would buy it back.**
+    //
+    // The candidate list is learned from a zero-budget selection because
+    // `fitToBudget` spills every candidate it was offered at budget 0 — which
+    // was the whole of `spilled` until the restore tier began disclosing the
+    // snapshot ids it could not bring back
+    // (`TASK-the-restore-tier-drops-snapshot-ids-with-no-disclosure-where`).
+    // Those ids were never priced and never offered: a superseded item, an item
+    // on a disabled category, one hidden by the focus or one the corpus no
+    // longer has is admitted at NO budget, so sweeping it would draw a rung
+    // that promises a return no number can produce.
+    //
+    // Told apart by `Spill.neverOffered`, never by reading `reason` — the flag
+    // exists for exactly these three call sites. The excluded ids are named in
+    // the response rather than dropped from it: they are absent from the
+    // ladder, and `INV-nothing-is-dropped-silently` asks that the absence say
+    // so where the reader is.
+    const tierSpills = zeroSelection.spilled.filter((s) => s.tier === tier);
+    const neverOffered = tierSpills.filter((s) => s.neverOffered === true).map((s) => s.id);
+    const candidateIds = tierSpills.filter((s) => s.neverOffered !== true).map((s) => s.id);
 
     const truncatedInput = candidateIds.length > SWEEP_MAX_CANDIDATES;
     const boundedIds = truncatedInput ? candidateIds.slice(0, SWEEP_MAX_CANDIDATES) : candidateIds;
     const candidates = boundedIds.map((id) => {
       const item = byId.get(id);
       if (item === undefined) {
-        // Structurally impossible: `id` came from `zeroSelection.spilled`,
-        // which `select` built from this same `items` array. Thrown rather
-        // than skipped for the reason `apiSimulate`'s own `costs` throws.
+        // Structurally impossible: `id` is a CANDIDATE — `fitToBudget` priced
+        // it off an item in this same `items` array — and the one kind of
+        // spill record that names no item, `neverOffered`, was filtered out
+        // above. Thrown rather than skipped for the reason `apiSimulate`'s own
+        // `costs` throws.
         throw new Error(
           `mycontext ui: /api/simulate/sweep priced a candidate naming ${id}, which is not in ` +
           'the item set the selection was computed from. The two disagree; nothing is guessed.',
@@ -879,6 +926,12 @@ export function apiSimulateSweep(ws: Workspace, url: URL): JsonResult {
       body: {
         tier, tiersRun: runs, candidateCount: candidates.length,
         truncated: truncatedInput || truncatedOutput, rungs,
+        // The ids this tier dropped WITHOUT ever offering them to the budget —
+        // see the candidate list above. Always present, empty included: a tier
+        // that dropped nothing this way is a measured zero and reads as one,
+        // and a key that appeared only when it had something to say would make
+        // its absence ambiguous with an older server.
+        neverOffered,
       },
     };
   });
@@ -1765,7 +1818,29 @@ export function apiDoctor(ws: Workspace, url: URL): JsonResult {
       items: store.all(),
       config: ws.config,
     });
-    const body: DoctorBody = { findings: health.findings, reading: health.reading };
+    // **The rule store, appended and not folded into `healthSnapshot`** —
+    // `TASK-two-checks-route-their-only-disclosure-to-a-surface-nobody`. It is
+    // `cmdDoctor`'s `ruleStoreFindings` (cli/commands/doctor.ts), asked here
+    // so that BOTH surfaces carry the same disclosure: a check reported in the
+    // terminal and absent from the screen is the routing defect that item is
+    // about, reintroduced one door over.
+    //
+    // It is outside the snapshot on purpose. `healthSnapshot` caches a
+    // measurement OF THE CORPUS and `reading` names the moment that
+    // measurement was taken; the rule store is the installed package, it
+    // changes on a different clock, and a fresh answer stapled to a cached
+    // `reading` would make that field say something it does not mean. The
+    // cost is one `readdirSync` of the entries directory plus one 5 KB
+    // manifest read per request, which is the same read a door already
+    // performs at session start.
+    //
+    // It carries `about`, so it is a DISCLOSURE: `/api/status`'s `health`
+    // tally filters on that field and is unchanged by it, which is why this
+    // does not belong in `healthSnapshot` for the tally's sake either.
+    const body: DoctorBody = {
+      findings: [...health.findings, ...ruleStoreFindings(root)],
+      reading: health.reading,
+    };
     return { status: 200, body };
   });
 }

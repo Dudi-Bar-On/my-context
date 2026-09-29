@@ -1,4 +1,4 @@
-// @basis TASK-every-cli-invocation-prints-an-experimental-warning-that-is, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none
+// @basis TASK-every-cli-invocation-prints-an-experimental-warning-that-is, RULE-a-test-names-the-items-it-rests-on-or-says-it-rests-on-none, TASK-release-phase-1-the-repository-tells-the-truth
 /**
  * **`cliscript/5`: the one node invocation this project does not start itself
  * was the one printing `ExperimentalWarning` at a person.**
@@ -118,8 +118,21 @@ test('every node invocation this project starts carries the warning flag, and so
  * actually ships: on Windows the file is never executed through its shebang at
  * all — npm's shim reads that line and builds the command — and that is the
  * command reconstructed here.
+ *
+ * **What this asserts, and what it stopped asserting.** It used to require the
+ * CONTROL run (no flags) to print `ExperimentalWarning`, as the one way to
+ * prove the flag was doing anything. That made the test portable to node
+ * builds it was never really testing: node 24.21 stopped printing the
+ * `node:sqlite` warning at all — stabilised, not silenced — so the control
+ * stopped warning too, on every machine running that node, not only this
+ * repository's. A test that must fail on the exact node version its assertion
+ * depends on is not portable; it is pinned to a build. What the shebang can
+ * still be held to, on ANY node version, is behavioural rather than textual:
+ * launching the CLI the way its shebang says changes NOTHING ELSE about what
+ * comes out — same exit code, and no line on stderr that a plain launch did
+ * not already print. That holds whether or not this node build still warns.
  */
-test('the CLI launched the way its shebang says prints no warning, and exits the same code', () => {
+test('the CLI launched the way its shebang says exits the same code and adds nothing new to stderr', () => {
   const shebang = read('src', 'cli', 'index.ts').split('\n')[0];
   const flags = shebang.replace(/^#!\s*\/usr\/bin\/env\s+-S\s+node\s*/, '').trim().split(/\s+/).filter(Boolean);
   assert.ok(flags.length >= 1, `the shebang carries no node flags to test: ${shebang}`);
@@ -136,23 +149,20 @@ test('the CLI launched the way its shebang says prints no warning, and exits the
   const control = run([]);
   const shipped = run(flags);
 
-  // THE CONTROL FIRST. Without it, "no warning" is a claim about this node
-  // build rather than about the flag, and it would stay green through a
-  // release that stabilises node:sqlite and through a repair that deleted the
-  // shebang.
-  assert.match(
-    control.stderr, /ExperimentalWarning/,
-    `node ${process.version} no longer warns about node:sqlite even without ${flags.join(' ')}. ` +
-    'The assertion below can no longer distinguish a working shebang from a missing one — this ' +
-    'test needs rewriting rather than trusting.',
-  );
-
-  assert.doesNotMatch(
-    shipped.stderr, /ExperimentalWarning/,
-    'the CLI launched exactly as its shebang says still prints the experimental warning',
-  );
-  // `CONST-the-cli-exit-code-contract` is HARD: silencing a warning must not
+  // `CONST-the-cli-exit-code-contract` is HARD: the shebang's flags must not
   // move a single exit code, and the same command run both ways is the
   // narrowest way to say so.
   assert.equal(shipped.status, control.status, 'the flag changed the CLI exit code');
+
+  // The flag can only SUPPRESS a warning, never introduce one: every line the
+  // shipped run prints on stderr must already be a line the control printed.
+  // Line-set rather than a substring match, because the two runs' node pids
+  // differ and a pid-bearing line would never compare equal otherwise.
+  const lines = (s: string): Set<string> => new Set(s.split('\n').filter((l) => l.trim() !== ''));
+  const controlLines = lines(control.stderr);
+  const added = [...lines(shipped.stderr)].filter((l) => !controlLines.has(l));
+  assert.deepEqual(
+    added, [],
+    `the shebang's flags introduced stderr output the plain launch did not have: ${JSON.stringify(added)}`,
+  );
 });

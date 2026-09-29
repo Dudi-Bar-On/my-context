@@ -1,4 +1,4 @@
-// @basis TASK-the-store-loads-refuses-what-it-cannot-parse-and-proves-it, INV-nothing-is-dropped-silently
+// @basis TASK-the-store-loads-refuses-what-it-cannot-parse-and-proves-it, INV-nothing-is-dropped-silently, TASK-release-phase-3-the-defects
 /**
  * **A damaged store refuses WRITES and still allows READS, and names the entry
  * that is wrong.**
@@ -72,7 +72,57 @@ test('the manifest lists every entry, by id as well as by file', () => {
     loadRules(entriesDir(), true).entries.map((e) => e.id).sort(),
     'the manifest and the loader disagree about what is in the store',
   );
-  assert.ok(manifest.entries.every((e) => /^[0-9a-f]{64}$/.test(e.checksum)));
+  assert.ok(manifest.entries.every((e) => e.checksum !== undefined && /^[0-9a-f]{64}$/.test(e.checksum)));
+});
+
+/* ══ 1b. AN ENTRY THAT DOES NOT PARSE IS SEALED WITHOUT A CHECKSUM (B12) ═══ */
+
+/**
+ * `KNOWN-rules-verify-answers-intact-for-an-entry-the-store-s-own`: before
+ * this, `writeManifest` sealed an unparseable file with
+ * `checksum: checksum(text)` — a hash of bytes nobody had read as an entry —
+ * so `verifyManifest` said "intact" about a row it had never actually
+ * validated. The fix is at the WRITE, not the read: a row for a file the
+ * parser refuses never carries a checksum, so there is nothing for a later
+ * verify to falsely agree with.
+ */
+test('writeManifest seals an unparseable entry with `refused` and no checksum, never a checksum for content nobody read', () => {
+  withCopy((dir) => {
+    writeFileSync(path.join(dir, 'broken.md'), 'not an entry at all, no frontmatter fence\n', 'utf8');
+    const manifest = writeManifest(dir);
+    const row = manifest.entries.find((e) => e.file === 'broken.md');
+    assert.ok(row !== undefined, 'writeManifest dropped the unparseable file instead of sealing a row for it');
+    assert.equal(
+      row.checksum, undefined,
+      'a broken entry was sealed with a checksum, which lets `verify` say "unchanged" about ' +
+      'content nobody has ever read as an entry (B12)',
+    );
+    assert.match(row.refused ?? '', /no frontmatter/, 'the row does not carry the parser\'s own refusal');
+  });
+});
+
+test('a refused row is reported by `verifyManifest` on every call, distinct from `altered`', () => {
+  withCopy((dir) => {
+    writeFileSync(path.join(dir, 'broken.md'), 'not an entry at all, no frontmatter fence\n', 'utf8');
+    writeManifest(dir);
+    const answer = verifyManifest(dir);
+    assert.equal(answer.ok, false, 'a store holding an unparseable entry verified as intact (B12)');
+    if (answer.ok) return;
+    const problem = answer.problems.find((p) => p.entry === 'broken.md');
+    assert.ok(problem !== undefined, 'the refused entry is not among the reported problems');
+    assert.equal(problem.why, 'refused', 'an unparseable entry was reported as something other than `refused`');
+  });
+});
+
+test('writeEntry records a refused row in `working` for text that will not parse, never a checksum', () => {
+  withCopy((dir) => {
+    writeEntry(dir, 'broken.md', 'not an entry at all, no frontmatter fence\n');
+    const working = readManifest(dir).working ?? [];
+    const row = working.find((e) => e.file === 'broken.md');
+    assert.ok(row !== undefined, 'the write was not recorded in `working`');
+    assert.equal(row.checksum, undefined, 'a write that will not parse was recorded with a checksum (B12)');
+    assert.match(row.refused ?? '', /no frontmatter/, 'the working row does not carry the parser\'s own refusal');
+  });
 });
 
 /* ══ 2. A DAMAGED STORE, AND WHICH ENTRY ═══════════════════════════════════ */

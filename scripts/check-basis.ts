@@ -763,4 +763,4 @@ function main(): number {
   return report.findings.some((f) => f.gates) ? 1 : 0;
 }
 
-if (isMainEntry(import.meta.filename, process.argv[1])) process.exit(main());
+if (isMainEntry(import.meta.filename, process.argv[1])) process.exitCode = main();

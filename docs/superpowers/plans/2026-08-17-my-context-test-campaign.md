@@ -1924,7 +1924,7 @@ export const claims = [
   {
     id: 'H134', section: 'global',
     text: 'mycontext init --global is refused, and the refusal names the global root',
-    where: '`README.md` · `is **refused**, and the refusal names the global root` · ~6512',
+    where: '`README.md` · `is **refused**, and the refusal names the global` · ~1948',
     evidence: 'cli-capture/init-global-refused',
     check: (r) => r.exitCode !== 0 && /my-context/.test(r.stdout + r.stderr),
   },

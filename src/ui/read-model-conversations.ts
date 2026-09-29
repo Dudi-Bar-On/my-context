@@ -1566,6 +1566,31 @@ export interface ConversationSecretsBody {
   sessionId: string;
   /** Nobody has scanned this workspace, so there is no session to read. */
   indexed: boolean;
+  /**
+   * **Why no byte of this session was read, or `null` when it was.**
+   *
+   * `null` and never absent, so a consumer can tell "measured" from "this build
+   * does not say" — the same shape `matchedLanes`, `keptBytes` and
+   * `durationMs` carry on the row type above, and the same standard:
+   * `STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`.
+   *
+   * **It exists because this body was answering a clean bill of health over
+   * zero bytes.** Site M6 of
+   * `TASK-nine-sites-report-a-measured-zero-for-something-they-could`: an id
+   * naming no row in the archive got `noSecrets(id, true, …)` — `indexed: true`
+   * with every count zero — so the screen skipped its `indexed === false`
+   * branch and drew *"None of the N shapes this looks for appears in this
+   * session. That is a measured zero and NOT a promise."* over a file nothing
+   * had opened. Report 3 named this the one screen in the product where being
+   * wrong has a cost OUTSIDE the screen: a reader deciding whether a transcript
+   * is safe to share.
+   *
+   * `indexed` could not carry it. `indexed: false` is a fact about the
+   * WORKSPACE — nobody has ever scanned it — and the screen already draws that
+   * with its own sentence and a rebuild command; overloading it to also mean
+   * "this one session is not here" would replace one confusion with another.
+   */
+  unscanned: string | null;
   /** The file this was read from, which may be the copy rather than the original. */
   file: string | null;
   source: string | null;
@@ -1589,11 +1614,19 @@ export interface ConversationSecretsBody {
   ms: number;
 }
 
-/** The empty answer, so a caller holds one shape whatever happened. */
-function noSecrets(sessionId: string, indexed: boolean, ms: number): ConversationSecretsBody {
+/**
+ * The empty answer, so a caller holds one shape whatever happened — and every
+ * caller of it must say WHY it is empty, which is what `unscanned` being a
+ * required parameter enforces. There is no path through this function that
+ * produces a clean scan report over a file nobody read.
+ */
+function noSecrets(
+  sessionId: string, indexed: boolean, ms: number, unscanned: string,
+): ConversationSecretsBody {
   return {
     sessionId,
     indexed,
+    unscanned,
     file: null,
     source: null,
     records: 0,
@@ -1655,7 +1688,14 @@ export function apiConversationSecrets(
   } catch (err) {
     if (err instanceof ConversationIndexUninitializedError
       || err instanceof ConversationIndexIncompleteError) {
-      return { status: 200, body: noSecrets(params.id, false, Date.now() - startedMs) };
+      return {
+        status: 200,
+        body: noSecrets(
+          params.id, false, Date.now() - startedMs,
+          'no transcript has ever been scanned in this workspace, so nothing was read and no '
+          + `shape was applied to this session. Run \`${REBUILD_COMMAND}\` first.`,
+        ),
+      };
     }
     throw err;
   }
@@ -1668,7 +1708,17 @@ export function apiConversationSecrets(
   } finally {
     index.close();
   }
-  if (row === null) return { status: 200, body: noSecrets(params.id, true, Date.now() - startedMs) };
+  if (row === null) {
+    return {
+      status: 200,
+      body: noSecrets(
+        params.id, true, Date.now() - startedMs,
+        `this workspace is indexed, but "${params.id}" names no session in the archive — so no `
+        + 'byte of it was read and no shape was applied. The counts below are UNMEASURED, not a '
+        + `clean scan. Check the id, or run \`${REBUILD_COMMAND}\` if the transcript is new.`,
+      ),
+    };
+  }
 
   const scan = scanSessionSecrets(row.file, { cap: CONVERSATION_SECRET_CAP });
   const plan = mark === null ? null : readRedactionPlan(mark.file);
@@ -1678,6 +1728,8 @@ export function apiConversationSecrets(
     body: {
       sessionId: params.id,
       indexed: true,
+      // The session was read. `null` and never absent — see `unscanned`.
+      unscanned: null,
       file: row.file,
       source: row.source,
       records: scan.records,
@@ -1888,6 +1940,30 @@ export interface ConversationSearchBody {
    * same way `tiers` is.
    */
   elsewhere: { kinds: string[]; matched: number } | null;
+  /**
+   * **THE SESSIONS THIS ANSWER DID NOT SEARCH** — `[]`, never absent, when it
+   * searched all of them.
+   *
+   * `TASK-nine-sites-report-a-measured-zero-for-something-they-could`, and it
+   * is the MIXED case the top-level pair above cannot carry. One `?name=`
+   * narrows to several sessions and this route runs one search per session;
+   * with one of them answering over a prose index that does not hold it and
+   * another holding hits, `searchable` is `true` and `note` is `null` —
+   * correctly, because a hit is an answer — and the blind session's own
+   * refusal used to vanish in the merge. The screen then drew the hits of one
+   * session as the answer for both.
+   *
+   * So the refusal is reported PER SESSION beside the hits rather than instead
+   * of them. Each entry carries `searchArchiveTiered`'s own sentence for that
+   * session, and the name the reader narrowed with, because *which* session was
+   * not searched is the whole thing a top-level sentence cannot say.
+   * `sessionId` is `null` for an unscoped search, which is about the archive
+   * and not about any one session.
+   *
+   * Derived from the per-session answers this route already holds — never a
+   * second measurement, so it cannot disagree with `searchable` beside it.
+   */
+  unsearched: { sessionId: string | null; sessionName: string | null; note: string }[];
   /**
    * **WHAT IS IN NO INDEX AT ALL**, named, on every answer.
    *
@@ -2183,6 +2259,7 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       rebuild: REBUILD_COMMAND,
       index: { sources: 0, spans: 0, indexedAt: null },
       elsewhere: null,
+      unsearched: [],
       unindexed: [...UNINDEXED_BLOCKS],
       ...over,
     } as ConversationSearchBody,
@@ -2259,9 +2336,47 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       limit,
     }));
     const first = answers[0];
-    if (first !== undefined && !first.searchable) {
+    // ── AND WHICH OF THEM WAS NOT SEARCHED, PER SESSION ──────────────────
+    //
+    // `ConversationSearchBody.unsearched`' own docblock carries the reason.
+    // Read off the answers rather than measured again, and the names table is
+    // touched ONLY when there is something to name — this runs on every search.
+    const unsearched: ConversationSearchBody['unsearched'] = [];
+    if (answers.some((answer) => !answer.searchable && answer.note !== null)) {
+      const named = new Map(index.names().map((row) => [row.sessionId, row.name]));
+      answers.forEach((answer, i) => {
+        if (answer.searchable || answer.note === null) return;
+        const sessionId = sessions[i] ?? null;
+        unsearched.push({
+          sessionId,
+          sessionName: sessionId === null ? null : named.get(sessionId) ?? null,
+          note: answer.note,
+        });
+      });
+    }
+    // **`every`, not `first`, and the reason is a second kind of refusal.**
+    //
+    // Until `TASK-nine-sites-report-a-measured-zero-for-something-they-could`
+    // (M10) the only things that could make an answer unsearchable were
+    // properties of the QUERY — under the character floor, or nothing but
+    // exclusions — and those are identical across every per-session answer, so
+    // reading the first was reading all of them.
+    //
+    // The coverage refusal is not like that. It is a property of the INDEX, but
+    // `searchArchiveTiered` raises it only on an answer whose own hit list is
+    // empty — so with `?name=` matching several sessions, the first can be
+    // empty while a later one holds the hits. Returning on `first` alone would
+    // then throw away real hits to report that the index is behind, which is
+    // the same class of drop pointed the other way. `every` fires exactly when
+    // the MERGED answer is empty, which is the only time an empty list can be
+    // mistaken for an answer about the archive.
+    //
+    // `first.note` is still the sentence to serve: every unsearchable answer in
+    // the array carries the same one, because both kinds of refusal are about
+    // something all of them share — the query, or the index.
+    if (first !== undefined && answers.every((a) => !a.searchable)) {
       return empty({
-        searchable: false, note: first.note, excluded: first.excluded, index: shelf,
+        searchable: false, note: first.note, excluded: first.excluded, index: shelf, unsearched,
       });
     }
 
@@ -2394,6 +2509,7 @@ export function apiConversationSearch(ws: Workspace, url: URL): JsonResult {
       // Summed over the sessions a NAME narrowed to, exactly as `tiers` is:
       // they are counts of spans in disjoint sessions, so they add.
       elsewhere: elsewhereTotal(answers),
+      unsearched,
       unindexed: [...UNINDEXED_BLOCKS],
     };
     return { status: 200, body };

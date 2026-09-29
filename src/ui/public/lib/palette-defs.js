@@ -516,11 +516,24 @@ export const PALETTE = [
         offers: { state: 'pending' }, offersNote: 'pal.suggruled', required: true,
       },
     ],
+    // **`summary` JOINED THE CLI ON 2026-09-12
+    // (`TASK-lesson-accept-creates-a-rule-with-no-summary-so-the-accept`) AND
+    // NEVER REACHED THIS CATALOGUE.** Accepting a candidate creates a rule,
+    // which meets `core/summary-gate.ts`'s `summaryRequiredAtCreate` exactly
+    // as `mycontext add` does, and `command-flags.ts`'s `lesson-accept` entry
+    // has allowed `--summary` (and `--summary-omitted`) since that date. Without
+    // it here, every accept composed through this screen was refused for a
+    // field the reader had no box to fill — `REQ-every-anchor-capability-is-
+    // reachable-from-the-screen-and-a`'s argument applies past anchors: a
+    // capability the CLI has and this catalogue does not expose is not
+    // reachable from the screen at all. `input: 'text'`, matching `add`'s own
+    // `summary` flag above.
     flags: [
       { name: 'title', input: 'text' },
       { name: 'scope', input: 'glob', format: 'a/**,b/**' },
       { name: 'severity', options: ['hard', 'soft'] },
       { name: 'directive', options: ['do', 'dont'] },
+      { name: 'summary', input: 'text' },
     ],
   },
   {

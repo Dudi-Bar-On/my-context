@@ -306,4 +306,4 @@ const isMain = (): boolean => {
   const invoked = process.argv[1];
   return typeof invoked === 'string' && fileURLToPath(import.meta.url) === path.resolve(invoked);
 };
-if (isMain()) process.exit(main());
+if (isMain()) process.exitCode = main();

@@ -177,6 +177,46 @@ export function defaultAgentEdits(tier: Tier): AgentEdits {
 }
 
 /**
+ * **THE ANSWER TO "what tier is a category nobody declared?" — once, here,
+ * where the other two per-category lookups already live.**
+ *
+ * `TASK-the-unknown-category-default-is-answered-three-different` measured the
+ * question being answered THREE WAYS in three files: `tierOf` (trust.ts)
+ * failed closed to `normative` and argued why; `isNormative` (select.ts)
+ * answered `false`, which is `rationale`; and `addSnapshot` (cli/index.ts)
+ * wrote the literal `'rationale'` — the exact default `trust.ts` argues
+ * against, one file over. *"The disagreement is not about what the answer
+ * should be; nobody noticed there were three answers."*
+ *
+ * It fails CLOSED, for the reason `tierOf` wrote down first: a category
+ * renamed or removed after its items were captured leaves those items indexed
+ * (`loadLayer`, rebuild.ts) with no policy of their own, and reading that as
+ * `rationale` silently hands an agent status control over exactly the items
+ * whose governing category just vanished. `agentEditsFor` below already
+ * borrowed this default rather than restating it; now it borrows the value
+ * rather than the word.
+ */
+export const UNKNOWN_CATEGORY_TIER: Tier = 'normative';
+
+/**
+ * The `tier` in force for an item of category `type` — the ONE lookup every
+ * surface that has to answer the question goes through (`tierOf` in trust.ts,
+ * `isNormative` in select.ts, the snapshot preview in cli/index.ts).
+ *
+ * `Object.hasOwn` guards the prototype-pollution hazard a bare index carries
+ * on a type of `"constructor"`: that reaches `Object.prototype.constructor`,
+ * whose `.tier` is `undefined`, landing on the permissive answer this function
+ * exists to refuse. `resolveConfig` builds `categories` with a null prototype,
+ * so this is belt-and-braces there, but this function is also handed configs
+ * built by tests and by future callers.
+ */
+export function tierForCategory(config: Config, type: string): Tier {
+  return Object.hasOwn(config.categories, type)
+    ? config.categories[type].tier
+    : UNKNOWN_CATEGORY_TIER;
+}
+
+/**
  * `global` for every category: it is the semantics the product was corrected
  * to, and the only value that asks nothing of a user who has no restriction
  * to express. Not tier-dependent — an unscoped `lesson` and an unscoped
@@ -223,13 +263,16 @@ export function scopePolicyFor(config: Config, type: string): ScopePolicy {
  * indexed (`loadLayer`, rebuild.ts) with no policy of their own; reading that
  * as `allow` would hand an agent unreviewed edits to exactly the items whose
  * governing category just vanished from config. Expressed as
- * `defaultAgentEdits('normative')` rather than a literal so it cannot drift
- * from the tier default it means to borrow.
+ * `defaultAgentEdits(UNKNOWN_CATEGORY_TIER)` rather than a literal so it
+ * cannot drift from the tier default it means to borrow — it now borrows the
+ * VALUE rather than repeating the word, which is what
+ * `TASK-the-unknown-category-default-is-answered-three-different` asked of
+ * every surface that reads this default.
  */
 export function agentEditsFor(config: Config, type: string): AgentEdits {
   return Object.hasOwn(config.categories, type)
     ? config.categories[type].agentEdits
-    : defaultAgentEdits('normative');
+    : defaultAgentEdits(UNKNOWN_CATEGORY_TIER);
 }
 
 /**

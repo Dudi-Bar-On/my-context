@@ -724,6 +724,36 @@ export async function render(root, ctx) {
   qbar.setAttribute('aria-label', ctx.tFlat('sess.title'));
   const qNote = el('p', 'small');
   qNote.append(...ctx.t('sim.qnote'));
+  /* **AND WHEN THERE IS NO SESSION, THE MISSING BUTTON IS NAMED.** `drawQ`
+     draws one button rather than an inert second one when the corpus has
+     recorded no session — correctly — but a strip that silently lost half of
+     the choice `sim.qnote` just promised reads as a screen that failed to
+     load it. Measured 2026-09-28 on a fresh clone's corpus (no audit history,
+     so `/api/sessions` answers none and the shell is `cold`): the note
+     beneath promised "the session above" over a strip that drew no session.
+     Shown only while the shell is cold.
+
+     **Cold has more than one cause, and the sentence says which** (review of
+     `8ec298c7`). `app.js`'s `loadSessions` answers `'cold'` for zero
+     sessions AND for sessions whose `/api/sessions` answer named no default,
+     and the reader can pick cold in the session picker with sessions
+     recorded. Only the first is "no session is recorded"; the other two are a
+     cold shell over a corpus that HAS sessions, and the remedy is the picker.
+     `ctx.sessionsRecorded()` is the shell's own count of the rows it holds,
+     so the two sentences are chosen from what the shell knows, not guessed.
+
+     **And a zero is only "no session is recorded" when it was MEASURED.**
+     `/api/sessions` answers an empty list both for a projected ledger that
+     holds no rows and for one nobody has projected (`ledger:
+     'not-projected'`), and only the second field says which
+     (`ctx.sessionLedger()`, the shell's `sessionLedgerPresence`). Over an
+     unprojected ledger the note is drawn UNMEASURED — the `◌` `chip unmeas`
+     primitive the session picker's own not-projected panel uses — rather than
+     as a zero nobody counted
+     (`STD-a-measured-zero-is-drawn-and-named-an-unmeasured-thing-is`). */
+  const qNone = el('p', 'small');
+  qNone.id = 'simqnone';
+  qNone.hidden = true;
 
   /**
    * The session every `/api/simulate` and `/api/simulate/sweep` call on this
@@ -764,7 +794,7 @@ export async function render(root, ctx) {
   // the belief that the second is a view of the first.
   stairCol.append(
     stairHead, stairPlate, ctl, rangeCtl, spaced(rangeNote), restoreCtl, spaced(wasNote),
-    tierPick, qbar, spaced(qNote), readout, spaced(stairNote),
+    tierPick, qbar, spaced(qNone), spaced(qNote), readout, spaced(stairNote),
   );
 
   const ladderCol = el('div');
@@ -1211,8 +1241,45 @@ export async function render(root, ctx) {
       left: num(Math.max(left, 0)), res: num(Math.round(RESERVE * 100)),
       over: num(Math.max(total - win.size, 0)),
     };
+    /**
+     * **THE CHIP CARRIES A WORD, and it shipped without one.**
+     *
+     * `TASK-two-browser-gates-are-red-before-any-lane-touches-them-and`
+     * (`ui-gates/1`, filed 2026-09-08) names this exact element as the first
+     * of its two reds: *"`simulate "" class="chip ok"` - a chip with its state
+     * in its COLOUR and no word inside it … An empty `chip ok` on the Budget
+     * simulator carries nothing but green."*
+     *
+     * The sentence beside it was always there and was always the explanation;
+     * what was missing is the STATE, inside the pill, in a form that survives
+     * a monochrome print, a colour-blind reader and `forced-colors`. The glyph
+     * is the second channel and it was already set (`data-g`); the word is the
+     * first, and `e2e/chip-hue-authority.spec.ts:403` requires it by name
+     * rather than accepting either — *"`.chip.carry` and `.chip.index` resolve
+     * to the same `◇`, so on those two the glyph alone does not separate them
+     * and the word does."*
+     *
+     * Three words for three states, keyed in both tables, deliberately one
+     * short word each: the pill is a pill, and the paragraph after it is where
+     * the numbers live.
+     */
     let key = 'sim.winOk';
-    if (total > win.size) { key = 'sim.winOver'; chip.className = 'chip crit'; chip.dataset.g = '■'; } else if (left < reserve) { key = 'sim.winTight'; chip.className = 'chip warn'; chip.dataset.g = '▲'; } else { chip.className = 'chip ok'; chip.dataset.g = '●'; }
+    let word = 'sim.winOkChip';
+    if (total > win.size) {
+      key = 'sim.winOver';
+      word = 'sim.winOverChip';
+      chip.className = 'chip crit';
+      chip.dataset.g = '■';
+    } else if (left < reserve) {
+      key = 'sim.winTight';
+      word = 'sim.winTightChip';
+      chip.className = 'chip warn';
+      chip.dataset.g = '▲';
+    } else {
+      chip.className = 'chip ok';
+      chip.dataset.g = '●';
+    }
+    chip.append(...ctx.t(word));
     winLine.append(chip, ' ', ...ctx.t(key, subs));
 
     /* **A FULL WINDOW IS A STATE WITH A NEXT STEP, NOT A FAILURE**
@@ -1574,6 +1641,18 @@ export async function render(root, ctx) {
     qbar.replaceChildren();
     const live = ctx.session();
     const options = live === 'cold' ? ['cold'] : ['live', 'cold'];
+    qNone.hidden = live !== 'cold';
+    if (live === 'cold') {
+      const recorded = ctx.sessionsRecorded();
+      if (recorded === 0 && ctx.sessionLedger() === 'not-projected') {
+        const chip = el('span', 'chip unmeas');
+        chip.dataset.g = '◌';
+        chip.append(...ctx.t('sim.qunmeas'));
+        qNone.replaceChildren(chip);
+      } else {
+        qNone.replaceChildren(...ctx.t(recorded === 0 ? 'sim.qnone' : 'sim.qcold'));
+      }
+    }
     for (const mode of options) {
       const button = el('button');
       button.type = 'button';

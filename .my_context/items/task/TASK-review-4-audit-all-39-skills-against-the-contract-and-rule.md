@@ -2,11 +2,11 @@
 id: TASK-review-4-audit-all-39-skills-against-the-contract-and-rule
 type: task
 title: "review 4: audit all 39 skills against the contract, and rule on the shape"
-status: active
+status: deprecated
 severity: soft
 always: false
 summary: Judge every skill already written against that standard, and decide whether the set is the right shape or several things wearing one name.
-summary_of: 0aab64a13d11f931
+summary_of: 18f6599c76fd0b49
 scope: []
 tags:
   - "plan:review"
@@ -19,8 +19,8 @@ source_file: null
 source_anchor: null
 source_checksum: null
 valid_from: 2026-08-21
-valid_until: null
-checksum: b88a644d25ed4016
+valid_until: 2026-09-22
+checksum: d4f07418da697784
 plan: review
 seq: "4"
 state: todo
@@ -41,3 +41,5 @@ Ruling 34 handles the deny-list staleness separately; do not duplicate it here.
 RECONCILED 2026-08-25 under plan:walk seq:23, against the precedence order.
 
 VERDICT: STANDS, after seq:3. Nothing supersedes it and no other task in the corpus looks at the skills at all. Worth noting for whoever runs it: the skills are one of the two documents plan:rulings seq:48 found unprotected by verify:citations, alongside both READMEs -- so any claim a skill makes about a command is currently unchecked by anything.
+
+Retired 2026-09-22 (release phase 2, owner ruling H, runbook §7.2): there is one skill; the 39 no longer exist.

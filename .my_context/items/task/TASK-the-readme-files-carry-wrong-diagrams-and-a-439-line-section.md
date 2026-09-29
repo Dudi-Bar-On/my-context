@@ -45,3 +45,7 @@ SO DO NOT DELETE IT BLIND. Take the seven entries one at a time. An entry that h
 BOTH LANGUAGES, AND THEY MUST AGREE. `README.md` is 6,744 lines and `docs/README.he.md` is 7,180, mirroring it with its own RTL conventions. A fix to one is a fix to both, and the Hebrew edition of the documentation is written next - an error left here is inherited there.
 
 AND THE PROJECT HAS MOVED. `git log --since=2026-09-13 --name-only` is the fastest reading of what shipped after the capability reference froze: the search grammar, the find panel, folding and highlighting, mark kinds, two marks on one turn, corpus ranking, searchable tool calls, the mid-turn refresh, `mycontext path`. README predates all of it.
+
+## Request
+
+if you found that readme has errors, please fix it and also remove from it chapter 8 about what is not implemented yet, the english and the hebrew versions and verify they are updated internally as well as in the github repo, in this occasion it is also a good oportunity to update the readme files because the project has added and changed many things from the day the readme files were written

@@ -14,9 +14,9 @@ tags:
   - e2e
   - lesson
 origin: human
-source_file: "C:/Users/UserC/AppData/Local/Temp/counter.md"
+source_file: null
 source_anchor: null
-source_checksum: bf49208754469503
+source_checksum: null
 valid_from: 2026-08-29
 valid_until: null
 checksum: e56376c5ea528950

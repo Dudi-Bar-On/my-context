@@ -244,9 +244,35 @@ export async function redeemNonce(port: number, nonce: string): Promise<string> 
  * tab" this route exists to recover from, except every test after the first
  * hits it. Minting one per test through this route is the intended recovery
  * path, not a workaround bolted beside it.
+ *
+ * **RETRIED, per `rulings/114`'s own diagnosis: "`mintNonce` has no retry and
+ * Node's fetch returns `ECONNRESET` on a reused keep-alive connection here."**
+ * Measured across this suite's own runs — `cli-help.spec.ts`, `graph-focus.spec.ts`,
+ * `app-layout.spec.ts`, `item-pane.spec.ts` and `strip.spec.ts` each threw the
+ * identical `TypeError: fetch failed` / `[cause]: Error: read ECONNRESET`, on
+ * a call that carries no state of its own to corrupt — a bare `POST` with no
+ * body, answered fresh every time. A dropped keep-alive socket is the
+ * transport failing, not the route, so this retries the transport rather than
+ * widening every spec's own timeout to paper over it, which is what
+ * `rulings/114` asked this live here rather than in each spec.
  */
 export async function mintNonce(port: number): Promise<string> {
-  const response = await fetch(`http://127.0.0.1:${port}/api/nonce`, { method: 'POST' });
-  if (response.status !== 200) throw new Error(`nonce mint refused: ${response.status}`);
-  return ((await response.json()) as { nonce: string }).nonce;
+  const attempts = 3;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/nonce`, { method: 'POST' });
+      if (response.status !== 200) throw new Error(`nonce mint refused: ${response.status}`);
+      return ((await response.json()) as { nonce: string }).nonce;
+    } catch (error) {
+      // Only a connection-level failure is retried — a `nonce mint refused`
+      // `Error` above is the server answering, and answering is never retried
+      // into a different answer.
+      const cause = error instanceof Error ? error.cause : undefined;
+      const resetLike = error instanceof TypeError
+        && cause instanceof Error && cause.message.includes('ECONNRESET');
+      if (!resetLike || attempt === attempts) throw error;
+    }
+  }
+  // Unreachable: the loop above either returns or throws on its last attempt.
+  throw new Error('mintNonce: exhausted retries without a response or a thrown error');
 }

@@ -786,7 +786,7 @@ test(
 // grouping to work with. The only fix available is the one this project uses
 // for every other bounded read — widen the window to the feed's own declared
 // ceiling (`FEED_CAP`) and disclose the rest — see `screens/watch.js` ·
-// `Raised from a bare 20 to FEED_CAP` · for the argument.
+// `Raised from a bare 20 to \`FEED_CAP\` on` · ~157 for the argument.
 
 /**
  * A lane whose dispatch, steps AND stop are all pushed behind a window small
