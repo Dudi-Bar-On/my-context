@@ -168,7 +168,15 @@ async function dismissSkew(page: Page): Promise<void> {
   }
 }
 
-async function openDocument(page: Page, lang: 'en' | 'he'): Promise<void> {
+/**
+ * `crossfade`, when given, is the length the screen crossfade (`--dur-nav`,
+ * 180 ms in the product) is stretched to ON THIS PAGE ONLY, written after the
+ * first screen is drawn and before the document is asked for. It stands in for
+ * a runner too slow to finish the fade before the test acts, which is what
+ * ubuntu `[chrome]` was, and it changes nothing the product decides.
+ */
+async function openDocument(page: Page, lang: 'en' | 'he',
+  opts: { crossfade?: string } = {}): Promise<void> {
   await page.addInitScript((l) => {
     try { localStorage.setItem('myctx-lang', l as string); } catch { /* private mode */ }
   }, lang);
@@ -176,6 +184,9 @@ async function openDocument(page: Page, lang: 'en' | 'he'): Promise<void> {
   await page.goto(`http://127.0.0.1:${harness.port}/#${nonce}`);
   await page.waitForSelector('.rail', { timeout: 20_000 });
   await dismissSkew(page);
+  if (opts.crossfade !== undefined) {
+    await page.addStyleTag({ content: `:root{--dur-nav:${opts.crossfade}}` });
+  }
   await page.evaluate((s) => { location.hash = `#/conversations/${s}`; }, SESSION);
   await page.waitForSelector('.tvscroll .tvturn', { timeout: 20_000 });
   await dismissSkew(page);
@@ -743,6 +754,48 @@ for (const lang of ['en', 'he'] as const) {
     expect(heads.length).toBe(3);
     const seen = new Set(heads.map((h) => `${h.x},${h.y}`));
     expect(seen.size, 'two panels opened at the same point').toBe(3);
+  });
+
+  /* ══ 6b — A DOCUMENT OPENED MID-CROSSFADE IS ALREADY WHERE IT STAYS ═══ */
+
+  test(`a document opened while the screen is still fading is laid out where it will stay, and no panel covers another's close button (${lang})`, async ({ page }) => {
+    /*
+     * **THE UBUNTU [chrome] RED OF 2026-09-29, AS A TEST.** The crossfade keeps
+     * the screen being LEFT displayed for `--dur-nav` after it is hidden, and
+     * the document's flex layout put it ABOVE the card rather than under it,
+     * so for that window the well sat 250-400 px low. The panels cascade from
+     * the well's top at the moment each one opens: the search panel opened in
+     * the window and landed low, the copy panel opened after it and landed
+     * over the search panel's close button, and tests 2 and 5 timed out on a
+     * click the copy panel intercepted. The fade is stretched here so the
+     * window is certain rather than a matter of how slow the runner is.
+     */
+    await openDocument(page, lang, { crossfade: '700ms' });
+    const wellTop = (): Promise<number> => page.evaluate(() =>
+      Math.round(document.querySelector('.tvscroll')!.getBoundingClientRect().top));
+    const early = await wellTop();
+    for (const which of ['search', 'navigate', 'copy'] as const) await openPanel(page, which);
+    // Waited on the fade ITSELF, not on a clock: every screen's transition has
+    // finished or been cancelled.
+    await page.waitForFunction(() => document.getAnimations().every((a) =>
+      !(a.effect instanceof KeyframeEffect && a.effect.target instanceof Element
+        && a.effect.target.matches('[data-p]')) || a.playState !== 'running'));
+    expect(await wellTop(),
+      'the card moved when the fade ended, so what was measured before it was measured on a card about to move')
+      .toBe(early);
+    const covered = await page.evaluate(() => [...document.querySelectorAll('dialog.mcpanel[open]')]
+      .filter((d) => {
+        const button = d.querySelector('.mcpanelclose')!;
+        const b = button.getBoundingClientRect();
+        const hit = document.elementFromPoint(b.left + (b.width / 2), b.top + (b.height / 2));
+        return hit === null || hit.closest('.mcpanelclose') !== button;
+      })
+      .map((d) => (d as HTMLElement).dataset['panel']));
+    expect(covered, 'these panels have their close button under another panel').toEqual([]);
+    for (const which of ['search', 'navigate', 'copy'] as const) {
+      await page.locator(`dialog.mcpanel[data-panel="${which}"] .mcpanelclose`).click();
+      await expect(page.locator(`dialog.mcpanel[data-panel="${which}"][open]`)).toHaveCount(0);
+    }
   });
 
   /* ══ 7 — THE COPY PANEL SAYS WHY THE CONTROLS ARE GREY, AND COPIES ═════ */
