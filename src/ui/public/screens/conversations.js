@@ -8848,14 +8848,37 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
       }
       return;
     }
-    landOn(positions[target]);
+    /*
+     * **EVERYTHING THE STEP WRITES ABOVE THE WELL IS WRITTEN BEFORE IT LANDS,
+     * AND THE LANDING IS MEASURED LAST** — release 2.0.0, phase 4, round 5.
+     *
+     * `navSaid` sits ABOVE the well, and `.tvscroll` is a `flex:1 1 0` box
+     * whose BOTTOM is fixed by the card: when the sentence appears (it is
+     * `hidden` until the first step), or grows by a wrapped line, the well's
+     * top moves down by that height and every row in it moves down with it,
+     * at an unchanged `scrollTop`. This used to land first and speak after,
+     * so `revealBox` measured a band that stopped existing one call later.
+     * Measured at 1280x800: the well was 211-511 when the match was judged
+     * visible at 464, and 237-511 once the sentence was drawn, with the match
+     * at 490. On ubuntu's chromium the same match was judged at 487-506, was
+     * pushed to 513-532 — two pixels past the well's bottom, under
+     * `p.tvnote.tvfollows` — and the browser suite reddened on it
+     * (`e2e/conversations-find-panel.spec.ts`, "a stepped-to match lands
+     * where the reader can actually see it"). No constant fixes that: the
+     * sentence's height is the font's, the language's and the label's.
+     *
+     * So the place and the sentence are drawn first, and `landOn` /
+     * `showMatch` then measure the well, the viewport and every open panel
+     * as they ACTUALLY ARE at the moment of the scroll — `revealBox` reads
+     * each with `getBoundingClientRect()` and nothing it subtracts is a
+     * number. None of what moved here reads the scroll: `drawPlace` reads
+     * `cursor`, `sayNav` reads `target`, and `paint` — which `landOn` calls —
+     * paints `foundNow` and `standingAt` at the end of every rebuild, so
+     * setting them first makes the landing's own paint the right one.
+     */
     if (which === 'found') {
       findFresh = false;
-      // Set BEFORE `showMatch`, which repaints: the paint it causes is the
-      // one that must already know which match is the current one.
       foundNow = positions[target];
-      showMatch(positions[target]);
-      paintFinds();
     }
     // The walk's own place, set only by a step. `landOn` writes `scrollTop`,
     // which fires `scroll` — and `scroll` is deliberately NOT one of the three
@@ -8865,10 +8888,9 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
     cursor[which] = target;
     /*
      * **THE PLACE IS REDRAWN HERE AND NOT LEFT TO THE PAINT** — `semantic/14`
-     * for the match walk, and now for all three. `showMatch` above has already
-     * painted, and the cursor is written on the line above this one, so a
-     * counter refreshed only by `navRefresh` would be one press behind for
-     * ever.
+     * for the match walk, and now for all three. The cursor is written on the
+     * line above this one, so a counter refreshed only by `navRefresh` would
+     * be one press behind for ever.
      */
     drawPlace(which, positions.length);
     /*
@@ -8879,32 +8901,38 @@ export function mountDocument(ctx, host, outline, back, roster = NO_LANES, landA
      * which is the only emphasis marks and messages can have — their stop is
      * a whole turn and there is no narrower range in it to paint.
      *
-     * Set before nothing and read by `paintStanding`, which runs at the end of
-     * every rebuild for the same reason `paintFinds` does: a row is evicted
-     * and rebuilt by scrolling, and an emphasis written once would survive
-     * exactly until the reader scrolled past it and back.
+     * Read by `paintStanding`, which runs at the end of every rebuild for the
+     * same reason `paintFinds` does: a row is evicted and rebuilt by
+     * scrolling, and an emphasis written once would survive exactly until the
+     * reader scrolled past it and back. `.tvrownow` is an OUTLINE, so marking
+     * the turn moves nothing the landing measured.
      */
     standingAt = positions[target];
-    paintStanding();
     if (which === 'found') {
       sayNav('conv.nav.atFound', { n: target + 1, total: positions.length });
-      return;
-    }
-    if (which === 'you') {
+    } else if (which === 'you') {
       sayNav('conv.nav.atYou', { n: target + 1, total: positions.length });
-      return;
+    } else {
+      // The NAMES, isolated: a Hebrew label inside an English sentence takes
+      // the sentence's direction unless it is, which is the convention the
+      // anchors card already holds for every label it draws.
+      const named = el('bdi', 'tvnavat');
+      named.textContent = stops[target].anchors.map((a) => a.label).join(' · ');
+      if (markKind === null) {
+        sayNav('conv.nav.atMark', { n: target + 1, total: positions.length }, named);
+      } else {
+        sayNav('conv.nav.atMarkKind',
+          { n: target + 1, total: positions.length, kind: kindWord(markKind) }, named);
+      }
     }
-    // The NAMES, isolated: a Hebrew label inside an English sentence takes the
-    // sentence's direction unless it is, which is the convention the anchors
-    // card already holds for every label it draws.
-    const named = el('bdi', 'tvnavat');
-    named.textContent = stops[target].anchors.map((a) => a.label).join(' · ');
-    if (markKind === null) {
-      sayNav('conv.nav.atMark', { n: target + 1, total: positions.length }, named);
-      return;
+    // NOW the page above the well has its final height, and the landing is
+    // measured against the well the reader will actually be looking at.
+    landOn(positions[target]);
+    if (which === 'found') {
+      showMatch(positions[target]);
+      paintFinds();
     }
-    sayNav('conv.nav.atMarkKind',
-      { n: target + 1, total: positions.length, kind: kindWord(markKind) }, named);
+    paintStanding();
   };
 
   markPrev.addEventListener('click', () => { step('mark', false); });

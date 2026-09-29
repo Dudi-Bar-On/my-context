@@ -1493,6 +1493,83 @@ for (const lang of ['en', 'he'] as const) {
     }
   });
 
+  /* ══ 18b — AND THE SENTENCE ABOVE THE WELL IS NOT A CONSTANT ════════════ */
+
+  test(`a stepped-to match stays visible when the landing sentence above the well is taller (${lang})`, async ({ page }) => {
+    await openDocument(page, lang);
+    await openPanel(page);
+    /*
+     * **RELEASE 2.0.0, PHASE 4, ROUND 5 — THE ONE SPEC UBUNTU REDDENED.**
+     * Section 18 above went red on the hosted runner's `[chromium]` only:
+     * *"the current match is under P.tvnote"*, the match at y 513-532 and the
+     * well ending at 511. It was green on Windows in every run, because the
+     * defect is two pixels wide there.
+     *
+     * The landing sentence (`p.tvnote.tvnavsaid`) sits ABOVE the well and is
+     * `hidden` until the first step. The well is a flex box whose BOTTOM is
+     * fixed, so when the sentence appears, its height comes off the well's
+     * TOP and every row moves down by it at an unchanged `scrollTop`. The
+     * step used to land first and speak after, so a match judged visible in
+     * the last line of the well was pushed under `p.tvnote.tvfollows`, and
+     * how far it was pushed is the sentence's height — the font's, the
+     * language's, the label's. Here it is 26 px; on ubuntu it was enough.
+     *
+     * So the sentence is made taller with a style on THIS PAGE ONLY — the
+     * product's CSS is untouched — which is what a font with taller metrics,
+     * or a label that wraps, does to it. Measured before the product was
+     * fixed: 20 px of extra height put the match under `P.tvnote` in English,
+     * exactly the runner's message; 40 px put it under the card in both
+     * languages. 40 is asserted.
+     */
+    await page.addStyleTag({ content: '.tvnavsaid{padding-block-end:40px}' });
+    await find(page, 'byte');
+    const grip = await page.locator(`${SEARCH} .mcpanelhead`).boundingBox();
+    expect(grip).not.toBeNull();
+    const rtl = await page.evaluate(() =>
+      document.documentElement.getAttribute('dir') === 'rtl');
+    // The same drag section 18 makes, so the geometry is the one that failed.
+    await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip!.x + grip!.width / 2 + (rtl ? -200 : 200),
+      grip!.y + grip!.height / 2 + 260, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+
+    let looked = 0;
+    for (let i = 0; i < 4; i += 1) {
+      await page.locator('.tvnavfoundnext').click();
+      await page.waitForTimeout(800);
+      const answer = await page.evaluate(() => {
+        const ranges = [...(CSS.highlights.get('mycontextfindnow') ?? [])] as Range[];
+        if (ranges.length === 0) return null;
+        const b = ranges[0]!.getBoundingClientRect();
+        if (b.width === 0 && b.height === 0) return null;
+        const at = document.elementFromPoint(
+          Math.round((b.left + b.right) / 2), Math.round((b.top + b.bottom) / 2));
+        const well = document.querySelector('.tvscroll')!.getBoundingClientRect();
+        const said = document.querySelector('.tvnavsaid')!.getBoundingClientRect();
+        return {
+          over: at === null ? null : `${at.tagName}.${String(at.className).split(' ')[0]}`,
+          reachable: at !== null && at.closest('.tvscroll') !== null,
+          match: [Math.round(b.top), Math.round(b.bottom)],
+          well: [Math.round(well.top), Math.round(well.bottom)],
+          said: [Math.round(said.top), Math.round(said.bottom)],
+        };
+      });
+      if (answer === null) continue;
+      looked += 1;
+      console.log(`[taller ${lang}] step ${i + 1} ${JSON.stringify(answer)}`);
+      // The fixture really did make the sentence taller, or this proves nothing.
+      expect(answer.said[1] - answer.said[0],
+        'the landing sentence was not made taller, so this test is section 18 again')
+        .toBeGreaterThan(50);
+      expect(answer.reachable,
+        `the current match is under ${answer.over}, where the reader cannot see it`).toBe(true);
+    }
+    expect(looked, 'no step produced a current match, so this asserted nothing')
+      .toBeGreaterThan(1);
+  });
+
   /* ══ 19 — THE CLEAR BUTTON ═══════════════════════════════════════════════ */
 
   test(`Clear empties the box, the highlights and the counts, and keeps the caret (${lang})`, async ({ page }) => {
